@@ -1,8 +1,12 @@
 name: example_workflow
+on_error: fail_fast
 steps:
   - id: generate_summary
     type: model
     handler: generate_summary
+    retry:
+      attempts: 2
+      delay_seconds: 1
   - id: echo_tool
     type: tool
     tool: tools.echo

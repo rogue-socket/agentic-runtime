@@ -28,6 +28,8 @@ class SQLiteStorage(Storage):
                     id TEXT PRIMARY KEY,
                     status TEXT NOT NULL,
                     workflow_id TEXT NOT NULL,
+                    workflow_hash TEXT,
+                    input_hash TEXT,
                     created_at TEXT NOT NULL,
                     started_at TEXT,
                     completed_at TEXT,
@@ -46,6 +48,7 @@ class SQLiteStorage(Storage):
                     started_at TEXT,
                     finished_at TEXT,
                     duration_ms INTEGER,
+                    attempts INTEGER,
                     FOREIGN KEY(run_id) REFERENCES runs(id)
                 );
                 CREATE TABLE IF NOT EXISTS state_versions (
@@ -59,18 +62,34 @@ class SQLiteStorage(Storage):
                 );
                 """
             )
+            self._ensure_runs_columns(conn)
+            self._ensure_steps_columns(conn)
+
+    def _ensure_steps_columns(self, conn: sqlite3.Connection) -> None:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(steps)").fetchall()}
+        if "attempts" not in columns:
+            conn.execute("ALTER TABLE steps ADD COLUMN attempts INTEGER")
+
+    def _ensure_runs_columns(self, conn: sqlite3.Connection) -> None:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
+        if "workflow_hash" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN workflow_hash TEXT")
+        if "input_hash" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN input_hash TEXT")
 
     def create_run(self, run: Run) -> None:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO runs (id, status, workflow_id, created_at, started_at, completed_at, error, metadata_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO runs (id, status, workflow_id, workflow_hash, input_hash, created_at, started_at, completed_at, error, metadata_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.run_id,
                     run.status,
                     run.workflow_id,
+                    run.workflow_hash,
+                    run.input_hash,
                     run.created_at,
                     run.started_at,
                     run.completed_at,
@@ -103,8 +122,8 @@ class SQLiteStorage(Storage):
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO steps (run_id, step_id, type, status, input_json, output_json, error, started_at, finished_at, duration_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO steps (run_id, step_id, type, status, input_json, output_json, error, started_at, finished_at, duration_ms, attempts)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -117,6 +136,7 @@ class SQLiteStorage(Storage):
                     step.started_at,
                     step.finished_at,
                     step.duration_ms,
+                    step.attempt_number,
                 ),
             )
 
@@ -148,6 +168,8 @@ class SQLiteStorage(Storage):
             run = Run(
                 run_id=row["id"],
                 workflow_id=row["workflow_id"],
+                workflow_hash=row["workflow_hash"],
+                input_hash=row["input_hash"],
                 status=row["status"],
                 created_at=row["created_at"],
                 started_at=row["started_at"],
@@ -177,6 +199,7 @@ class SQLiteStorage(Storage):
                         output=json_loads(row["output_json"]) if row["output_json"] else None,
                         error=row["error"],
                         duration_ms=row["duration_ms"],
+                        attempt_number=row["attempts"],
                     )
                 )
             return steps

@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 import pytest
 
-from agent_runtime.core import Executor, StepDefinition, StepStatus
+from agent_runtime.core import Executor, RetryPolicy, StepDefinition, StepStatus
 from agent_runtime.errors import WorkflowValidationError
 from agent_runtime.memory.base import MemoryManager
 from agent_runtime.storage.sqlite import SQLiteStorage
@@ -142,3 +142,31 @@ def test_memory_hooks_invoked() -> None:
     assert episodic.write_calls == 1
     assert semantic.write_calls == 1
     assert procedural.write_calls == 1
+
+
+def test_retry_policy_succeeds() -> None:
+    storage = _storage()
+    tool_registry = ToolRegistry()
+    logger = None
+
+    attempts = {"count": 0}
+
+    def flaky_handler(state: Dict[str, Any]) -> Dict[str, Any]:
+        attempts["count"] += 1
+        if attempts["count"] < 2:
+            raise ValueError("transient")
+        return {"ok": True}
+
+    steps = [
+        StepDefinition(
+            step_id="flaky",
+            step_type="model",
+            handler=flaky_handler,
+            retry=RetryPolicy(attempts=2, delay_seconds=0),
+        )
+    ]
+    executor = Executor(steps, storage, logger, _memory_manager(), tool_registry)
+
+    run = executor.run("wf", {"issue": "x"})
+    assert run.status == StepStatus.COMPLETED
+    assert run.state.data["steps"]["flaky"]["ok"] is True

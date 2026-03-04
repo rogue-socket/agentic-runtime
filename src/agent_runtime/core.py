@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 import copy
 import uuid
+import time
+from types import MappingProxyType
 
 from .errors import StepExecutionError
 from .logging import StructuredLogger
@@ -25,15 +27,31 @@ class StepStatus(str):
 
 @dataclass
 class RunState:
-    data: StateDict
+    _data: StateDict
+    _frozen: bool = False
 
     def snapshot(self) -> StateDict:
-        return copy.deepcopy(self.data)
+        return copy.deepcopy(self._data)
+
+    @property
+    def data(self) -> StateDict:
+        return MappingProxyType(self._data) if self._frozen else self._data
+
+    def freeze(self) -> None:
+        self._frozen = True
 
     def merge(self, output: StateDict) -> None:
+        if self._frozen:
+            raise StepExecutionError("RunState is frozen.")
         if not isinstance(output, dict):
             raise TypeError("Step output must be a dict.")
-        self.data.update(output)
+        self._data.update(output)
+
+    def set_step_output(self, step_id: str, output: StateDict) -> None:
+        if self._frozen:
+            raise StepExecutionError("RunState is frozen.")
+        self._data.setdefault("steps", {})
+        self._data["steps"][step_id] = output
 
 
 @dataclass
@@ -43,6 +61,13 @@ class StepDefinition:
     handler: Optional[StepHandler] = None
     tool_name: Optional[str] = None
     raw_input: Optional[Dict[str, Any]] = None
+    retry: Optional["RetryPolicy"] = None
+
+
+@dataclass
+class RetryPolicy:
+    attempts: int = 0
+    delay_seconds: float = 0.0
 
 
 @dataclass
@@ -56,12 +81,15 @@ class StepExecution:
     output: Optional[StateDict] = None
     error: Optional[str] = None
     duration_ms: Optional[int] = None
+    attempt_number: Optional[int] = None
 
 
 @dataclass
 class Run:
     run_id: str
     workflow_id: str
+    workflow_hash: Optional[str]
+    input_hash: Optional[str]
     status: str
     created_at: str
     started_at: Optional[str] = None
@@ -69,7 +97,30 @@ class Run:
     error: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
     state: RunState = field(default_factory=lambda: RunState({}))
-    steps: List[StepExecution] = field(default_factory=list)
+    _steps: List[StepExecution] = field(default_factory=list, repr=False)
+    _frozen: bool = field(default=False, repr=False)
+
+    @property
+    def steps(self) -> List[StepExecution]:
+        return list(self._steps) if self._frozen else self._steps
+
+    def add_step(self, step: StepExecution) -> None:
+        if self._frozen:
+            raise StepExecutionError("Run is frozen.")
+        self._steps.append(step)
+
+    def set_status(self, status: str, error: Optional[str] = None, completed_at: Optional[str] = None) -> None:
+        if self._frozen:
+            raise StepExecutionError("Run is frozen.")
+        self.status = status
+        if error is not None:
+            self.error = error
+        if completed_at is not None:
+            self.completed_at = completed_at
+
+    def freeze(self) -> None:
+        self._frozen = True
+        self.state.freeze()
 
 
 class Executor:
@@ -87,49 +138,79 @@ class Executor:
         self.memory_manager = memory_manager
         self.tool_registry = tool_registry
 
-    def run(self, workflow_id: str, initial_state: StateDict) -> Run:
+    def run(
+        self,
+        workflow_id: str,
+        initial_state: StateDict,
+        on_error: str = "fail_fast",
+        workflow_hash: Optional[str] = None,
+        input_hash: Optional[str] = None,
+    ) -> Run:
         run = Run(
             run_id=str(uuid.uuid4()),
             workflow_id=workflow_id,
+            workflow_hash=workflow_hash,
+            input_hash=input_hash,
             status=StepStatus.PENDING,
             created_at=utc_now().isoformat(),
-            state=RunState(data={"inputs": copy.deepcopy(initial_state), "steps": {}}),
+            state=RunState(_data={"inputs": copy.deepcopy(initial_state), "steps": {}}),
         )
         self.storage.create_run(run)
 
-        run.status = StepStatus.RUNNING
+        run.set_status(StepStatus.RUNNING)
         run.started_at = utc_now().isoformat()
         self.storage.update_run_status(run.run_id, run.status, None, started_at=run.started_at)
 
         state_version = 0
         self.storage.save_state(run.run_id, None, state_version, run.state.data)
 
+        had_errors = False
         for step_def in self.steps:
+            if step_def.step_id in run.state.data.get("steps", {}):
+                raise StepExecutionError(f"Duplicate step execution: {step_def.step_id}")
             execution = StepExecution(
                 step_id=step_def.step_id,
                 step_type=step_def.step_type,
                 status=StepStatus.RUNNING,
                 started_at=utc_now().isoformat(),
             )
-            run.steps.append(execution)
+            run.add_step(execution)
 
             try:
-                snapshot = run.state.snapshot()
-                self.memory_manager.hydrate_state(snapshot)
-                execution.input = snapshot
+                max_attempts = (step_def.retry.attempts if step_def.retry else 0) + 1
+                delay_seconds = step_def.retry.delay_seconds if step_def.retry else 0.0
 
-                if step_def.step_type == "model":
-                    if step_def.handler is None:
-                        raise StepExecutionError("Missing model handler.")
-                    output = step_def.handler(snapshot)
-                elif step_def.step_type == "tool":
-                    if not step_def.tool_name:
-                        raise StepExecutionError("Missing tool name.")
-                    tool = self.tool_registry.get(step_def.tool_name)
-                    tool_input = format_template(step_def.raw_input or {}, snapshot)
-                    output = tool(tool_input)
-                else:
-                    raise StepExecutionError(f"Unknown step type: {step_def.step_type}")
+                output = None
+                last_error: Optional[Exception] = None
+                for attempt in range(1, max_attempts + 1):
+                    snapshot = run.state.snapshot()
+                    self.memory_manager.hydrate_state(snapshot)
+                    execution.input = copy.deepcopy(snapshot)
+                    execution.attempt_number = attempt
+
+                    try:
+                        if step_def.step_type == "model":
+                            if step_def.handler is None:
+                                raise StepExecutionError("Missing model handler.")
+                            output = step_def.handler(snapshot)
+                        elif step_def.step_type == "tool":
+                            if not step_def.tool_name:
+                                raise StepExecutionError("Missing tool name.")
+                            tool = self.tool_registry.get(step_def.tool_name)
+                            tool_input = format_template(step_def.raw_input or {}, snapshot)
+                            output = tool(tool_input)
+                        else:
+                            raise StepExecutionError(f"Unknown step type: {step_def.step_type}")
+
+                        last_error = None
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        last_error = exc
+                        if attempt < max_attempts and delay_seconds > 0:
+                            time.sleep(delay_seconds)
+
+                if last_error is not None:
+                    raise last_error
 
                 if output is None or not isinstance(output, dict):
                     raise StepExecutionError("Step handler must return a dict.")
@@ -138,8 +219,11 @@ class Executor:
                 # - Prevent modification of "inputs"
                 # - Prevent overwriting existing step outputs unless explicitly allowed
                 # - Add collision validation policy
-                run.state.data.setdefault("steps", {})
-                run.state.data["steps"][step_def.step_id] = output
+                if "inputs" in output:
+                    raise StepExecutionError("Step output cannot include reserved key: inputs")
+                if step_def.step_id in run.state.data.get("steps", {}):
+                    raise StepExecutionError(f"Step output overwrite not allowed: {step_def.step_id}")
+                run.state.set_step_output(step_def.step_id, output)
                 self.memory_manager.persist_state(run.state.data)
 
                 execution.output = output
@@ -147,15 +231,16 @@ class Executor:
             except Exception as exc:  # noqa: BLE001
                 execution.status = StepStatus.FAILED
                 execution.error = f"{type(exc).__name__}: {exc}"
-                run.status = StepStatus.FAILED
-                run.error = execution.error
-                run.completed_at = utc_now().isoformat()
-                self.storage.update_run_status(
-                    run.run_id,
-                    run.status,
-                    run.error,
-                    completed_at=run.completed_at,
-                )
+                had_errors = True
+                if on_error == "fail_fast":
+                    run.set_status(StepStatus.FAILED, error=execution.error, completed_at=utc_now().isoformat())
+                    self.storage.update_run_status(
+                        run.run_id,
+                        run.status,
+                        run.error,
+                        completed_at=run.completed_at,
+                    )
+                    run.freeze()
             finally:
                 if execution.finished_at is None:
                     execution.finished_at = utc_now().isoformat()
@@ -166,20 +251,21 @@ class Executor:
 
                 self.storage.append_step(run.run_id, execution)
 
-            if execution.status == StepStatus.FAILED:
+            if execution.status == StepStatus.FAILED and on_error == "fail_fast":
                 break
 
             state_version += 1
             self.storage.save_state(run.run_id, execution.step_id, state_version, run.state.data)
 
         if run.status != StepStatus.FAILED:
-            run.status = StepStatus.COMPLETED
-            run.completed_at = utc_now().isoformat()
+            final_status = "COMPLETED_WITH_ERRORS" if had_errors else StepStatus.COMPLETED
+            run.set_status(final_status, completed_at=utc_now().isoformat())
             self.storage.update_run_status(
                 run.run_id,
                 run.status,
                 None,
                 completed_at=run.completed_at,
             )
+            run.freeze()
 
         return run

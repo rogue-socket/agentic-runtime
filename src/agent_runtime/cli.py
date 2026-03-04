@@ -11,13 +11,18 @@ from .steps import StepHandlerRegistry, generate_summary
 from .storage import SQLiteStorage
 from .tools import ToolRegistry
 from .workflow import load_workflow
+from .utils import sha256_json
 
 
 EXAMPLE_WORKFLOW = """name: example_workflow
+on_error: fail_fast
 steps:
   - id: generate_summary
     type: model
     handler: generate_summary
+    retry:
+      attempts: 2
+      delay_seconds: 1
   - id: echo_tool
     type: tool
     tool: tools.echo
@@ -98,7 +103,14 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             tool_registry=tool_registry,
         )
 
-        run = executor.run(workflow_id=workflow["name"], initial_state={"issue": args.issue})
+        input_state = {"issue": args.issue}
+        run = executor.run(
+            workflow_id=workflow["name"],
+            initial_state=input_state,
+            on_error=workflow.get("on_error", "fail_fast"),
+            workflow_hash=workflow.get("workflow_hash"),
+            input_hash=sha256_json(input_state),
+        )
         print(f"Run {run.run_id} status: {run.status}")
         return 0 if run.status == "COMPLETED" else 1
 
@@ -113,9 +125,22 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             print(f"Error: {run.error}")
         print("Steps:")
         for idx, step in enumerate(steps, start=1):
-            print(f"  {idx}. {step.step_id} ({step.step_type}) -> {step.status}")
+            duration = f"{step.duration_ms}ms" if step.duration_ms is not None else "n/a"
+            print(f"  {idx}. {step.step_id} ({step.step_type}) -> {step.status} ({duration})")
+            if step.started_at:
+                print(f"     Started: {step.started_at}")
+            if step.finished_at:
+                print(f"     Finished: {step.finished_at}")
+            if step.duration_ms is not None:
+                print(f"     Duration: {step.duration_ms} ms")
+            if step.attempt_number is not None:
+                print(f"     Attempt number: {step.attempt_number}")
+            if step.input is not None:
+                print(f"     Input: {step.input}")
             if step.output is not None:
                 print(f"     Output: {step.output}")
+            if step.error is not None:
+                print(f"     Error: {step.error}")
         print("Latest state:")
         print(latest_state)
         return 0
