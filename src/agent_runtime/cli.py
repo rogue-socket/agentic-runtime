@@ -22,7 +22,7 @@ steps:
     type: tool
     tool: tools.echo
     input:
-      message: "{summary}"
+      message: "{steps[generate_summary][summary]}"
 """
 
 
@@ -114,6 +114,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         print("Steps:")
         for idx, step in enumerate(steps, start=1):
             print(f"  {idx}. {step.step_id} ({step.step_type}) -> {step.status}")
+            if step.output is not None:
+                print(f"     Output: {step.output}")
         print("Latest state:")
         print(latest_state)
         return 0

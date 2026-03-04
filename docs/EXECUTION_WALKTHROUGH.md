@@ -27,14 +27,20 @@ PYTHONPATH=src ./ai run workflows/example.yaml --issue "Login API fails for inva
 
 5. **Run is created**
    - A new `Run` record is created with status `PENDING`, then updated to `RUNNING`.
-   - Initial state is set to `{ "issue": "Login API fails for invalid token" }`.
+   - Initial state is set to:
+     ```json
+     {
+       "inputs": { "issue": "Login API fails for invalid token" },
+       "steps": {}
+     }
+     ```
    - State version `0` is persisted.
 
 6. **Step 1 executes: `generate_summary` (model)**
    - Executor snapshots state and hydrates memory into it.
    - Handler runs with snapshot and returns:
      - `{ "summary": "Issue related to login API failing when token is invalid." }`
-   - State is merged (summary appended).
+   - State is merged into `steps.generate_summary`.
    - Memory tiers persist the updated state.
    - StepExecution is saved with status `COMPLETED`.
    - State version `1` is persisted.
@@ -45,7 +51,7 @@ PYTHONPATH=src ./ai run workflows/example.yaml --issue "Login API fails for inva
      - `{ "message": "Issue related to login API failing when token is invalid." }`
    - Tool returns:
      - `{ "tool_output": {"message": "Issue related to login API failing when token is invalid."} }`
-   - State is merged (tool output appended).
+   - State is merged into `steps.echo_tool`.
    - Memory tiers persist the updated state.
    - StepExecution is saved with status `COMPLETED`.
    - State version `2` is persisted.
@@ -57,10 +63,18 @@ PYTHONPATH=src ./ai run workflows/example.yaml --issue "Login API fails for inva
 ## Final State (Example)
 ```json
 {
-  "issue": "Login API fails for invalid token",
-  "summary": "Issue related to login API failing when token is invalid.",
-  "tool_output": {
-    "message": "Issue related to login API failing when token is invalid."
+  "inputs": {
+    "issue": "Login API fails for invalid token"
+  },
+  "steps": {
+    "generate_summary": {
+      "summary": "Issue related to login API failing when token is invalid."
+    },
+    "echo_tool": {
+      "tool_output": {
+        "message": "Issue related to login API failing when token is invalid."
+      }
+    }
   }
 }
 ```

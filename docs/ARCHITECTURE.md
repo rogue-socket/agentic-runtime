@@ -3,7 +3,7 @@
 ## Core Concepts
 - Run: top-level execution record for a workflow.
 - StepExecution: per-step execution record with input/output and timestamps.
-- RunState: shared JSON state that evolves after each step.
+- RunState: structured JSON state with `inputs` and `steps`.
 
 ## Execution Flow
 1. Load workflow YAML into step definitions.

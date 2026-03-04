@@ -7,4 +7,4 @@ steps:
     type: tool
     tool: tools.echo
     input:
-      message: "{summary}"
+      message: "{steps[generate_summary][summary]}"

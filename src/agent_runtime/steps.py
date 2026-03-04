@@ -23,9 +23,10 @@ class StepHandlerRegistry:
 
 def generate_summary(state: StateDict) -> StateDict:
     # [SCAFFOLD:LLM] Replace deterministic summary with model-backed generation.
-    if "issue" not in state:
+    inputs = state.get("inputs", {})
+    if "issue" not in inputs:
         raise KeyError("Missing required key: issue")
-    issue = state["issue"]
+    issue = inputs["issue"]
     if not isinstance(issue, str) or not issue.strip():
         raise ValueError("issue must be a non-empty string")
 

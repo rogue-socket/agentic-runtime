@@ -93,7 +93,7 @@ class Executor:
             workflow_id=workflow_id,
             status=StepStatus.PENDING,
             created_at=utc_now().isoformat(),
-            state=RunState(data=copy.deepcopy(initial_state)),
+            state=RunState(data={"inputs": copy.deepcopy(initial_state), "steps": {}}),
         )
         self.storage.create_run(run)
 
@@ -134,7 +134,12 @@ class Executor:
                 if output is None or not isinstance(output, dict):
                     raise StepExecutionError("Step handler must return a dict.")
 
-                run.state.merge(output)
+                # [TODO] Enforce immutability rules:
+                # - Prevent modification of "inputs"
+                # - Prevent overwriting existing step outputs unless explicitly allowed
+                # - Add collision validation policy
+                run.state.data.setdefault("steps", {})
+                run.state.data["steps"][step_def.step_id] = output
                 self.memory_manager.persist_state(run.state.data)
 
                 execution.output = output

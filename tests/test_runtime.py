@@ -57,7 +57,8 @@ def test_model_step_success() -> None:
 
     run = executor.run("wf", {"issue": "Login API fails for invalid token"})
     assert run.status == StepStatus.COMPLETED
-    assert "summary" in run.state.data
+    assert "generate_summary" in run.state.data["steps"]
+    assert "summary" in run.state.data["steps"]["generate_summary"]
 
 
 def test_model_step_missing_issue() -> None:
@@ -87,7 +88,7 @@ def test_tool_step_success() -> None:
 
     run = executor.run("wf", {"issue": "x"})
     assert run.status == StepStatus.COMPLETED
-    assert run.state.data["tool_output"]["x"] == 1
+    assert run.state.data["steps"]["echo"]["tool_output"]["x"] == 1
 
 
 def test_workflow_yaml_validation(tmp_path) -> None:
