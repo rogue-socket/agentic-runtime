@@ -30,6 +30,11 @@ PYTHONPATH=src ./ai run workflows/example.yaml --issue "Login API fails for inva
 PYTHONPATH=src pytest -q
 ```
 
+**Inspect a run**
+```bash
+PYTHONPATH=src ./ai inspect <run_id>
+```
+
 **Docs**
 - `/Users/yashagrawal/Documents/agentic-runtime/docs/USAGE.md`
 - `/Users/yashagrawal/Documents/agentic-runtime/docs/ARCHITECTURE.md`

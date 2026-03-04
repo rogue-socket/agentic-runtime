@@ -67,6 +67,10 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     run_parser.add_argument("--db-path", default="runtime.db", help="SQLite DB path")
     run_parser.add_argument("--issue", default="Login API fails for invalid token", help="Initial issue text")
 
+    inspect_parser = subparsers.add_parser("inspect", help="Inspect a run")
+    inspect_parser.add_argument("run_id", help="Run ID")
+    inspect_parser.add_argument("--db-path", default="runtime.db", help="SQLite DB path")
+
     args = parser.parse_args(argv)
 
     if args.command == "init":
@@ -97,6 +101,22 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         run = executor.run(workflow_id=workflow["name"], initial_state={"issue": args.issue})
         print(f"Run {run.run_id} status: {run.status}")
         return 0 if run.status == "COMPLETED" else 1
+
+    if args.command == "inspect":
+        storage = SQLiteStorage(args.db_path)
+        run = storage.load_run(args.run_id)
+        steps = storage.load_steps(args.run_id)
+        latest_state = storage.load_latest_state(args.run_id)
+
+        print(f"Run {run.run_id} | workflow={run.workflow_id} | status={run.status}")
+        if run.error:
+            print(f"Error: {run.error}")
+        print("Steps:")
+        for idx, step in enumerate(steps, start=1):
+            print(f"  {idx}. {step.step_id} ({step.step_type}) -> {step.status}")
+        print("Latest state:")
+        print(latest_state)
+        return 0
 
     return 1
 

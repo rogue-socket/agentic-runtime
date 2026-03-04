@@ -34,3 +34,11 @@ class Storage(ABC):
     @abstractmethod
     def load_run(self, run_id: str) -> Run:
         raise NotImplementedError
+
+    @abstractmethod
+    def load_steps(self, run_id: str) -> list[StepExecution]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def load_latest_state(self, run_id: str) -> Dict[str, Any]:
+        raise NotImplementedError

@@ -19,3 +19,8 @@ PYTHONPATH=src ./ai init
 ```bash
 PYTHONPATH=src pytest -q
 ```
+
+## Inspect a run
+```bash
+PYTHONPATH=src ./ai inspect <run_id>
+```

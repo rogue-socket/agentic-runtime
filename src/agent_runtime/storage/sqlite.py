@@ -144,6 +144,7 @@ class SQLiteStorage(Storage):
             if row is None:
                 raise ValueError(f"Run not found: {run_id}")
 
+            from ..core import Run
             run = Run(
                 run_id=row["id"],
                 workflow_id=row["workflow_id"],
@@ -155,3 +156,37 @@ class SQLiteStorage(Storage):
                 metadata=json_loads(row["metadata_json"]) if row["metadata_json"] else None,
             )
             return run
+
+    def load_steps(self, run_id: str) -> list[StepExecution]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM steps WHERE run_id = ? ORDER BY id ASC",
+                (run_id,),
+            ).fetchall()
+            steps: list[StepExecution] = []
+            for row in rows:
+                from ..core import StepExecution
+                steps.append(
+                    StepExecution(
+                        step_id=row["step_id"],
+                        step_type=row["type"],
+                        status=row["status"],
+                        started_at=row["started_at"],
+                        finished_at=row["finished_at"],
+                        input=json_loads(row["input_json"]) if row["input_json"] else None,
+                        output=json_loads(row["output_json"]) if row["output_json"] else None,
+                        error=row["error"],
+                        duration_ms=row["duration_ms"],
+                    )
+                )
+            return steps
+
+    def load_latest_state(self, run_id: str) -> Dict[str, Any]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT state_json FROM state_versions WHERE run_id = ? ORDER BY version DESC LIMIT 1",
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"No state found for run: {run_id}")
+            return json_loads(row["state_json"])
