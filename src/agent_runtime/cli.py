@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+import argparse
+import os
+from typing import Any, Dict, List, Optional
+
+from .core import Executor
+from .logging import StructuredLogger
+from .memory import EpisodicMemory, MemoryManager, ProceduralMemory, SemanticMemory, WorkingMemory
+from .steps import StepHandlerRegistry, generate_summary
+from .storage import SQLiteStorage
+from .tools import ToolRegistry
+from .workflow import load_workflow
+
+
+EXAMPLE_WORKFLOW = """name: example_workflow
+steps:
+  - id: generate_summary
+    type: model
+    handler: generate_summary
+  - id: echo_tool
+    type: tool
+    tool: tools.echo
+    input:
+      message: "{summary}"
+"""
+
+
+def _init_project(target_dir: str) -> None:
+    workflows_dir = os.path.join(target_dir, "workflows")
+    os.makedirs(workflows_dir, exist_ok=True)
+
+    example_path = os.path.join(workflows_dir, "example.yaml")
+    if not os.path.exists(example_path):
+        with open(example_path, "w", encoding="utf-8") as f:
+            f.write(EXAMPLE_WORKFLOW)
+
+
+def _default_tool_registry() -> ToolRegistry:
+    registry = ToolRegistry()
+
+    def echo_tool(payload: Dict[str, Any]) -> Dict[str, Any]:
+        return {"tool_output": payload}
+
+    registry.register("tools.echo", echo_tool)
+    return registry
+
+
+def _default_memory_manager() -> MemoryManager:
+    return MemoryManager(
+        working=WorkingMemory(),
+        episodic=EpisodicMemory(),
+        semantic=SemanticMemory(),
+        procedural=ProceduralMemory(),
+    )
+
+
+def run_cli(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(prog="ai")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    init_parser = subparsers.add_parser("init", help="Initialize a new workflow project")
+    init_parser.add_argument("--path", default=".", help="Target directory")
+
+    run_parser = subparsers.add_parser("run", help="Run a workflow")
+    run_parser.add_argument("workflow", help="Path to workflow YAML")
+    run_parser.add_argument("--db-path", default="runtime.db", help="SQLite DB path")
+    run_parser.add_argument("--issue", default="Login API fails for invalid token", help="Initial issue text")
+
+    args = parser.parse_args(argv)
+
+    if args.command == "init":
+        _init_project(args.path)
+        print(f"Initialized workflow project at {os.path.abspath(args.path)}")
+        return 0
+
+    if args.command == "run":
+        handler_registry = StepHandlerRegistry()
+        handler_registry.register("generate_summary", generate_summary)
+
+        workflow = load_workflow(args.workflow, handler_registry)
+        steps = workflow["steps"]
+
+        storage = SQLiteStorage(args.db_path)
+        logger = StructuredLogger()
+        memory_manager = _default_memory_manager()
+        tool_registry = _default_tool_registry()
+
+        executor = Executor(
+            steps=steps,
+            storage=storage,
+            logger=logger,
+            memory_manager=memory_manager,
+            tool_registry=tool_registry,
+        )
+
+        run = executor.run(workflow_id=workflow["name"], initial_state={"issue": args.issue})
+        print(f"Run {run.run_id} status: {run.status}")
+        return 0 if run.status == "COMPLETED" else 1
+
+    return 1
+
+
+def main() -> None:
+    raise SystemExit(run_cli())
+
+
+if __name__ == "__main__":
+    main()

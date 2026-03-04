@@ -1,0 +1,10 @@
+name: example_workflow
+steps:
+  - id: generate_summary
+    type: model
+    handler: generate_summary
+  - id: echo_tool
+    type: tool
+    tool: tools.echo
+    input:
+      message: "{summary}"
