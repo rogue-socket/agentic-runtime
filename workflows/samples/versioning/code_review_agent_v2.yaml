@@ -1,6 +1,6 @@
 workflow:
-  id: example_workflow
-  version: v1
+  id: code_review_agent
+  version: v2
 on_error: fail_fast
 steps:
   - id: generate_summary
@@ -8,12 +8,15 @@ steps:
     handler: generate_summary
     inputs:
       issue: inputs.issue
-    retry:
-      attempts: 3
-      backoff: exponential
-      initial_delay: 1
-  - id: echo_tool
+
+  - id: echo_summary
     type: tool
     tool: tools.echo
     inputs:
       message: steps.generate_summary.summary
+
+  - id: finalization
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: "code_review_agent v2 completed"

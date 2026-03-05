@@ -126,6 +126,7 @@ def test_replay_running_run_errors() -> None:
     run = Run(
         run_id="run_running",
         workflow_id="wf",
+        workflow_version=None,
         workflow_hash=None,
         workflow_yaml=None,
         workflow_steps=None,

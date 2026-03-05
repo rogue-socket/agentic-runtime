@@ -1,64 +1,379 @@
 # agentic-runtime
 
-Minimal, local-first workflow runtime for agentic systems.
+A deterministic execution runtime for AI workflows.
 
-**Environment**
+This is not a chatbot wrapper. It is a run engine that executes workflow steps, tracks state evolution, captures step history, supports retries/resume, and replays runs without calling external systems.
+
+## What problem this runtime solves
+
+When agent workflows scale, teams usually hit the same issues:
+
+- no reproducible execution trace
+- state mutations from many places with unclear ownership
+- transient failures kill the whole run with no clean continuation
+- branching behavior is hard to inspect and verify
+- impossible to debug "what happened" after the fact
+
+`agentic-runtime` solves that with first-class run execution semantics:
+
+- structured state (`inputs`, `steps`, `runtime`)
+- per-step execution records (`state_before`, `state_after`, `attempt_count`, errors)
+- retry policy at step level
+- deterministic resume from failure
+- deterministic replay from persisted history (read-only simulation)
+
+## Runtime capabilities
+
+- `Run` lifecycle with durable records in SQLite
+- Step execution with retries/backoff
+- Conditional branching (`next` with `when` + `default`)
+- First-class tool interface (`Tool`, `ToolResult`, `RuntimeContext`)
+- State manager abstraction (`RuntimeState`) with namespaced writes
+- Inspect modes:
+  - summary
+  - step-centric (`--steps`)
+  - state timeline (`--state-history`)
+- Replay subsystem (`ai replay`) with optional state verification
+- Run visualization (`ai visualize`) with ASCII, HTML, and timeline modes
+- Workflow hash + input hash for reproducibility checks
+- Workflow versioning (`workflow_id`, `workflow_version`, `workflow_hash`)
+
+## Setup
+
+### Environment
 - Conda env name: `agent_runtime`
 
-**Install**
+### Install
+
 ```bash
 pip install -r requirements.txt
 ```
 
-**Initialize a project**
+### Initialize scaffold
+
 ```bash
 PYTHONPATH=src ./ai init
 ```
 
-**Run the example workflow**
-```bash
-PYTHONPATH=src ./ai run workflows/example.yaml
-```
+## Core commands
 
-**Run with a custom issue**
+### Run
+
 ```bash
 PYTHONPATH=src ./ai run workflows/example.yaml --issue "Login API fails for invalid token"
+PYTHONPATH=src ./ai run example_workflow --issue "Login API fails for invalid token"
+PYTHONPATH=src ./ai run code_review_agent@v2 --issue "Login API fails for invalid token"
 ```
 
-**Run tests**
-```bash
-PYTHONPATH=src pytest -q
-```
+### Inspect
 
-**Inspect a run**
 ```bash
 PYTHONPATH=src ./ai inspect <run_id>
-```
-
-**Inspect step details**
-```bash
 PYTHONPATH=src ./ai inspect <run_id> --steps
-```
-
-**Inspect state history**
-```bash
 PYTHONPATH=src ./ai inspect <run_id> --state-history
 ```
 
-**Resume a failed run**
+### Resume failed run
+
 ```bash
 PYTHONPATH=src ./ai resume <run_id>
 ```
 
-**Replay a run (deterministic, read-only)**
+### Replay deterministically (no tool/model calls)
+
 ```bash
 PYTHONPATH=src ./ai replay <run_id>
+PYTHONPATH=src ./ai replay <run_id> --verify-state
+PYTHONPATH=src ./ai replay <run_id> --until <step_id>
+PYTHONPATH=src ./ai replay <run_id> --step-by-step
 ```
-Replay injects recorded step outputs and state snapshots; it does not call tools or models.
 
-**State manager**
-Runtime execution uses `RuntimeState` (not raw dict mutation) for controlled state access, step output namespacing, snapshots, and diff support.
+### Visualize runs
 
-**Docs**
-- `/Users/yashagrawal/Documents/agentic-runtime/docs/USAGE.md`
-- `/Users/yashagrawal/Documents/agentic-runtime/docs/ARCHITECTURE.md`
+```bash
+PYTHONPATH=src ./ai visualize <run_id> --ascii
+PYTHONPATH=src ./ai visualize <run_id> --timeline
+PYTHONPATH=src ./ai visualize <run_id>        # default HTML at .runs/<run_id>/visualization.html
+PYTHONPATH=src ./ai visualize <run_id> --html # generate HTML only
+```
+
+## Sample workflows (ready to run)
+
+Location: `workflows/samples/`
+
+- `01_linear_issue_summary.yaml`
+- `02_retry_and_backoff.yaml`
+- `03_branching_triage.yaml`
+- `04_fail_and_resume.yaml`
+- `versioning/code_review_agent_v1.yaml`
+- `versioning/code_review_agent_v2.yaml`
+
+Run any sample:
+
+```bash
+PYTHONPATH=src ./ai run workflows/samples/01_linear_issue_summary.yaml --issue "Login API fails for invalid token"
+```
+
+## How teams use this runtime in practice
+
+### 1) Incident triage with branch visibility
+
+Use case:
+- Route issue categories through different execution paths.
+
+Workflow:
+- `workflows/samples/03_branching_triage.yaml`
+
+Run:
+
+```bash
+PYTHONPATH=src ./ai run workflows/samples/03_branching_triage.yaml --issue "bug"
+```
+
+Why this helps:
+- `ai inspect` shows actual branch path taken in execution order.
+- You can verify branch decisions from persisted state.
+
+### 2) Stabilize flaky external interactions
+
+Use case:
+- A model/tool call fails transiently (timeouts, throttling).
+
+Workflow:
+- `workflows/samples/02_retry_and_backoff.yaml`
+
+Run:
+
+```bash
+PYTHONPATH=src ./ai run workflows/samples/02_retry_and_backoff.yaml --issue "Login API fails for invalid token"
+```
+
+Why this helps:
+- Retry behavior is explicit in YAML.
+- `attempt_count` and `last_error` show exactly what happened.
+
+### 3) Recover failed runs without restarting
+
+Use case:
+- Mid-run failure after successful earlier steps.
+
+Workflow:
+- `workflows/samples/04_fail_and_resume.yaml`
+
+Run + inspect + resume:
+
+```bash
+PYTHONPATH=src ./ai run workflows/samples/04_fail_and_resume.yaml --issue "Login API fails"
+PYTHONPATH=src ./ai inspect <run_id> --steps
+PYTHONPATH=src ./ai resume <run_id>
+```
+
+Why this helps:
+- Completed steps are not re-executed.
+- Resume continues from the first non-completed step deterministically.
+
+### 4) Deterministic debugging for postmortems
+
+Use case:
+- You need to reproduce a historical run exactly for analysis.
+
+Replay:
+
+```bash
+PYTHONPATH=src ./ai replay <run_id> --verify-state --step-by-step
+```
+
+Why this helps:
+- Replay injects recorded outputs/states.
+- No external systems are invoked.
+- You can audit state transitions step-by-step.
+
+## Workflow authoring model
+
+A workflow is ordered YAML steps with first-class identity and version metadata.
+
+Minimal example:
+
+```yaml
+workflow:
+  id: example_workflow
+  version: v1
+on_error: fail_fast
+steps:
+  - id: generate_summary
+    type: model
+    handler: generate_summary
+    inputs:
+      issue: inputs.issue
+
+  - id: echo_tool
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.generate_summary.summary
+```
+
+### Workflow versioning
+
+Every run records:
+- `workflow_id`
+- `workflow_version`
+- `workflow_hash`
+- `workflow_yaml` (full snapshot)
+
+This enables safe workflow evolution and reproducible history.
+
+Execution options:
+
+```bash
+# latest registered version in ./workflows
+PYTHONPATH=src ./ai run code_review_agent --issue "Login API fails"
+
+# explicit version
+PYTHONPATH=src ./ai run code_review_agent@v2 --issue "Login API fails"
+
+# direct file path still supported
+PYTHONPATH=src ./ai run workflows/samples/versioning/code_review_agent_v1.yaml --issue "Login API fails"
+```
+
+### Step fields
+
+- `id`: unique step id
+- `type`: `model` or `tool`
+- `handler`: model step handler name
+- `tool`: tool name from registry
+- `inputs`: explicit state-to-input mapping
+- `inputs` (contract mode): list of logical keys the step reads
+- `outputs`: list of logical keys the step writes
+- `retry`: optional attempts/backoff
+- `next`: optional branching rules
+
+### Step contracts (type-safe state boundaries)
+
+You can declare read/write contracts per step:
+
+```yaml
+workflow:
+  id: triage_contracts
+  version: v1
+inputs_contract: [issue]
+steps:
+  - id: generate_summary
+    type: model
+    handler: generate_summary
+    inputs: [issue]
+    outputs: [summary]
+```
+
+What runtime enforces:
+- future-read prevention (step cannot read key not yet available)
+- output collision prevention (two steps cannot declare same output key)
+- output shape enforcement at execution (step output keys must match declared `outputs`)
+
+### Retry block
+
+```yaml
+retry:
+  attempts: 3
+  backoff: exponential   # fixed | exponential
+  initial_delay: 1
+```
+
+### Branching block
+
+```yaml
+next:
+  - when: state.inputs.priority == "high"
+    goto: urgent_path
+  - default: fallback_path
+```
+
+## Runtime state contract
+
+State is always structured:
+
+```json
+{
+  "inputs": {},
+  "steps": {},
+  "runtime": {}
+}
+```
+
+- `inputs`: immutable request context
+- `steps`: per-step outputs (`steps.<step_id>`)
+- `runtime`: runtime metadata
+
+`RuntimeState` provides controlled APIs (`get`, `set`, `exists`, `delete`, `snapshot`, `diff`) while persistence remains JSON-compatible.
+
+## Storage and observability
+
+SQLite tables:
+
+- `runs`
+- `steps`
+- `state_versions`
+
+Step records include:
+
+- `status`, `attempt_count`, `error`, `last_error`
+- `state_before`, `state_after`
+- `execution_index`, timing fields
+
+This is what powers inspect, resume, and replay.
+
+## Determinism guarantees (current)
+
+- run stores `workflow_hash` and `input_hash`
+- resume validates workflow compatibility
+- replay uses persisted step data, not live external execution
+
+## Current boundaries
+
+Not in scope yet:
+
+- DAG scheduler / parallel execution
+- full state schema/type enforcement
+- advanced expression language beyond constrained eval
+- idempotency keys for side-effecting tools
+
+## Run tests
+
+```bash
+PYTHONPATH=src pytest -q
+```
+
+## Project layout
+
+- `src/agent_runtime/core.py` - executor and run/step lifecycle
+- `src/agent_runtime/state.py` - runtime state manager
+- `src/agent_runtime/workflow.py` - YAML parsing and validation
+- `src/agent_runtime/tools/` - first-class tool interface and registry
+- `src/agent_runtime/replay.py` - deterministic replay engine
+- `src/agent_runtime/resume.py` - resume-point resolution
+- `src/agent_runtime/storage/sqlite.py` - persistence
+- `src/agent_runtime/cli.py` - `ai` command surface
+
+## Additional docs
+
+- `docs/USAGE.md`
+- `docs/ARCHITECTURE.md`
+- `docs/EXECUTION_WALKTHROUGH.md`
+
+### State diff debugging (superpower mode)
+
+When you need to know exactly what changed in state:
+
+```bash
+PYTHONPATH=src ./ai state-diff <run_id>
+PYTHONPATH=src ./ai state-diff <run_id> --step <step_id>
+```
+
+Example output style:
+
+```text
+Step: plan
++ steps.plan.tasks = ['t1', 't2']
++ steps.plan.priority = high
+- steps.plan.draft_message (was hello)
+```

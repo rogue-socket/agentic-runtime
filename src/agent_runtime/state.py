@@ -84,6 +84,30 @@ class RuntimeState:
                 added.append(key)
         return {"added": added, "removed": removed, "changed": changed}
 
+    @staticmethod
+    def diff_paths(before: Dict[str, Any], after: Dict[str, Any]) -> list[Dict[str, Any]]:
+        changes: list[Dict[str, Any]] = []
+
+        def walk(b: Any, a: Any, prefix: str) -> None:
+            if isinstance(b, dict) and isinstance(a, dict):
+                b_keys = set(b.keys())
+                a_keys = set(a.keys())
+                for key in sorted(b_keys - a_keys):
+                    path = f"{prefix}.{key}" if prefix else key
+                    changes.append({"op": "-", "path": path, "before": b[key], "after": None})
+                for key in sorted(a_keys - b_keys):
+                    path = f"{prefix}.{key}" if prefix else key
+                    changes.append({"op": "+", "path": path, "before": None, "after": a[key]})
+                for key in sorted(a_keys & b_keys):
+                    path = f"{prefix}.{key}" if prefix else key
+                    walk(b[key], a[key], path)
+                return
+            if b != a:
+                changes.append({"op": "~", "path": prefix, "before": b, "after": a})
+
+        walk(before, after, "")
+        return changes
+
     def __getitem__(self, key: str) -> Any:
         value = self.get(key)
         if value is None and not self.exists(key):

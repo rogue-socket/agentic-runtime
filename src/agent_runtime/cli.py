@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 from typing import Any, Dict, List, Optional
+import webbrowser
 
 from .core import Executor, StepStatus
 from .logging import StructuredLogger
@@ -15,10 +16,14 @@ from .storage import SQLiteStorage
 from .tools import ToolRegistry
 from .tools.echo import EchoTool
 from .workflow import load_workflow, load_workflow_from_text
+from .workflow_registry import WorkflowRegistry, parse_workflow_reference
+from .visualization import GraphBuilder, RunLoader, TimelineBuilder, render_ascii, render_html
 from .utils import sha256_json
 
 
-EXAMPLE_WORKFLOW = """name: example_workflow
+EXAMPLE_WORKFLOW = """workflow:
+  id: example_workflow
+  version: v1
 on_error: fail_fast
 steps:
   - id: generate_summary
@@ -63,6 +68,19 @@ def _default_memory_manager() -> MemoryManager:
     )
 
 
+def _load_workflow_for_run(
+    workflow_ref: str,
+    handler_registry: StepHandlerRegistry,
+    workflows_dir: str = "workflows",
+) -> Dict[str, Any]:
+    if os.path.exists(workflow_ref):
+        return load_workflow(workflow_ref, handler_registry)
+
+    ref = parse_workflow_reference(workflow_ref)
+    registry = WorkflowRegistry.from_directory(workflows_dir, handler_registry)
+    return registry.get(ref.workflow_id, ref.version)
+
+
 def run_cli(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="ai")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -71,7 +89,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     init_parser.add_argument("--path", default=".", help="Target directory")
 
     run_parser = subparsers.add_parser("run", help="Run a workflow")
-    run_parser.add_argument("workflow", help="Path to workflow YAML")
+    run_parser.add_argument("workflow", help="Workflow path or workflow_id[@version]")
     run_parser.add_argument("--db-path", default="runtime.db", help="SQLite DB path")
     run_parser.add_argument("--issue", default="Login API fails for invalid token", help="Initial issue text")
 
@@ -93,6 +111,18 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     replay_parser.add_argument("--until", help="Replay until and including this step id")
     replay_parser.add_argument("--verify-state", action="store_true", help="Verify state_before matches reconstructed state")
 
+    state_diff_parser = subparsers.add_parser("state-diff", help="Show deep state changes per step")
+    state_diff_parser.add_argument("run_id", help="Run ID")
+    state_diff_parser.add_argument("--db-path", default="runtime.db", help="SQLite DB path")
+    state_diff_parser.add_argument("--step", help="Optional step id filter")
+
+    visualize_parser = subparsers.add_parser("visualize", help="Visualize run execution")
+    visualize_parser.add_argument("run_id", help="Run ID")
+    visualize_parser.add_argument("--db-path", default="runtime.db", help="SQLite DB path")
+    visualize_parser.add_argument("--ascii", action="store_true", help="Render ASCII visualization")
+    visualize_parser.add_argument("--html", action="store_true", help="Render HTML visualization")
+    visualize_parser.add_argument("--timeline", action="store_true", help="Render timeline-focused text view")
+
     args = parser.parse_args(argv)
 
     if args.command == "init":
@@ -104,7 +134,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         handler_registry = StepHandlerRegistry()
         handler_registry.register("generate_summary", generate_summary)
 
-        workflow = load_workflow(args.workflow, handler_registry)
+        workflow = _load_workflow_for_run(args.workflow, handler_registry)
         steps = workflow["steps"]
 
         storage = SQLiteStorage(args.db_path)
@@ -122,7 +152,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
         input_state = {"issue": args.issue}
         run = executor.run(
-            workflow_id=workflow["name"],
+            workflow_id=workflow["workflow_id"],
+            workflow_version=workflow.get("workflow_version"),
             initial_state=input_state,
             on_error=workflow.get("on_error", "fail_fast"),
             workflow_hash=workflow.get("workflow_hash"),
@@ -139,7 +170,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         steps = storage.load_steps(args.run_id)
         latest_state = storage.load_latest_state(args.run_id)
 
-        print(f"Run {run.run_id} | workflow={run.workflow_id} | status={run.status}")
+        version = f"@{run.workflow_version}" if run.workflow_version else ""
+        print(f"Run {run.run_id} | workflow={run.workflow_id}{version} | status={run.status}")
         if run.error:
             print(f"Error: {run.error}")
         if args.steps:
@@ -240,6 +272,60 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         )
         return 0
 
+    if args.command == "state-diff":
+        storage = SQLiteStorage(args.db_path)
+        run = storage.load_run(args.run_id)
+        steps = storage.load_steps(args.run_id)
+        if args.step:
+            steps = [s for s in steps if s.step_id == args.step]
+            if not steps:
+                raise SystemExit(f"No steps found for step id: {args.step}")
+
+        print(f"Run {run.run_id} state diff")
+        for step in steps:
+            print(f"\nStep: {step.step_id}")
+            if step.state_before is None or step.state_after is None:
+                print("(state diff unavailable)")
+                continue
+            changes = RuntimeState.diff_paths(step.state_before, step.state_after)
+            if not changes:
+                print("(no state changes)")
+                continue
+            for change in changes:
+                op = change["op"]
+                path = change["path"]
+                if op == "+":
+                    print(f"+ {path} = {change['after']}")
+                elif op == "-":
+                    print(f"- {path} (was {change['before']})")
+                else:
+                    print(f"~ {path}: {change['before']} -> {change['after']}")
+        return 0
+
+    if args.command == "visualize":
+        storage = SQLiteStorage(args.db_path)
+        data = RunLoader(storage).load(args.run_id)
+        graph = GraphBuilder().build(data)
+        timeline = TimelineBuilder().build(data)
+
+        if args.ascii:
+            print(render_ascii(args.run_id, graph, timeline))
+            return 0
+
+        if args.timeline:
+            print(_render_timeline_text(args.run_id, timeline))
+            return 0
+
+        output_path = os.path.join(".runs", args.run_id, "visualization.html")
+        html_path = render_html(args.run_id, graph, timeline, output_path)
+        print(f"Visualization generated: {html_path}")
+        if not args.html:
+            try:
+                webbrowser.open(f"file://{os.path.abspath(html_path)}")
+            except Exception:
+                print("Could not open browser automatically. Open the file manually.")
+        return 0
+
     return 1
 
 
@@ -292,3 +378,32 @@ def _print_state_history(steps, latest_state) -> None:
             print("State after:")
             print(step.state_after)
         print("\n----------------------------------------")
+
+
+def _render_timeline_text(run_id: str, timeline) -> str:
+    lines = [f"Run: {run_id}", "", "State Timeline", "Initial State:", str(timeline.initial_state)]
+    for item in timeline.steps:
+        lines.append("\n----------------------------------------")
+        lines.append(f"Step: {item.step_id}")
+        lines.append(f"Status: {item.status}")
+        lines.append(f"Attempts: {item.attempts}")
+        duration = f"{item.duration_ms}ms" if item.duration_ms is not None else "n/a"
+        lines.append(f"Duration: {duration}")
+        if item.error:
+            lines.append(f"Error: {item.error}")
+        elif item.last_error:
+            lines.append(f"Last Error: {item.last_error}")
+        lines.append("State changes:")
+        if not item.state_changes:
+            lines.append("(no changes)")
+        for change in item.state_changes:
+            if change.op == "+":
+                lines.append(f"+ {change.path}")
+            elif change.op == "-":
+                lines.append(f"- {change.path}")
+            else:
+                lines.append(f"~ {change.path}")
+    lines.append("\n----------------------------------------")
+    lines.append("Latest State:")
+    lines.append(str(timeline.latest_state))
+    return "\n".join(lines)

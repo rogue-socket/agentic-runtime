@@ -1,5 +1,5 @@
 workflow:
-  id: example_workflow
+  id: retry_and_backoff
   version: v1
 on_error: fail_fast
 steps:
@@ -12,7 +12,8 @@ steps:
       attempts: 3
       backoff: exponential
       initial_delay: 1
-  - id: echo_tool
+
+  - id: deliver_summary
     type: tool
     tool: tools.echo
     inputs:

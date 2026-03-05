@@ -3,9 +3,10 @@ from __future__ import annotations
 from typing import Any, Callable, Dict
 
 from .errors import HandlerNotFoundError
+from .state import RuntimeState
 
 StateDict = Dict[str, Any]
-StepHandler = Callable[[StateDict], StateDict]
+StepHandler = Callable[[RuntimeState], StateDict]
 
 
 class StepHandlerRegistry:
@@ -21,7 +22,7 @@ class StepHandlerRegistry:
         return self._handlers[name]
 
 
-def generate_summary(state: StateDict) -> StateDict:
+def generate_summary(state: RuntimeState) -> StateDict:
     # [SCAFFOLD:LLM] Replace deterministic summary with model-backed generation.
     if "issue" not in state:
         raise KeyError("Missing required key: issue")

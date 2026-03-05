@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
 from .core import NextRule, RetryPolicy, StepDefinition
@@ -18,10 +18,36 @@ def _validate_step(step: Dict[str, Any]) -> None:
         raise WorkflowValidationError("Model steps must include handler.")
     if step["type"] == "tool" and "tool" not in step:
         raise WorkflowValidationError("Tool steps must include tool.")
-    if "inputs" in step and not isinstance(step["inputs"], dict):
-        raise WorkflowValidationError("Step inputs must be a mapping.")
+    if "inputs" in step and not isinstance(step["inputs"], (dict, list)):
+        raise WorkflowValidationError("Step inputs must be a mapping or list.")
+    if "inputs" in step and isinstance(step["inputs"], list):
+        if not all(isinstance(v, str) for v in step["inputs"]):
+            raise WorkflowValidationError("Step inputs list must contain only strings.")
+    if "outputs" in step:
+        if not isinstance(step["outputs"], list) or not all(isinstance(v, str) for v in step["outputs"]):
+            raise WorkflowValidationError("Step outputs must be a list of strings.")
     if "next" in step and not isinstance(step["next"], list):
         raise WorkflowValidationError("Step next must be a list of rules.")
+
+
+def _extract_workflow_identity(raw: Dict[str, Any]) -> Tuple[str, Optional[str]]:
+    workflow_meta = raw.get("workflow")
+    if workflow_meta is not None:
+        if not isinstance(workflow_meta, dict):
+            raise WorkflowValidationError("workflow must be a mapping when provided.")
+        workflow_id = workflow_meta.get("id")
+        workflow_version = workflow_meta.get("version")
+        if not isinstance(workflow_id, str) or not workflow_id.strip():
+            raise WorkflowValidationError("workflow.id must be a non-empty string.")
+        if not isinstance(workflow_version, str) or not workflow_version.strip():
+            raise WorkflowValidationError("workflow.version must be a non-empty string.")
+        return workflow_id, workflow_version
+
+    # Backward compatibility for older workflow files.
+    legacy_name = raw.get("name")
+    if not isinstance(legacy_name, str) or not legacy_name.strip():
+        raise WorkflowValidationError("Workflow must include workflow.id/version or a legacy name.")
+    return legacy_name, None
 
 
 def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dict[str, Any]:
@@ -29,16 +55,22 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
 
     if not isinstance(raw, dict):
         raise WorkflowValidationError("Workflow YAML must be a mapping.")
-    if "name" not in raw or not isinstance(raw["name"], str):
-        raise WorkflowValidationError("Workflow must include a name.")
     if "steps" not in raw or not isinstance(raw["steps"], list):
         raise WorkflowValidationError("Workflow must include a steps list.")
+    workflow_id, workflow_version = _extract_workflow_identity(raw)
+    if "inputs_contract" in raw:
+        if not isinstance(raw["inputs_contract"], list) or not all(isinstance(v, str) for v in raw["inputs_contract"]):
+            raise WorkflowValidationError("inputs_contract must be a list of strings.")
     on_error = raw.get("on_error", "fail_fast")
     if on_error not in {"fail_fast", "continue"}:
         raise WorkflowValidationError("on_error must be fail_fast or continue.")
 
     steps: List[StepDefinition] = []
     step_ids: List[str] = []
+    produced_by: Dict[str, str] = {}
+    available_inputs = set(raw.get("inputs_contract", []))
+    available_inputs.add("issue")
+    seen_steps: List[str] = []
     for step in raw["steps"]:
         if not isinstance(step, dict):
             raise WorkflowValidationError("Each step must be a mapping.")
@@ -47,6 +79,7 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
         if step["id"] in step_ids:
             raise WorkflowValidationError(f"Duplicate step id: {step['id']}")
         step_ids.append(step["id"])
+        seen_steps.append(step["id"])
         retry_cfg = step.get("retry")
         retry = None
         if retry_cfg is not None:
@@ -91,6 +124,42 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
             if default_count > 1:
                 raise WorkflowValidationError("Only one default rule is allowed.")
 
+        input_spec = step.get("inputs")
+        input_contract = None
+        if isinstance(input_spec, list):
+            input_contract = list(input_spec)
+            mapped: Dict[str, str] = {}
+            for key in input_contract:
+                if key in produced_by:
+                    mapped[key] = f"steps.{produced_by[key]}.{key}"
+                elif key in available_inputs:
+                    mapped[key] = f"inputs.{key}"
+                else:
+                    raise WorkflowValidationError(
+                        f"Step {step['id']} input contract key '{key}' is unavailable (missing or produced in future)."
+                    )
+            input_spec = mapped
+        elif isinstance(input_spec, dict):
+            for value in input_spec.values():
+                if isinstance(value, str) and value.startswith("steps."):
+                    parts = value.split(".")
+                    if len(parts) < 3:
+                        raise WorkflowValidationError(f"Invalid step input path: {value}")
+                    referenced_step = parts[1]
+                    if referenced_step not in seen_steps[:-1]:
+                        raise WorkflowValidationError(
+                            f"Step {step['id']} references future/unknown step output: {value}"
+                        )
+
+        output_contract = step.get("outputs")
+        if output_contract:
+            for output_key in output_contract:
+                if output_key in produced_by:
+                    raise WorkflowValidationError(
+                        f"Output contract collision: key '{output_key}' already produced by step '{produced_by[output_key]}'"
+                    )
+                produced_by[output_key] = step["id"]
+
         if step_type == "model":
             handler = handler_registry.get(step["handler"])
             steps.append(
@@ -99,7 +168,9 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
                     step_type="model",
                     handler=handler,
                     retry=retry,
-                    input_spec=step.get("inputs"),
+                    input_spec=input_spec if isinstance(input_spec, dict) else None,
+                    input_contract=input_contract,
+                    output_contract=output_contract,
                     next_rules=next_rules,
                 )
             )
@@ -111,7 +182,9 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
                     tool_name=step["tool"],
                     raw_input=step.get("input"),
                     retry=retry,
-                    input_spec=step.get("inputs"),
+                    input_spec=input_spec if isinstance(input_spec, dict) else None,
+                    input_contract=input_contract,
+                    output_contract=output_contract,
                     next_rules=next_rules,
                 )
             )
@@ -123,7 +196,9 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
 
     workflow_hash = sha256_text(raw_text)
     return {
-        "name": raw["name"],
+        "name": workflow_id,
+        "workflow_id": workflow_id,
+        "workflow_version": workflow_version,
         "steps": steps,
         "on_error": on_error,
         "workflow_hash": workflow_hash,

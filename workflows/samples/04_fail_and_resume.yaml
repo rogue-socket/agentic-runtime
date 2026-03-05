@@ -1,5 +1,5 @@
 workflow:
-  id: example_workflow
+  id: fail_and_resume
   version: v1
 on_error: fail_fast
 steps:
@@ -8,12 +8,15 @@ steps:
     handler: generate_summary
     inputs:
       issue: inputs.issue
-    retry:
-      attempts: 3
-      backoff: exponential
-      initial_delay: 1
-  - id: echo_tool
+
+  - id: failing_external_call
+    type: tool
+    tool: tools.missing_adapter
+    inputs:
+      message: steps.generate_summary.summary
+
+  - id: finalization
     type: tool
     tool: tools.echo
     inputs:
-      message: steps.generate_summary.summary
+      message: "done"

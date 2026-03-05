@@ -66,6 +66,8 @@ class StepDefinition:
     raw_input: Optional[Dict[str, Any]] = None
     retry: Optional["RetryPolicy"] = None
     input_spec: Optional[Dict[str, Any]] = None
+    input_contract: Optional[List[str]] = None
+    output_contract: Optional[List[str]] = None
     next_rules: Optional[List["NextRule"]] = None
 
 
@@ -105,6 +107,7 @@ class StepExecution:
 class Run:
     run_id: str
     workflow_id: str
+    workflow_version: Optional[str]
     workflow_hash: Optional[str]
     workflow_yaml: Optional[str]
     workflow_steps: Optional[List[str]]
@@ -163,6 +166,7 @@ class Executor:
         self,
         workflow_id: str,
         initial_state: StateDict,
+        workflow_version: Optional[str] = None,
         on_error: str = "fail_fast",
         workflow_hash: Optional[str] = None,
         workflow_yaml: Optional[str] = None,
@@ -172,6 +176,7 @@ class Executor:
         run = Run(
             run_id=str(uuid.uuid4()),
             workflow_id=workflow_id,
+            workflow_version=workflow_version,
             workflow_hash=workflow_hash,
             workflow_yaml=workflow_yaml,
             workflow_steps=workflow_steps,
@@ -273,6 +278,19 @@ class Executor:
 
                 if output is None or not isinstance(output, dict):
                     raise StepExecutionError("Step handler must return a dict.")
+                if step_def.output_contract:
+                    expected = set(step_def.output_contract)
+                    actual = set(output.keys())
+                    missing = expected - actual
+                    extra = actual - expected
+                    if missing:
+                        raise StepExecutionError(
+                            f"Output contract violation for step {step_def.step_id}: missing keys {sorted(missing)}"
+                        )
+                    if extra:
+                        raise StepExecutionError(
+                            f"Output contract violation for step {step_def.step_id}: undeclared keys {sorted(extra)}"
+                        )
 
                 # [TODO] Enforce immutability rules:
                 # - Prevent modification of "inputs"

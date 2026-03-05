@@ -28,6 +28,7 @@ class SQLiteStorage(Storage):
                     id TEXT PRIMARY KEY,
                     status TEXT NOT NULL,
                     workflow_id TEXT NOT NULL,
+                    workflow_version TEXT,
                     workflow_hash TEXT,
                     workflow_yaml TEXT,
                     workflow_steps_json TEXT,
@@ -88,6 +89,8 @@ class SQLiteStorage(Storage):
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
         if "workflow_hash" not in columns:
             conn.execute("ALTER TABLE runs ADD COLUMN workflow_hash TEXT")
+        if "workflow_version" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN workflow_version TEXT")
         if "workflow_yaml" not in columns:
             conn.execute("ALTER TABLE runs ADD COLUMN workflow_yaml TEXT")
         if "workflow_steps_json" not in columns:
@@ -99,13 +102,14 @@ class SQLiteStorage(Storage):
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO runs (id, status, workflow_id, workflow_hash, workflow_yaml, workflow_steps_json, input_hash, created_at, started_at, completed_at, error, metadata_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO runs (id, status, workflow_id, workflow_version, workflow_hash, workflow_yaml, workflow_steps_json, input_hash, created_at, started_at, completed_at, error, metadata_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.run_id,
                     run.status,
                     run.workflow_id,
+                    run.workflow_version,
                     run.workflow_hash,
                     run.workflow_yaml,
                     json_dumps(run.workflow_steps) if run.workflow_steps else None,
@@ -192,6 +196,7 @@ class SQLiteStorage(Storage):
             run = Run(
                 run_id=row["id"],
                 workflow_id=row["workflow_id"],
+                workflow_version=row["workflow_version"],
                 workflow_hash=row["workflow_hash"],
                 workflow_yaml=row["workflow_yaml"],
                 workflow_steps=json_loads(row["workflow_steps_json"]) if row["workflow_steps_json"] else None,

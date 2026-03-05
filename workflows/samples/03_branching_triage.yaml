@@ -1,0 +1,34 @@
+workflow:
+  id: branching_triage
+  version: v1
+on_error: fail_fast
+steps:
+  - id: classify_issue
+    type: model
+    handler: generate_summary
+    inputs:
+      issue: inputs.issue
+    next:
+      - when: state.inputs.issue == "bug"
+        goto: bug_path
+      - when: state.inputs.issue == "feature"
+        goto: feature_path
+      - default: default_path
+
+  - id: bug_path
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: "routing: bug"
+
+  - id: feature_path
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: "routing: feature"
+
+  - id: default_path
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: "routing: default"

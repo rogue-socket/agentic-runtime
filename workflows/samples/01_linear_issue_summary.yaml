@@ -1,5 +1,5 @@
 workflow:
-  id: example_workflow
+  id: linear_issue_summary
   version: v1
 on_error: fail_fast
 steps:
@@ -8,11 +8,8 @@ steps:
     handler: generate_summary
     inputs:
       issue: inputs.issue
-    retry:
-      attempts: 3
-      backoff: exponential
-      initial_delay: 1
-  - id: echo_tool
+
+  - id: echo_summary
     type: tool
     tool: tools.echo
     inputs:
