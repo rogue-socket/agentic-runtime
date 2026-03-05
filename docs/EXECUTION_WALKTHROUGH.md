@@ -38,7 +38,8 @@ PYTHONPATH=src ./ai run workflows/example.yaml --issue "Login API fails for inva
 
 6. **Step 1 executes: `generate_summary` (model)**
    - Executor snapshots state and hydrates memory into it.
-   - Handler runs with snapshot and returns:
+   - Step input is built from `inputs.issue`.
+   - Handler runs with step input and returns:
      - `{ "summary": "Issue related to login API failing when token is invalid." }`
    - State is merged into `steps.generate_summary`.
    - Memory tiers persist the updated state.
@@ -47,7 +48,7 @@ PYTHONPATH=src ./ai run workflows/example.yaml --issue "Login API fails for inva
 
 7. **Step 2 executes: `tools.echo` (tool)**
    - Executor snapshots state and hydrates memory.
-   - Tool input is templated with current state:
+   - Tool input is resolved from `steps.generate_summary.summary`:
      - `{ "message": "Issue related to login API failing when token is invalid." }`
    - Tool returns:
      - `{ "tool_output": {"message": "Issue related to login API failing when token is invalid."} }`

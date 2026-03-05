@@ -35,6 +35,30 @@ PYTHONPATH=src pytest -q
 PYTHONPATH=src ./ai inspect <run_id>
 ```
 
+**Inspect step details**
+```bash
+PYTHONPATH=src ./ai inspect <run_id> --steps
+```
+
+**Inspect state history**
+```bash
+PYTHONPATH=src ./ai inspect <run_id> --state-history
+```
+
+**Resume a failed run**
+```bash
+PYTHONPATH=src ./ai resume <run_id>
+```
+
+**Replay a run (deterministic, read-only)**
+```bash
+PYTHONPATH=src ./ai replay <run_id>
+```
+Replay injects recorded step outputs and state snapshots; it does not call tools or models.
+
+**State manager**
+Runtime execution uses `RuntimeState` (not raw dict mutation) for controlled state access, step output namespacing, snapshots, and diff support.
+
 **Docs**
 - `/Users/yashagrawal/Documents/agentic-runtime/docs/USAGE.md`
 - `/Users/yashagrawal/Documents/agentic-runtime/docs/ARCHITECTURE.md`

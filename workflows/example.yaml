@@ -4,11 +4,14 @@ steps:
   - id: generate_summary
     type: model
     handler: generate_summary
+    inputs:
+      issue: inputs.issue
     retry:
-      attempts: 2
-      delay_seconds: 1
+      attempts: 3
+      backoff: exponential
+      initial_delay: 1
   - id: echo_tool
     type: tool
     tool: tools.echo
-    input:
-      message: "{steps[generate_summary][summary]}"
+    inputs:
+      message: steps.generate_summary.summary

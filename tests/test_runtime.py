@@ -12,6 +12,7 @@ from agent_runtime.memory.base import MemoryManager
 from agent_runtime.storage.sqlite import SQLiteStorage
 from agent_runtime.steps import StepHandlerRegistry, generate_summary
 from agent_runtime.tools.registry import ToolRegistry
+from agent_runtime.tools.base import ToolResult, RuntimeContext
 from agent_runtime.workflow import load_workflow
 from agent_runtime.memory.working import WorkingMemory
 from agent_runtime.memory.episodic import EpisodicMemory
@@ -52,7 +53,14 @@ def test_model_step_success() -> None:
     tool_registry = ToolRegistry()
     logger = None
 
-    steps = [StepDefinition(step_id="generate_summary", step_type="model", handler=generate_summary)]
+    steps = [
+        StepDefinition(
+            step_id="generate_summary",
+            step_type="model",
+            handler=generate_summary,
+            input_spec={"issue": "inputs.issue"},
+        )
+    ]
     executor = Executor(steps, storage, logger, _memory_manager(), tool_registry)
 
     run = executor.run("wf", {"issue": "Login API fails for invalid token"})
@@ -66,7 +74,14 @@ def test_model_step_missing_issue() -> None:
     tool_registry = ToolRegistry()
     logger = None
 
-    steps = [StepDefinition(step_id="generate_summary", step_type="model", handler=generate_summary)]
+    steps = [
+        StepDefinition(
+            step_id="generate_summary",
+            step_type="model",
+            handler=generate_summary,
+            input_spec={"issue": "inputs.issue"},
+        )
+    ]
     executor = Executor(steps, storage, logger, _memory_manager(), tool_registry)
 
     run = executor.run("wf", {})
@@ -78,17 +93,24 @@ def test_tool_step_success() -> None:
     storage = _storage()
     tool_registry = ToolRegistry()
 
-    def echo_tool(payload: Dict[str, Any]) -> Dict[str, Any]:
-        return {"tool_output": payload}
+    class EchoTool:
+        name = "tools.echo"
+        description = "echo"
+        input_schema = {"type": "object", "properties": {"x": {"type": "number"}}}
+        timeout = None
+        retries = None
 
-    tool_registry.register("tools.echo", echo_tool)
+        async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+            return ToolResult(success=True, output={"x": input["x"]}, error=None, metadata=None)
+
+    tool_registry.register(EchoTool())
 
     steps = [StepDefinition(step_id="echo", step_type="tool", tool_name="tools.echo", raw_input={"x": 1})]
     executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
 
     run = executor.run("wf", {"issue": "x"})
     assert run.status == StepStatus.COMPLETED
-    assert run.state.data["steps"]["echo"]["tool_output"]["x"] == 1
+    assert run.state.data["steps"]["echo"]["x"] == 1
 
 
 def test_workflow_yaml_validation(tmp_path) -> None:
@@ -106,7 +128,14 @@ def test_state_versioning() -> None:
     storage = _storage()
     tool_registry = ToolRegistry()
 
-    steps = [StepDefinition(step_id="generate_summary", step_type="model", handler=generate_summary)]
+    steps = [
+        StepDefinition(
+            step_id="generate_summary",
+            step_type="model",
+            handler=generate_summary,
+            input_spec={"issue": "inputs.issue"},
+        )
+    ]
     executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
 
     run = executor.run("wf", {"issue": "Login API fails for invalid token"})
@@ -129,7 +158,14 @@ def test_memory_hooks_invoked() -> None:
     procedural = CounterMemory()
     memory_manager = MemoryManager(working, episodic, semantic, procedural)
 
-    steps = [StepDefinition(step_id="generate_summary", step_type="model", handler=generate_summary)]
+    steps = [
+        StepDefinition(
+            step_id="generate_summary",
+            step_type="model",
+            handler=generate_summary,
+            input_spec={"issue": "inputs.issue"},
+        )
+    ]
     executor = Executor(steps, storage, None, memory_manager, tool_registry)
 
     run = executor.run("wf", {"issue": "Login API fails for invalid token"})
@@ -162,7 +198,7 @@ def test_retry_policy_succeeds() -> None:
             step_id="flaky",
             step_type="model",
             handler=flaky_handler,
-            retry=RetryPolicy(attempts=2, delay_seconds=0),
+            retry=RetryPolicy(attempts=2, backoff="fixed", initial_delay=0),
         )
     ]
     executor = Executor(steps, storage, logger, _memory_manager(), tool_registry)
@@ -170,3 +206,25 @@ def test_retry_policy_succeeds() -> None:
     run = executor.run("wf", {"issue": "x"})
     assert run.status == StepStatus.COMPLETED
     assert run.state.data["steps"]["flaky"]["ok"] is True
+
+
+def test_state_snapshots_persisted() -> None:
+    storage = _storage()
+    tool_registry = ToolRegistry()
+
+    steps = [
+        StepDefinition(
+            step_id="generate_summary",
+            step_type="model",
+            handler=generate_summary,
+            input_spec={"issue": "inputs.issue"},
+        )
+    ]
+    executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
+
+    run = executor.run("wf", {"issue": "Login API fails for invalid token"})
+    assert run.status == StepStatus.COMPLETED
+
+    execs = storage.load_steps(run.run_id)
+    assert execs[0].state_before is not None
+    assert execs[0].state_after is not None

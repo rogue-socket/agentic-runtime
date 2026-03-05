@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict
+from typing import Dict
 
 from ..errors import ToolNotFoundError
-
-ToolHandler = Callable[[Dict[str, Any]], Dict[str, Any]]
+from .base import Tool
 
 
 class ToolRegistry:
     def __init__(self) -> None:
-        self._tools: Dict[str, ToolHandler] = {}
+        self._tools: Dict[str, Tool] = {}
 
-    def register(self, name: str, handler: ToolHandler) -> None:
-        self._tools[name] = handler
+    def register(self, tool: Tool) -> None:
+        self._tools[tool.name] = tool
 
-    def get(self, name: str) -> ToolHandler:
+    def get(self, name: str) -> Tool:
         if name not in self._tools:
             raise ToolNotFoundError(f"Tool not found: {name}")
         return self._tools[name]

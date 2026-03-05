@@ -42,3 +42,15 @@ class Storage(ABC):
     @abstractmethod
     def load_latest_state(self, run_id: str) -> Dict[str, Any]:
         raise NotImplementedError
+
+    @abstractmethod
+    def load_initial_state(self, run_id: str) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def load_latest_state_version(self, run_id: str) -> int:
+        raise NotImplementedError
+
+    @abstractmethod
+    def load_max_execution_index(self, run_id: str) -> int:
+        raise NotImplementedError
