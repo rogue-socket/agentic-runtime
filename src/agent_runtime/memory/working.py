@@ -4,6 +4,9 @@ from typing import Any, Dict
 
 
 class WorkingMemory:
+    # TODO: Implement scoped working memory.
+    #   Should manage active execution context (current task, recent messages, scratch
+    #   state) with automatic compression/summarization when context grows too large.
     def __init__(self) -> None:
         self._buffer: Dict[str, Any] = {}
 

@@ -1,6 +1,10 @@
 workflow:
   id: code_review_agent
   version: v2
+inputs:
+  issue:
+    description: The issue text for code review
+    default: "Login API fails for invalid token"
 on_error: fail_fast
 steps:
   - id: generate_summary

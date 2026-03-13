@@ -5,14 +5,14 @@ This walkthrough is a textbook-style trace of what happens at runtime for a typi
 Primary command used:
 
 ```bash
-PYTHONPATH=src ./ai run workflows/example.yaml --issue "Login API fails for invalid token"
-PYTHONPATH=src ./ai run example_workflow --issue "Login API fails for invalid token"
-PYTHONPATH=src ./ai run code_review_agent@v2 --issue "Login API fails for invalid token"
+PYTHONPATH=src ./ai run workflows/example.yaml -i issue="Login API fails for invalid token"
+PYTHONPATH=src ./ai run example_workflow -i issue="Login API fails for invalid token"
+PYTHONPATH=src ./ai run code_review_agent@v2 -i issue="Login API fails for invalid token"
 ```
 
 ## 1. Runtime bootstrapping
 
-1. CLI parses arguments (`workflow_ref`, `db-path`, `issue`).
+1. CLI parses arguments (`workflow_ref`, `db-path`, `-i` key=value inputs).
 2. Handler registry is created and model handlers are registered.
 3. Tool registry is created and default tools (for example `tools.echo`) are registered.
 4. Workflow is resolved either by file path, `workflow_id`, or `workflow_id@version`, then validated.
@@ -44,6 +44,10 @@ Executor creates a run record:
 ```
 
 Then run transitions to `RUNNING` and initial state is persisted as `state_versions.version = 0`.
+
+### Memory hydration
+
+Before step execution begins, the runtime calls `MemoryManager.hydrate_state(state)`, which reads from all four memory tiers (working, episodic, semantic, procedural) and enriches the initial state.
 
 ## 3. Step 1 execution (`generate_summary`)
 
@@ -85,6 +89,7 @@ Detailed flow:
 
 After final step:
 - `status -> COMPLETED` (or `COMPLETED_WITH_ERRORS` in continue mode)
+- `MemoryManager.persist_state(state)` writes final state to all memory tiers
 - terminal timestamps persisted
 - run state frozen from runtime perspective
 
@@ -130,7 +135,7 @@ Shows:
 Trigger a failing workflow:
 
 ```bash
-PYTHONPATH=src ./ai run workflows/samples/04_fail_and_resume.yaml --issue "Login API fails"
+PYTHONPATH=src ./ai run workflows/samples/04_fail_and_resume.yaml -i issue="Login API fails"
 ```
 
 Expected behavior:

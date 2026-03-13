@@ -6,15 +6,18 @@ from typing import Any, Dict, List, Optional
 import webbrowser
 
 from .core import Executor, StepStatus
+from .config import RuntimeConfig, load_config, apply_cli_overrides
 from .logging import StructuredLogger
 from .memory import EpisodicMemory, MemoryManager, ProceduralMemory, SemanticMemory, WorkingMemory
-from .steps import StepHandlerRegistry, generate_summary
+from .steps import StepHandlerRegistry, generate_summary, classify_severity, diagnose_issue, propose_fix, review_code
+from .handler_discovery import register_discovered_handlers
 from .resume import determine_resume_step, validate_resume
 from .replay import RunReplayer
 from .state import RuntimeState
 from .storage import SQLiteStorage
 from .tools import ToolRegistry
 from .tools.echo import EchoTool
+from .tools.discovery import register_discovered_tools
 from .workflow import load_workflow, load_workflow_from_text
 from .workflow_registry import WorkflowRegistry, parse_workflow_reference
 from .visualization import GraphBuilder, RunLoader, TimelineBuilder, render_ascii, render_html
@@ -24,6 +27,10 @@ from .utils import sha256_json
 EXAMPLE_WORKFLOW = """workflow:
   id: example_workflow
   version: v1
+inputs:
+  issue:
+    description: The issue text to analyze
+    default: "Login API fails for invalid token"
 on_error: fail_fast
 steps:
   - id: generate_summary
@@ -42,20 +49,197 @@ steps:
       message: steps.generate_summary.summary
 """
 
+EXAMPLE_HANDLER = '''"""Example handler module.
+
+The runtime auto-discovers handlers from the handlers/ directory.
+
+Two conventions are supported:
+
+1. Zero-config: every public function (not starting with _) is registered
+   using the function name as the handler name.
+
+2. Explicit: define a __handlers__ dict mapping handler names to functions.
+   This gives you full control over naming and lets you skip helper functions.
+
+This file uses convention 1 (zero-config). Both functions below will be
+automatically available as handlers in workflow YAML.
+"""
+
+from agent_runtime.state import RuntimeState
+
+
+def example_handler(state: RuntimeState) -> dict:
+    """Example handler that echoes back the input with a prefix.
+
+    Usage in workflow YAML:
+        - id: my_step
+          type: model
+          handler: example_handler
+          inputs:
+            message: inputs.message
+    """
+    # TODO: Replace with real logic (e.g. LLM call).
+    message = state.get("message", "")
+    return {"result": f"Processed: {message}"}
+
+
+# --- To use explicit convention instead, uncomment below and remove the
+# --- public function above:
+#
+# def _my_internal_helper():
+#     pass
+#
+# def _my_handler(state):
+#     return {"result": "hello"}
+#
+# __handlers__ = {
+#     "my_handler": _my_handler,
+# }
+'''
+
+EXAMPLE_TOOL = '''"""Example tool module.
+
+The runtime auto-discovers tools from the tools/ directory.
+
+Discovery convention: every class that implements the Tool protocol (has
+``name``, ``description``, ``input_schema``, and ``execute``) and whose
+class name does not start with ``_`` is instantiated and registered.
+
+Tool protocol requirements:
+  - name: str           (e.g. "tools.example")
+  - description: str
+  - input_schema: dict  (JSON Schema for input validation)
+  - timeout: Optional[float]
+  - retries: Optional[int]
+  - async execute(input, context) -> ToolResult
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
+from agent_runtime.tools.base import RuntimeContext, ToolResult
+
+
+class ExampleTool:
+    """Example tool that uppercases a message.
+
+    Usage in workflow YAML:
+        - id: my_step
+          type: tool
+          tool: tools.example
+          inputs:
+            text: inputs.text
+    """
+
+    name = "tools.example"
+    description = "Uppercases the provided text"
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+        },
+    }
+    timeout: Optional[float] = None
+    retries: Optional[int] = None
+
+    async def execute(
+        self, input: Dict[str, Any], context: RuntimeContext
+    ) -> ToolResult:
+        # TODO: Replace with real tool logic (e.g. API call).
+        text = input.get("text", "")
+        return ToolResult(
+            success=True,
+            output={"text": text.upper()},
+            error=None,
+            metadata=None,
+        )
+'''
+
+RUNTIME_YAML_TEMPLATE = """# Runtime configuration for agentic-runtime.
+# CLI flags override values set here.
+
+# SQLite database path for run persistence.
+db_path: runtime.db
+
+# Directory paths for project components.
+workflows_dir: workflows
+handlers_dir: handlers
+tools_dir: tools
+
+# Model backend configuration (used by model-type step handlers).
+# TODO: Wire model config into handler execution once LLM integration is implemented.
+# model:
+#   provider: openai          # openai | anthropic | local
+#   model: gpt-4
+#   temperature: 0.2
+#   max_tokens: 4096
+#   api_key_env: OPENAI_API_KEY  # env var name, never store keys directly
+
+# Logging configuration.
+# logging:
+#   level: info               # debug | info | warning | error
+#   format: json              # json | text
+"""
+
 
 def _init_project(target_dir: str) -> None:
     workflows_dir = os.path.join(target_dir, "workflows")
-    os.makedirs(workflows_dir, exist_ok=True)
+    handlers_dir = os.path.join(target_dir, "handlers")
+    tools_dir = os.path.join(target_dir, "tools")
 
-    example_path = os.path.join(workflows_dir, "example.yaml")
-    if not os.path.exists(example_path):
-        with open(example_path, "w", encoding="utf-8") as f:
+    os.makedirs(workflows_dir, exist_ok=True)
+    os.makedirs(handlers_dir, exist_ok=True)
+    os.makedirs(tools_dir, exist_ok=True)
+
+    example_workflow_path = os.path.join(workflows_dir, "example.yaml")
+    if not os.path.exists(example_workflow_path):
+        with open(example_workflow_path, "w", encoding="utf-8") as f:
             f.write(EXAMPLE_WORKFLOW)
 
+    example_handler_path = os.path.join(handlers_dir, "example_handler.py")
+    if not os.path.exists(example_handler_path):
+        with open(example_handler_path, "w", encoding="utf-8") as f:
+            f.write(EXAMPLE_HANDLER)
 
-def _default_tool_registry() -> ToolRegistry:
+    example_tool_path = os.path.join(tools_dir, "example_tool.py")
+    if not os.path.exists(example_tool_path):
+        with open(example_tool_path, "w", encoding="utf-8") as f:
+            f.write(EXAMPLE_TOOL)
+
+    runtime_yaml_path = os.path.join(target_dir, "runtime.yaml")
+    if not os.path.exists(runtime_yaml_path):
+        with open(runtime_yaml_path, "w", encoding="utf-8") as f:
+            f.write(RUNTIME_YAML_TEMPLATE)
+
+
+def _default_handler_registry(handlers_dir: str = "handlers") -> StepHandlerRegistry:
+    """Create a handler registry with built-in handlers + discovered handlers."""
+    registry = StepHandlerRegistry()
+
+    # Built-in handlers (always available)
+    registry.register("generate_summary", generate_summary)
+    registry.register("classify_severity", classify_severity)
+    registry.register("diagnose_issue", diagnose_issue)
+    registry.register("propose_fix", propose_fix)
+    registry.register("review_code", review_code)
+
+    # Discover handlers from handlers/ directory
+    register_discovered_handlers(registry, handlers_dir)
+
+    return registry
+
+
+def _default_tool_registry(tools_dir: str = "tools") -> ToolRegistry:
+    """Create a tool registry with built-in tools + discovered tools."""
     registry = ToolRegistry()
+
+    # Built-in tools (always available)
     registry.register(EchoTool())
+
+    # Discover tools from tools/ directory
+    register_discovered_tools(registry, tools_dir)
+
     return registry
 
 
@@ -81,6 +265,45 @@ def _load_workflow_for_run(
     return registry.get(ref.workflow_id, ref.version)
 
 
+def _build_input_state(
+    raw_inputs: List[str], workflow_inputs: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Parse ``-i key=value`` pairs and validate against the workflow input schema."""
+    provided: Dict[str, Any] = {}
+    for item in raw_inputs:
+        if "=" not in item:
+            raise SystemExit(f"Invalid input format: {item!r}. Expected KEY=VALUE.")
+        key, _, value = item.partition("=")
+        key = key.strip()
+        if not key:
+            raise SystemExit(f"Invalid input: empty key in {item!r}")
+        provided[key] = value
+
+    if not workflow_inputs:
+        # No declared inputs — pass through as-is.
+        return provided
+
+    declared = set(workflow_inputs.keys())
+    unknown = set(provided.keys()) - declared
+    if unknown:
+        raise SystemExit(
+            f"Unknown inputs: {', '.join(sorted(unknown))}. "
+            f"Declared inputs: {', '.join(sorted(declared))}"
+        )
+
+    result: Dict[str, Any] = {}
+    for name, spec in workflow_inputs.items():
+        if name in provided:
+            result[name] = provided[name]
+        elif spec.get("default") is not None:
+            result[name] = spec["default"]
+        elif spec.get("required", True):
+            raise SystemExit(
+                f"Missing required input: {name}. Provide it with: -i {name}=VALUE"
+            )
+    return result
+
+
 def run_cli(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="ai")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -90,35 +313,37 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
     run_parser = subparsers.add_parser("run", help="Run a workflow")
     run_parser.add_argument("workflow", help="Workflow path or workflow_id[@version]")
-    run_parser.add_argument("--db-path", default="runtime.db", help="SQLite DB path")
-    run_parser.add_argument("--issue", default="Login API fails for invalid token", help="Initial issue text")
+    run_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
+    run_parser.add_argument("-i", "--input", action="append", default=[],
+                            metavar="KEY=VALUE",
+                            help="Workflow input (repeatable, e.g. -i issue=\"bug report\")")
 
     inspect_parser = subparsers.add_parser("inspect", help="Inspect a run")
     inspect_parser.add_argument("run_id", help="Run ID")
-    inspect_parser.add_argument("--db-path", default="runtime.db", help="SQLite DB path")
+    inspect_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
     inspect_parser.add_argument("--steps", action="store_true", help="Show step details")
     inspect_parser.add_argument("--state-history", action="store_true", help="Show state evolution per step")
 
     resume_parser = subparsers.add_parser("resume", help="Resume a failed run")
     resume_parser.add_argument("run_id", help="Run ID")
-    resume_parser.add_argument("--db-path", default="runtime.db", help="SQLite DB path")
+    resume_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
     resume_parser.add_argument("--workflow", help="Optional workflow YAML path to validate against stored hash")
 
     replay_parser = subparsers.add_parser("replay", help="Deterministically replay a run")
     replay_parser.add_argument("run_id", help="Run ID")
-    replay_parser.add_argument("--db-path", default="runtime.db", help="SQLite DB path")
+    replay_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
     replay_parser.add_argument("--step-by-step", action="store_true", help="Pause between replayed steps")
     replay_parser.add_argument("--until", help="Replay until and including this step id")
     replay_parser.add_argument("--verify-state", action="store_true", help="Verify state_before matches reconstructed state")
 
     state_diff_parser = subparsers.add_parser("state-diff", help="Show deep state changes per step")
     state_diff_parser.add_argument("run_id", help="Run ID")
-    state_diff_parser.add_argument("--db-path", default="runtime.db", help="SQLite DB path")
+    state_diff_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
     state_diff_parser.add_argument("--step", help="Optional step id filter")
 
     visualize_parser = subparsers.add_parser("visualize", help="Visualize run execution")
     visualize_parser.add_argument("run_id", help="Run ID")
-    visualize_parser.add_argument("--db-path", default="runtime.db", help="SQLite DB path")
+    visualize_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
     visualize_parser.add_argument("--ascii", action="store_true", help="Render ASCII visualization")
     visualize_parser.add_argument("--html", action="store_true", help="Render HTML visualization")
     visualize_parser.add_argument("--timeline", action="store_true", help="Render timeline-focused text view")
@@ -130,17 +355,20 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         print(f"Initialized workflow project at {os.path.abspath(args.path)}")
         return 0
 
-    if args.command == "run":
-        handler_registry = StepHandlerRegistry()
-        handler_registry.register("generate_summary", generate_summary)
+    # Load runtime.yaml config with CLI overrides
+    cfg = load_config()
+    cfg = apply_cli_overrides(cfg, args)
 
-        workflow = _load_workflow_for_run(args.workflow, handler_registry)
+    if args.command == "run":
+        handler_registry = _default_handler_registry(cfg.handlers_dir)
+
+        workflow = _load_workflow_for_run(args.workflow, handler_registry, cfg.workflows_dir)
         steps = workflow["steps"]
 
-        storage = SQLiteStorage(args.db_path)
+        storage = SQLiteStorage(cfg.db_path)
         logger = StructuredLogger()
         memory_manager = _default_memory_manager()
-        tool_registry = _default_tool_registry()
+        tool_registry = _default_tool_registry(cfg.tools_dir)
 
         executor = Executor(
             steps=steps,
@@ -150,7 +378,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             tool_registry=tool_registry,
         )
 
-        input_state = {"issue": args.issue}
+        input_state = _build_input_state(args.input, workflow.get("inputs", {}))
         run = executor.run(
             workflow_id=workflow["workflow_id"],
             workflow_version=workflow.get("workflow_version"),
@@ -165,7 +393,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 0 if run.status == "COMPLETED" else 1
 
     if args.command == "inspect":
-        storage = SQLiteStorage(args.db_path)
+        storage = SQLiteStorage(cfg.db_path)
         run = storage.load_run(args.run_id)
         steps = storage.load_steps(args.run_id)
         latest_state = storage.load_latest_state(args.run_id)
@@ -200,8 +428,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             print(latest_state)
 
         if run.workflow_yaml:
-            handler_registry = StepHandlerRegistry()
-            handler_registry.register("generate_summary", generate_summary)
+            handler_registry = _default_handler_registry(cfg.handlers_dir)
             workflow = load_workflow_from_text(run.workflow_yaml, handler_registry)
             resume_step = determine_resume_step(workflow["steps"], steps)
             if resume_step:
@@ -211,12 +438,11 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == "resume":
-        storage = SQLiteStorage(args.db_path)
+        storage = SQLiteStorage(cfg.db_path)
         run = storage.load_run(args.run_id)
         validate_resume(run.status)
 
-        handler_registry = StepHandlerRegistry()
-        handler_registry.register("generate_summary", generate_summary)
+        handler_registry = _default_handler_registry(cfg.handlers_dir)
 
         workflow_text = run.workflow_yaml
         if workflow_text is None:
@@ -247,7 +473,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             storage=storage,
             logger=StructuredLogger(),
             memory_manager=_default_memory_manager(),
-            tool_registry=_default_tool_registry(),
+            tool_registry=_default_tool_registry(cfg.tools_dir),
         )
 
         print(f"Resuming run {run.run_id} from step: {resume_step}")
@@ -262,7 +488,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 0 if resumed.status == "COMPLETED" else 1
 
     if args.command == "replay":
-        storage = SQLiteStorage(args.db_path)
+        storage = SQLiteStorage(cfg.db_path)
         replayer = RunReplayer(storage=storage, printer=print)
         replayer.replay(
             run_id=args.run_id,
@@ -273,7 +499,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == "state-diff":
-        storage = SQLiteStorage(args.db_path)
+        storage = SQLiteStorage(cfg.db_path)
         run = storage.load_run(args.run_id)
         steps = storage.load_steps(args.run_id)
         if args.step:
@@ -303,7 +529,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == "visualize":
-        storage = SQLiteStorage(args.db_path)
+        storage = SQLiteStorage(cfg.db_path)
         data = RunLoader(storage).load(args.run_id)
         graph = GraphBuilder().build(data)
         timeline = TimelineBuilder().build(data)

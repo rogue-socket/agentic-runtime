@@ -1,6 +1,10 @@
 workflow:
   id: linear_issue_summary
   version: v1
+inputs:
+  issue:
+    description: The issue text to summarize
+    default: "Login API fails for invalid token"
 on_error: fail_fast
 steps:
   - id: generate_summary

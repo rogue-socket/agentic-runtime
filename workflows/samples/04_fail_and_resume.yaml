@@ -1,6 +1,10 @@
 workflow:
   id: fail_and_resume
   version: v1
+inputs:
+  issue:
+    description: The issue text to process
+    default: "Login API fails for invalid token"
 on_error: fail_fast
 steps:
   - id: generate_summary

@@ -1,6 +1,10 @@
 workflow:
   id: branching_triage
   version: v1
+inputs:
+  issue:
+    description: The issue text to triage
+    default: "Login API fails for invalid token"
 on_error: fail_fast
 steps:
   - id: classify_issue

@@ -50,6 +50,69 @@ def _extract_workflow_identity(raw: Dict[str, Any]) -> Tuple[str, Optional[str]]
     return legacy_name, None
 
 
+def _parse_inputs(raw_inputs: Any) -> Dict[str, Dict[str, Any]]:
+    """Parse the workflow-level ``inputs:`` declaration.
+
+    Supports two formats:
+
+    List of strings (all required, no defaults)::
+
+        inputs:
+          - issue
+          - priority
+
+    Mapping with optional metadata::
+
+        inputs:
+          issue:
+            description: "The issue text"
+            required: true
+          priority:
+            description: "Priority level"
+            required: false
+            default: "medium"
+    """
+    inputs: Dict[str, Dict[str, Any]] = {}
+    if isinstance(raw_inputs, list):
+        for item in raw_inputs:
+            if not isinstance(item, str):
+                raise WorkflowValidationError("inputs list items must be strings.")
+            inputs[item] = {"required": True}
+    elif isinstance(raw_inputs, dict):
+        for name, spec in raw_inputs.items():
+            if not isinstance(name, str) or not name.strip():
+                raise WorkflowValidationError("Input names must be non-empty strings.")
+            if spec is None:
+                inputs[name] = {"required": True}
+            elif isinstance(spec, dict):
+                inputs[name] = {
+                    "description": spec.get("description", ""),
+                    "required": spec.get("required", "default" not in spec),
+                    "default": spec.get("default"),
+                }
+            else:
+                raise WorkflowValidationError(
+                    f"Input spec for '{name}' must be a mapping or null."
+                )
+    else:
+        raise WorkflowValidationError("inputs must be a list or mapping.")
+    return inputs
+
+
+def _infer_inputs(raw_steps: List[Dict[str, Any]]) -> set:
+    """Infer available input names by scanning step input specs for ``inputs.X`` references."""
+    found: set = set()
+    for step in raw_steps:
+        spec = step.get("inputs")
+        if isinstance(spec, dict):
+            for value in spec.values():
+                if isinstance(value, str) and value.startswith("inputs."):
+                    parts = value.split(".")
+                    if len(parts) >= 2:
+                        found.add(parts[1])
+    return found
+
+
 def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dict[str, Any]:
     raw = yaml.safe_load(raw_text)
 
@@ -58,18 +121,29 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
     if "steps" not in raw or not isinstance(raw["steps"], list):
         raise WorkflowValidationError("Workflow must include a steps list.")
     workflow_id, workflow_version = _extract_workflow_identity(raw)
-    if "inputs_contract" in raw:
-        if not isinstance(raw["inputs_contract"], list) or not all(isinstance(v, str) for v in raw["inputs_contract"]):
-            raise WorkflowValidationError("inputs_contract must be a list of strings.")
+
     on_error = raw.get("on_error", "fail_fast")
     if on_error not in {"fail_fast", "continue"}:
         raise WorkflowValidationError("on_error must be fail_fast or continue.")
 
+    # --- Parse workflow-level input declarations ---
+    raw_inputs_block = raw.get("inputs")
+    legacy_contract = raw.get("inputs_contract")
+    if raw_inputs_block is not None:
+        workflow_inputs = _parse_inputs(raw_inputs_block)
+        available_inputs = set(workflow_inputs.keys())
+    elif legacy_contract is not None:
+        if not isinstance(legacy_contract, list) or not all(isinstance(v, str) for v in legacy_contract):
+            raise WorkflowValidationError("inputs_contract must be a list of strings.")
+        workflow_inputs = {name: {"required": True} for name in legacy_contract}
+        available_inputs = set(legacy_contract)
+    else:
+        workflow_inputs = {}
+        available_inputs = _infer_inputs(raw["steps"])
+
     steps: List[StepDefinition] = []
     step_ids: List[str] = []
     produced_by: Dict[str, str] = {}
-    available_inputs = set(raw.get("inputs_contract", []))
-    available_inputs.add("issue")
     seen_steps: List[str] = []
     for step in raw["steps"]:
         if not isinstance(step, dict):
@@ -199,6 +273,7 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
         "name": workflow_id,
         "workflow_id": workflow_id,
         "workflow_version": workflow_version,
+        "inputs": workflow_inputs,
         "steps": steps,
         "on_error": on_error,
         "workflow_hash": workflow_hash,

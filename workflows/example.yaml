@@ -1,6 +1,10 @@
 workflow:
   id: example_workflow
   version: v1
+inputs:
+  issue:
+    description: The issue text to analyze
+    default: "Login API fails for invalid token"
 on_error: fail_fast
 steps:
   - id: generate_summary
