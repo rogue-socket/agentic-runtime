@@ -32,3 +32,11 @@ class ReplayDataMissingError(RuntimeErrorBase):
 
 class ReplayMismatchError(RuntimeErrorBase):
     """Raised when replayed state diverges from recorded state."""
+
+
+class WorkflowIntegrityError(RuntimeErrorBase):
+    """Raised when a workflow has been modified since the original run."""
+
+
+class AgentValidationError(RuntimeErrorBase):
+    """Raised when an agent manifest is invalid or missing dependencies."""

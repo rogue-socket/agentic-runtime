@@ -262,6 +262,10 @@ Properties:
 
 ## 8. Memory subsystem
 
+> **Status: Scaffolding** — interfaces are defined and wired into the execution
+> loop, but all four tiers are stub implementations.  No persistence, vector
+> search, or retrieval logic exists yet.
+
 The runtime manages four memory tiers through `MemoryManager`:
 
 | Tier | Class | Purpose |
@@ -316,6 +320,7 @@ All runtime exceptions inherit from `RuntimeErrorBase(Exception)`:
 - `RunNotFoundError` — run id not found in storage
 - `ReplayDataMissingError` — incomplete step/state data for replay
 - `ReplayMismatchError` — reconstructed state diverges from recorded state during `--verify-state`
+- `WorkflowIntegrityError` — workflow YAML has been modified since the original run (blocks resume)
 
 Module: `errors.py`
 
@@ -345,7 +350,10 @@ Key functions in `utils.py`:
 `ai resume <run_id>`:
 
 1. Validate run is resumable (`FAILED` only).
-2. Validate workflow hash compatibility.
+2. **Validate workflow hash** — the runtime compares the stored workflow hash
+   against the current workflow hash and raises `WorkflowIntegrityError` if they
+   differ.  This prevents resuming a run whose workflow definition has been
+   modified since the original execution.
 3. Determine resume step from recorded history.
 4. Load latest state snapshot.
 5. Continue execution from resume step.
@@ -432,3 +440,151 @@ Designed for future expansion:
 - typed state schemas
 - tool permissions and sandbox policies
 - state redaction and compression for large payloads
+
+## 18. LLM registry
+
+The runtime includes a provider registry for managing LLM backends.
+
+Key classes (module `llm/`):
+- `LLMProvider` — one provider (name, API key env var, base URL, model configs)
+- `ModelConfig` — one model definition (model_id, temperature, max_tokens, extras)
+- `LLMRegistry` — central lookup of providers and models
+
+Credential management:
+- API keys are resolved from environment variables at call time — never stored on disk.
+- `provider.resolve_api_key()` reads `os.environ[api_key_env]`.
+- `registry.check_credentials()` returns a quick health map.
+
+Configuration (in `runtime.yaml`):
+```yaml
+llm:
+  providers:
+    openai:
+      api_key_env: OPENAI_API_KEY
+      models:
+        gpt-4:
+          temperature: 0.2
+          max_tokens: 4096
+    anthropic:
+      api_key_env: ANTHROPIC_API_KEY
+      models:
+        claude-3-opus:
+          temperature: 0.3
+    local:
+      api_key_env: LOCAL_LLM_KEY
+      base_url: http://localhost:8080/v1
+      models:
+        llama-3:
+          temperature: 0.5
+          max_tokens: 2048
+```
+
+The registry is loaded from the `llm` section of `RuntimeConfig` during startup
+and is available for handlers to query which model to use.
+
+> **Status: Implemented** — registry, config loading, and credential resolution
+> are functional.  Actual LLM API call adapters (HTTP clients for
+> OpenAI/Anthropic/local) are not yet implemented — model-type step handlers
+> currently return deterministic stub output.
+
+## 19. Agent manifest system
+
+An agent manifest (`agent.yaml`) is the portable unit of the runtime.  It
+declares everything an agent needs to run — workflow, handlers, tools, LLM
+providers, and environment variables — in a single file.
+
+Manifests live in the `agents/` directory.  Multiple agents can coexist
+in one project, sharing handlers and tools.
+
+Key classes (module `agent/`):
+- `AgentManifest` — parsed manifest dataclass
+- `ProviderRequirement` — LLM provider + models the agent depends on
+- `ValidationResult` — one pre-flight check result
+
+### Manifest schema
+
+```yaml
+agent:
+  id: triage_agent
+  version: v2
+  description: "Triages incoming issues by severity"
+  runtime: ">=0.1"
+
+workflow: workflows/triage.yaml
+
+handlers:
+  - handlers/classify.py
+  - handlers/summarize.py
+
+tools:
+  - tools/github_tool.py
+
+providers:
+  - name: openai
+    models: [gpt-4, gpt-4o-mini]
+
+env:
+  - GITHUB_TOKEN
+
+defaults:
+  issue: "unspecified"
+```
+
+### CLI commands
+
+- `ai validate <manifest>` — pre-flight checks (files, providers, env vars)
+- `ai export <manifest> [-o output.tar.gz]` — bundle into portable archive
+- `ai import <archive> [--path .]` — extract into project, place manifest in `agents/`
+- `ai list` — list all agents in `agents/`
+- `ai run <agent_id>[@version]` — resolves from `agents/`, merges defaults with `-i` overrides
+
+### Agent-aware run resolution
+
+When `ai run <ref>` is invoked, the runtime first checks `agents/` for a
+matching `agent.id`.  If found, the manifest's workflow path is used and
+default inputs are merged (CLI `-i` overrides take precedence).  If no
+agent matches, the runtime falls back to workflow resolution (file path or
+workflow registry).
+
+### Export / Import flow
+
+**Export** bundles `agent.yaml` + workflow + handlers + tools into a
+self-contained `.tar.gz` archive.  The archive does not include
+`runtime.yaml` (machine-specific) or the runtime itself.
+
+**Import** extracts the archive into the project tree and places the
+manifest in `agents/`.  Post-import validation reports missing providers
+and env vars so the operator can configure the environment.
+
+> **Status: Implemented** — manifest loading, validation, export, import,
+> CLI commands, and agent-aware run resolution are functional.
+> TODO: Support multiple workflows per agent with a designated entry point.
+
+## 20. Status summary
+
+| Capability | Status |
+|---|---|
+| Core execution engine | Implemented |
+| Retry / backoff | Implemented |
+| Conditional branching | Implemented |
+| SQLite persistence | Implemented |
+| Resume from failure | Implemented |
+| Workflow hash lock on resume | Implemented |
+| Deterministic replay | Implemented |
+| State diff & visualization | Implemented |
+| Workflow versioning & registry | Implemented |
+| Step contracts | Implemented |
+| Tool subsystem & discovery | Implemented |
+| Handler auto-discovery | Implemented |
+| LLM provider registry | Implemented |
+| Credential resolution (env vars) | Implemented |
+| Agent manifest system | Implemented |
+| Agent validate / export / import | Implemented |
+| Agent-aware run resolution | Implemented |
+| LLM API call adapters | Planned |
+| Memory tiers (4-tier) | Scaffolding |
+| Multi-workflow agents | Planned |
+| DAG / parallel execution | Planned |
+| Tool permissions / sandboxing | Planned |
+| Idempotency keys | Planned |
+| Event sourcing ledger | Planned |

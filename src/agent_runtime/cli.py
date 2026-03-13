@@ -22,6 +22,7 @@ from .workflow import load_workflow, load_workflow_from_text
 from .workflow_registry import WorkflowRegistry, parse_workflow_reference
 from .visualization import GraphBuilder, RunLoader, TimelineBuilder, render_ascii, render_html
 from .utils import sha256_json
+from .agent import AgentManifest, load_agent_manifest, validate_agent, export_agent, import_agent
 
 
 EXAMPLE_WORKFLOW = """workflow:
@@ -167,14 +168,32 @@ workflows_dir: workflows
 handlers_dir: handlers
 tools_dir: tools
 
-# Model backend configuration (used by model-type step handlers).
-# TODO: Wire model config into handler execution once LLM integration is implemented.
-# model:
-#   provider: openai          # openai | anthropic | local
-#   model: gpt-4
-#   temperature: 0.2
-#   max_tokens: 4096
-#   api_key_env: OPENAI_API_KEY  # env var name, never store keys directly
+# LLM provider registry.
+# API keys are resolved from environment variables — never store keys here.
+# llm:
+#   providers:
+#     openai:
+#       api_key_env: OPENAI_API_KEY
+#       models:
+#         gpt-4:
+#           temperature: 0.2
+#           max_tokens: 4096
+#         gpt-4o:
+#           temperature: 0.1
+#           max_tokens: 8192
+#     anthropic:
+#       api_key_env: ANTHROPIC_API_KEY
+#       models:
+#         claude-3-opus:
+#           temperature: 0.3
+#           max_tokens: 4096
+#     local:
+#       api_key_env: LOCAL_LLM_KEY
+#       base_url: http://localhost:8080/v1
+#       models:
+#         llama-3:
+#           temperature: 0.5
+#           max_tokens: 2048
 
 # Logging configuration.
 # logging:
@@ -182,15 +201,50 @@ tools_dir: tools
 #   format: json              # json | text
 """
 
+EXAMPLE_AGENT_MANIFEST = """# Agent manifest — the portable unit of the runtime.
+# Declares everything this agent needs to run.
+agent:
+  id: example_agent
+  version: v1
+  description: "Example agent that summarizes and echoes an issue"
+
+# The workflow this agent executes.
+# TODO: Support multiple workflows with a designated entry point.
+workflow: workflows/example.yaml
+
+# Handler files this agent needs.
+handlers:
+  - handlers/example_handler.py
+
+# Tool files this agent needs.
+tools:
+  - tools/example_tool.py
+
+# LLM providers this agent requires (must be configured in runtime.yaml).
+# providers:
+#   - name: openai
+#     models: [gpt-4]
+
+# Environment variables that must be set.
+# env:
+#   - GITHUB_TOKEN
+
+# Default inputs (can be overridden at run time via -i).
+defaults:
+  issue: "Login API fails for invalid token"
+"""
+
 
 def _init_project(target_dir: str) -> None:
     workflows_dir = os.path.join(target_dir, "workflows")
     handlers_dir = os.path.join(target_dir, "handlers")
     tools_dir = os.path.join(target_dir, "tools")
+    agents_dir = os.path.join(target_dir, "agents")
 
     os.makedirs(workflows_dir, exist_ok=True)
     os.makedirs(handlers_dir, exist_ok=True)
     os.makedirs(tools_dir, exist_ok=True)
+    os.makedirs(agents_dir, exist_ok=True)
 
     example_workflow_path = os.path.join(workflows_dir, "example.yaml")
     if not os.path.exists(example_workflow_path):
@@ -206,6 +260,11 @@ def _init_project(target_dir: str) -> None:
     if not os.path.exists(example_tool_path):
         with open(example_tool_path, "w", encoding="utf-8") as f:
             f.write(EXAMPLE_TOOL)
+
+    example_agent_path = os.path.join(agents_dir, "example_agent.yaml")
+    if not os.path.exists(example_agent_path):
+        with open(example_agent_path, "w", encoding="utf-8") as f:
+            f.write(EXAMPLE_AGENT_MANIFEST)
 
     runtime_yaml_path = os.path.join(target_dir, "runtime.yaml")
     if not os.path.exists(runtime_yaml_path):
@@ -263,6 +322,39 @@ def _load_workflow_for_run(
     ref = parse_workflow_reference(workflow_ref)
     registry = WorkflowRegistry.from_directory(workflows_dir, handler_registry)
     return registry.get(ref.workflow_id, ref.version)
+
+
+def _try_resolve_agent(
+    ref: str,
+    agents_dir: str = "agents",
+) -> Optional[AgentManifest]:
+    """Try to resolve *ref* as an agent id from the agents/ directory.
+
+    Returns the manifest if found, ``None`` otherwise (falls back to workflow
+    resolution).
+    """
+    if not os.path.isdir(agents_dir):
+        return None
+
+    # Parse optional @version
+    if "@" in ref:
+        agent_id, _, version = ref.partition("@")
+    else:
+        agent_id = ref
+        version = None
+
+    for filename in os.listdir(agents_dir):
+        if not filename.endswith((".yaml", ".yml")):
+            continue
+        filepath = os.path.join(agents_dir, filename)
+        try:
+            m = load_agent_manifest(filepath)
+        except Exception:
+            continue
+        if m.agent_id == agent_id:
+            if version is None or m.version == version:
+                return m
+    return None
 
 
 def _build_input_state(
@@ -348,6 +440,20 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     visualize_parser.add_argument("--html", action="store_true", help="Render HTML visualization")
     visualize_parser.add_argument("--timeline", action="store_true", help="Render timeline-focused text view")
 
+    validate_parser = subparsers.add_parser("validate", help="Validate an agent manifest")
+    validate_parser.add_argument("manifest", help="Path to agent.yaml manifest")
+
+    export_parser = subparsers.add_parser("export", help="Export an agent as a portable archive")
+    export_parser.add_argument("manifest", help="Path to agent.yaml manifest")
+    export_parser.add_argument("-o", "--output", default=None, help="Output archive path (default: <agent_id>_<version>.tar.gz)")
+
+    import_parser = subparsers.add_parser("import", help="Import an agent archive into the project")
+    import_parser.add_argument("archive", help="Path to agent .tar.gz archive")
+    import_parser.add_argument("--path", default=".", help="Project root to import into")
+
+    list_parser = subparsers.add_parser("list", help="List available agents")
+    list_parser.add_argument("--agents-dir", default="agents", help="Agents directory")
+
     args = parser.parse_args(argv)
 
     if args.command == "init":
@@ -359,10 +465,90 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     cfg = load_config()
     cfg = apply_cli_overrides(cfg, args)
 
-    if args.command == "run":
-        handler_registry = _default_handler_registry(cfg.handlers_dir)
+    if args.command == "validate":
+        manifest = load_agent_manifest(args.manifest)
+        results = validate_agent(manifest, project_root=".", llm_registry=cfg.llm_registry)
+        all_ok = True
+        for r in results:
+            icon = "\u2713" if r.ok else "\u2717"
+            label = f"{r.category}: {r.name}"
+            if r.ok:
+                print(f"  {icon} {label}")
+            else:
+                print(f"  {icon} {label} \u2014 {r.message}")
+                all_ok = False
+        if all_ok:
+            print(f"\nAgent {manifest.agent_id}@{manifest.version} is valid.")
+            return 0
+        else:
+            print(f"\nAgent {manifest.agent_id}@{manifest.version} has validation errors.")
+            return 1
 
-        workflow = _load_workflow_for_run(args.workflow, handler_registry, cfg.workflows_dir)
+    if args.command == "export":
+        manifest = load_agent_manifest(args.manifest)
+        output = args.output or f"{manifest.agent_id}_{manifest.version}.tar.gz"
+        archive_path = export_agent(manifest, output, project_root=".")
+        print(f"Exported {manifest.agent_id}@{manifest.version} -> {archive_path}")
+        return 0
+
+    if args.command == "import":
+        manifest = import_agent(args.archive, project_root=args.path)
+        print(f"Imported {manifest.agent_id}@{manifest.version}")
+        results = validate_agent(manifest, project_root=args.path, llm_registry=cfg.llm_registry)
+        failures = [r for r in results if not r.ok]
+        if failures:
+            print("Post-import validation warnings:")
+            for r in failures:
+                print(f"  \u2717 {r.category}: {r.name} \u2014 {r.message}")
+        return 0
+
+    if args.command == "list":
+        agents_dir = args.agents_dir
+        if not os.path.isdir(agents_dir):
+            print(f"No agents directory found at: {agents_dir}")
+            return 0
+        found = False
+        for filename in sorted(os.listdir(agents_dir)):
+            if not filename.endswith((".yaml", ".yml")):
+                continue
+            filepath = os.path.join(agents_dir, filename)
+            try:
+                m = load_agent_manifest(filepath)
+                desc = f" \u2014 {m.description}" if m.description else ""
+                print(f"  {m.agent_id}@{m.version}{desc}")
+                found = True
+            except Exception:
+                continue
+        if not found:
+            print("No agents found.")
+        return 0
+
+    if args.command == "run":
+        # Try agent-aware resolution: check agents/ for a manifest matching
+        # the workflow arg as an agent_id (with optional @version).
+        agent_manifest = _try_resolve_agent(args.workflow)
+
+        if agent_manifest is not None:
+            handler_registry = _default_handler_registry(cfg.handlers_dir)
+            workflow = _load_workflow_for_run(
+                agent_manifest.workflow, handler_registry, cfg.workflows_dir,
+            )
+            # Merge defaults: agent defaults < CLI -i overrides
+            merged_inputs = list(args.input)
+            if agent_manifest.defaults:
+                provided_keys = set()
+                for item in args.input:
+                    if "=" in item:
+                        provided_keys.add(item.partition("=")[0].strip())
+                for key, value in agent_manifest.defaults.items():
+                    if key not in provided_keys:
+                        merged_inputs.append(f"{key}={value}")
+            input_state = _build_input_state(merged_inputs, workflow.get("inputs", {}))
+        else:
+            handler_registry = _default_handler_registry(cfg.handlers_dir)
+            workflow = _load_workflow_for_run(args.workflow, handler_registry, cfg.workflows_dir)
+            input_state = _build_input_state(args.input, workflow.get("inputs", {}))
+
         steps = workflow["steps"]
 
         storage = SQLiteStorage(cfg.db_path)
@@ -378,7 +564,6 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             tool_registry=tool_registry,
         )
 
-        input_state = _build_input_state(args.input, workflow.get("inputs", {}))
         run = executor.run(
             workflow_id=workflow["workflow_id"],
             workflow_version=workflow.get("workflow_version"),
@@ -483,6 +668,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             start_step_id=resume_step,
             on_error=workflow.get("on_error", "fail_fast"),
             state_version=state_version,
+            workflow_hash=workflow.get("workflow_hash"),
         )
         print(f"Run {resumed.run_id} status: {resumed.status}")
         return 0 if resumed.status == "COMPLETED" else 1

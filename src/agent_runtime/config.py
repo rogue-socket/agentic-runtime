@@ -15,6 +15,8 @@ from typing import Any, Dict
 
 import yaml
 
+from .llm import LLMRegistry
+
 
 @dataclass
 class RuntimeConfig:
@@ -27,6 +29,9 @@ class RuntimeConfig:
 
     # Model backend (placeholder for future LLM integration)
     model: Dict[str, Any] = field(default_factory=dict)
+
+    # LLM provider registry
+    llm_registry: LLMRegistry = field(default_factory=LLMRegistry)
 
     # Logging
     log_level: str = "info"
@@ -58,6 +63,9 @@ def load_config(config_path: str = "runtime.yaml") -> RuntimeConfig:
 
     if isinstance(raw.get("model"), dict):
         cfg.model = raw["model"]
+
+    if isinstance(raw.get("llm"), dict):
+        cfg.llm_registry = LLMRegistry.from_config(raw["llm"])
 
     logging_block = raw.get("logging")
     if isinstance(logging_block, dict):

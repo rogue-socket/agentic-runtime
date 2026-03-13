@@ -9,7 +9,7 @@ import time
 from types import MappingProxyType
 import asyncio
 
-from .errors import BranchResolutionError, StepExecutionError
+from .errors import BranchResolutionError, StepExecutionError, WorkflowIntegrityError
 from .logging import StructuredLogger
 from .memory.base import MemoryManager
 from .state import RuntimeState
@@ -203,7 +203,14 @@ class Executor:
         start_step_id: str,
         on_error: str,
         state_version: int,
+        workflow_hash: Optional[str] = None,
     ) -> Run:
+        if run.workflow_hash and workflow_hash and run.workflow_hash != workflow_hash:
+            raise WorkflowIntegrityError(
+                f"Workflow has been modified since original run. "
+                f"Original hash: {run.workflow_hash}, current hash: {workflow_hash}. "
+                f"Cannot safely resume — the workflow YAML must match the original run."
+            )
         run.state = RunState(_data=copy.deepcopy(resume_state))
         run.set_status(StepStatus.RUNNING)
         if run.started_at is None:
