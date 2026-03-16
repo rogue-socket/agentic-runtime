@@ -14,8 +14,9 @@ from typing import Any, Dict
 
 
 class SemanticMemory:
-    """In-memory semantic memory scaffold."""
-
+    # TODO: Implement persistent semantic memory.
+    #   Should store long-term knowledge (domain facts, documentation, policies) and
+    #   support vector-similarity retrieval for context enrichment during model steps.
     def __init__(self) -> None:
         """Initialize empty semantic store."""
         self._store: Dict[str, Any] = {}

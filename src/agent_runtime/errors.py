@@ -126,13 +126,12 @@ class ReplayDataMissingError(RuntimeErrorBase):
 
 
 class ReplayMismatchError(RuntimeErrorBase):
-    """Raised when replay verification detects state divergence.
+    """Raised when replayed state diverges from recorded state."""
 
-    Verification mode compares reconstructed state to recorded snapshots;
-    mismatch signals corruption or non-deterministic historical data.
 
-    Example:
-        >>> raise ReplayMismatchError("state mismatch")
-        >>> isinstance(ReplayMismatchError("x"), RuntimeErrorBase)
-        True
-    """
+class WorkflowIntegrityError(RuntimeErrorBase):
+    """Raised when a workflow has been modified since the original run."""
+
+
+class AgentValidationError(RuntimeErrorBase):
+    """Raised when an agent manifest is invalid or missing dependencies."""

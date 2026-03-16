@@ -14,8 +14,10 @@ from typing import Any, Dict
 
 
 class EpisodicMemory:
-    """In-process episodic memory stub."""
-
+    # TODO: Implement persistent episodic memory.
+    #   Should store per-run interaction history (inputs, outputs, errors) and allow
+    #   retrieval of past runs by workflow_id, time range, or similarity.
+    #   Consider backing with SQLite or a vector store for semantic lookup.
     def __init__(self) -> None:
         """Initialize empty episodic memory store."""
         self._latest: Dict[str, Any] = {}

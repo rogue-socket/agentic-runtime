@@ -23,7 +23,12 @@ Side Effects:
 """
 
 from .core import Executor, Run, RunState, StepDefinition, StepExecution, StepStatus
-from .steps import StepHandlerRegistry, generate_summary
+from .steps import StepHandlerRegistry, generate_summary, classify_severity, diagnose_issue, propose_fix, review_code
+from .handler_discovery import discover_handlers, register_discovered_handlers
+from .config import RuntimeConfig, load_config, apply_cli_overrides
+from .errors import WorkflowIntegrityError
+from .agent import AgentManifest, load_agent_manifest, validate_agent
+from .llm import LLMRegistry, LLMProvider, ModelConfig
 from .workflow import load_workflow
 from .replay import RunReplayer, ReplayResult
 from .state import RuntimeState
@@ -37,8 +42,24 @@ __all__ = [
     "StepStatus",
     "StepHandlerRegistry",
     "generate_summary",
+    "classify_severity",
+    "diagnose_issue",
+    "propose_fix",
+    "review_code",
+    "discover_handlers",
+    "register_discovered_handlers",
+    "RuntimeConfig",
+    "load_config",
+    "apply_cli_overrides",
     "load_workflow",
     "RunReplayer",
     "ReplayResult",
     "RuntimeState",
+    "WorkflowIntegrityError",
+    "LLMRegistry",
+    "LLMProvider",
+    "ModelConfig",
+    "AgentManifest",
+    "load_agent_manifest",
+    "validate_agent",
 ]

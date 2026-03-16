@@ -14,8 +14,9 @@ from typing import Any, Dict
 
 
 class ProceduralMemory:
-    """In-memory procedural memory scaffold."""
-
+    # TODO: Implement persistent procedural memory.
+    #   Should store learned workflows, playbooks, and reusable strategies that the
+    #   runtime can recall when executing similar tasks in the future.
     def __init__(self) -> None:
         """Initialize empty procedural memory store."""
         self._store: Dict[str, Any] = {}

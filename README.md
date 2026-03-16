@@ -27,9 +27,9 @@ Side Effects:
 
 # agentic-runtime
 
-A deterministic execution runtime for AI workflows.
+A runtime for AI agents.
 
-This is not a chatbot wrapper. It is a run engine that executes workflow steps, tracks state evolution, captures step history, supports retries/resume, and replays runs without calling external systems.
+Load agents, export agents, run agents — with deterministic execution, full state tracking, and failure recovery built in.  This is not a framework or a library you call into.  It is the execution substrate your agents run *on*.
 
 ## What problem this runtime solves
 
@@ -40,22 +40,27 @@ When agent workflows scale, teams usually hit the same issues:
 - transient failures kill the whole run with no clean continuation
 - branching behavior is hard to inspect and verify
 - impossible to debug "what happened" after the fact
+- managing multiple LLM providers and API keys is ad-hoc
 
 `agentic-runtime` solves that with first-class run execution semantics:
 
 - structured state (`inputs`, `steps`, `runtime`)
 - per-step execution records (`state_before`, `state_after`, `attempt_count`, errors)
 - retry policy at step level
-- deterministic resume from failure
+- deterministic resume from failure with workflow integrity lock
 - deterministic replay from persisted history (read-only simulation)
+- LLM provider registry with environment-based credential management
 
 ## Runtime capabilities
 
+- **Agent manifest system** (`agent.yaml`) — portable agent packaging with validate / export / import
 - `Run` lifecycle with durable records in SQLite
 - Step execution with retries/backoff
 - Conditional branching (`next` with `when` + `default`)
 - First-class tool interface (`Tool`, `ToolResult`, `RuntimeContext`)
 - State manager abstraction (`RuntimeState`) with namespaced writes
+- LLM provider registry (`LLMRegistry`) — manage multiple providers, models, and API keys
+- Workflow integrity lock — resume is blocked if workflow YAML changes after a run
 - Inspect modes:
   - summary
   - step-centric (`--steps`)
@@ -82,14 +87,56 @@ pip install -r requirements.txt
 PYTHONPATH=src ./ai init
 ```
 
+Creates a project structure:
+
+```
+├── workflows/
+│   └── example.yaml           # example workflow definition
+├── handlers/
+│   └── example_handler.py     # example model step handler
+├── tools/
+│   └── example_tool.py        # example tool implementation
+├── agents/
+│   └── example_agent.yaml     # example agent manifest
+└── runtime.yaml               # runtime configuration
+```
+
 ## Core commands
+
+### Agent commands
+
+```bash
+# Validate an agent manifest (pre-flight: files, providers, env vars)
+PYTHONPATH=src ./ai validate agents/my_agent.yaml
+
+# Export an agent as a portable archive
+PYTHONPATH=src ./ai export agents/my_agent.yaml -o my_agent_v1.tar.gz
+
+# Import an agent archive into the project
+PYTHONPATH=src ./ai import my_agent_v1.tar.gz
+
+# List all agents in agents/ directory
+PYTHONPATH=src ./ai list
+```
 
 ### Run
 
 ```bash
-PYTHONPATH=src ./ai run workflows/example.yaml --issue "Login API fails for invalid token"
-PYTHONPATH=src ./ai run example_workflow --issue "Login API fails for invalid token"
-PYTHONPATH=src ./ai run code_review_agent@v2 --issue "Login API fails for invalid token"
+# Run by agent id (resolves from agents/ directory, uses manifest defaults)
+PYTHONPATH=src ./ai run example_agent@v1
+
+# Run by workflow path (classic mode, no manifest)
+PYTHONPATH=src ./ai run workflows/example.yaml
+PYTHONPATH=src ./ai run example_workflow
+PYTHONPATH=src ./ai run code_review_agent@v2
+```
+
+Workflows with declared inputs use defaults when no `-i` flag is given.
+To override:
+
+```bash
+PYTHONPATH=src ./ai run workflows/example.yaml -i issue="Login API fails for invalid token"
+PYTHONPATH=src ./ai run code_review_agent@v2 -i issue="Custom issue text"
 ```
 
 ### Inspect
@@ -120,8 +167,26 @@ PYTHONPATH=src ./ai replay <run_id> --step-by-step
 ```bash
 PYTHONPATH=src ./ai visualize <run_id> --ascii
 PYTHONPATH=src ./ai visualize <run_id> --timeline
-PYTHONPATH=src ./ai visualize <run_id>        # default HTML at .runs/<run_id>/visualization.html
-PYTHONPATH=src ./ai visualize <run_id> --html # generate HTML only
+PYTHONPATH=src ./ai visualize <run_id>        # default HTML at .runs/<run_id>/visualization.html (auto-opens browser)
+PYTHONPATH=src ./ai visualize <run_id> --html # generate HTML without auto-opening browser
+```
+
+### State diff debugging
+
+When you need to know exactly what changed in state:
+
+```bash
+PYTHONPATH=src ./ai state-diff <run_id>
+PYTHONPATH=src ./ai state-diff <run_id> --step <step_id>
+```
+
+Example output style:
+
+```text
+Step: plan
++ steps.plan.tasks = ['t1', 't2']
++ steps.plan.priority = high
+- steps.plan.draft_message (was hello)
 ```
 
 ## Sample workflows (ready to run)
@@ -138,7 +203,13 @@ Location: `workflows/samples/`
 Run any sample:
 
 ```bash
-PYTHONPATH=src ./ai run workflows/samples/01_linear_issue_summary.yaml --issue "Login API fails for invalid token"
+PYTHONPATH=src ./ai run workflows/samples/01_linear_issue_summary.yaml
+```
+
+Override the default input:
+
+```bash
+PYTHONPATH=src ./ai run workflows/samples/01_linear_issue_summary.yaml -i issue="Custom text"
 ```
 
 ## How teams use this runtime in practice
@@ -154,7 +225,7 @@ Workflow:
 Run:
 
 ```bash
-PYTHONPATH=src ./ai run workflows/samples/03_branching_triage.yaml --issue "bug"
+PYTHONPATH=src ./ai run workflows/samples/03_branching_triage.yaml -i issue="bug"
 ```
 
 Why this helps:
@@ -172,7 +243,7 @@ Workflow:
 Run:
 
 ```bash
-PYTHONPATH=src ./ai run workflows/samples/02_retry_and_backoff.yaml --issue "Login API fails for invalid token"
+PYTHONPATH=src ./ai run workflows/samples/02_retry_and_backoff.yaml -i issue="Login API fails for invalid token"
 ```
 
 Why this helps:
@@ -190,7 +261,7 @@ Workflow:
 Run + inspect + resume:
 
 ```bash
-PYTHONPATH=src ./ai run workflows/samples/04_fail_and_resume.yaml --issue "Login API fails"
+PYTHONPATH=src ./ai run workflows/samples/04_fail_and_resume.yaml -i issue="Login API fails"
 PYTHONPATH=src ./ai inspect <run_id> --steps
 PYTHONPATH=src ./ai resume <run_id>
 ```
@@ -254,21 +325,21 @@ Execution options:
 
 ```bash
 # latest registered version in ./workflows
-PYTHONPATH=src ./ai run code_review_agent --issue "Login API fails"
+PYTHONPATH=src ./ai run code_review_agent -i issue="Login API fails"
 
 # explicit version
-PYTHONPATH=src ./ai run code_review_agent@v2 --issue "Login API fails"
+PYTHONPATH=src ./ai run code_review_agent@v2 -i issue="Login API fails"
 
 # direct file path still supported
-PYTHONPATH=src ./ai run workflows/samples/versioning/code_review_agent_v1.yaml --issue "Login API fails"
+PYTHONPATH=src ./ai run workflows/samples/versioning/code_review_agent_v1.yaml -i issue="Login API fails"
 ```
 
 ### Step fields
 
 - `id`: unique step id
 - `type`: `model` or `tool`
-- `handler`: model step handler name
-- `tool`: tool name from registry
+- `handler`: name of a registered handler function (for `model` steps). A handler is a Python function `(RuntimeState) -> dict` that does the actual work for the step — the runtime manages retries, state, and persistence around it.
+- `tool`: tool name from registry (for `tool` steps)
 - `inputs`: explicit state-to-input mapping
 - `inputs` (contract mode): list of logical keys the step reads
 - `outputs`: list of logical keys the step writes
@@ -352,17 +423,20 @@ This is what powers inspect, resume, and replay.
 ## Determinism guarantees (current)
 
 - run stores `workflow_hash` and `input_hash`
-- resume validates workflow compatibility
+- resume validates workflow integrity (hash lock — modified YAML blocks resume)
 - replay uses persisted step data, not live external execution
 
 ## Current boundaries
 
 Not in scope yet:
 
+- LLM API call adapters (handlers return stub output; registry + config are ready)
+- Memory tier persistence (interfaces wired, implementations are stubs)
 - DAG scheduler / parallel execution
 - full state schema/type enforcement
 - advanced expression language beyond constrained eval
 - idempotency keys for side-effecting tools
+- tool sandboxing / permissions
 
 ## Run tests
 
@@ -372,35 +446,28 @@ PYTHONPATH=src pytest -q
 
 ## Project layout
 
+- `src/agent_runtime/cli.py` - `ai` command surface
+- `src/agent_runtime/config.py` - `runtime.yaml` config loader with CLI override support
 - `src/agent_runtime/core.py` - executor and run/step lifecycle
-- `src/agent_runtime/state.py` - runtime state manager
-- `src/agent_runtime/workflow.py` - YAML parsing and validation
-- `src/agent_runtime/tools/` - first-class tool interface and registry
+- `src/agent_runtime/errors.py` - exception hierarchy (`WorkflowValidationError`, `StepExecutionError`, etc.)
+- `src/agent_runtime/handler_discovery.py` - auto-discovery of handler functions from `handlers/` directory
+- `src/agent_runtime/logging.py` - structured JSON logger
 - `src/agent_runtime/replay.py` - deterministic replay engine
 - `src/agent_runtime/resume.py` - resume-point resolution
-- `src/agent_runtime/storage/sqlite.py` - persistence
-- `src/agent_runtime/cli.py` - `ai` command surface
+- `src/agent_runtime/state.py` - runtime state manager (`RuntimeState`)
+- `src/agent_runtime/steps.py` - step handler registry and built-in handlers
+- `src/agent_runtime/utils.py` - hashing, state path resolution, safe expression eval
+- `src/agent_runtime/workflow.py` - YAML parsing and validation
+- `src/agent_runtime/workflow_registry.py` - workflow version resolution from directory scan
+- `src/agent_runtime/agent/` - agent manifest system (`AgentManifest`, `validate_agent`, `export_agent`, `import_agent`)
+- `src/agent_runtime/llm/` - LLM provider registry (`LLMRegistry`, `LLMProvider`, `ModelConfig`)
+- `src/agent_runtime/memory/` - memory tier subsystem (`WorkingMemory`, `EpisodicMemory`, `SemanticMemory`, `ProceduralMemory`, `MemoryManager`)
+- `src/agent_runtime/storage/` - persistence layer (abstract `Storage` + `SQLiteStorage`)
+- `src/agent_runtime/tools/` - tool interface (`Tool`, `ToolResult`, `RuntimeContext`), registry, schema validation, discovery
+- `src/agent_runtime/visualization/` - run visualization (`RunLoader`, `GraphBuilder`, `TimelineBuilder`, ASCII and HTML renderers)
 
 ## Additional docs
 
 - `docs/USAGE.md`
 - `docs/ARCHITECTURE.md`
 - `docs/EXECUTION_WALKTHROUGH.md`
-
-### State diff debugging (superpower mode)
-
-When you need to know exactly what changed in state:
-
-```bash
-PYTHONPATH=src ./ai state-diff <run_id>
-PYTHONPATH=src ./ai state-diff <run_id> --step <step_id>
-```
-
-Example output style:
-
-```text
-Step: plan
-+ steps.plan.tasks = ['t1', 't2']
-+ steps.plan.priority = high
-- steps.plan.draft_message (was hello)
-```
