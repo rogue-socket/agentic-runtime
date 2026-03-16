@@ -539,8 +539,8 @@ PYTHONPATH=src pytest tests/ -v
 | `docs/ARCHITECTURE.md` | Full architectural specification (20 sections) |
 | `docs/EXECUTION_WALKTHROUGH.md` | Step-by-step execution trace walkthrough |
 | `docs/USAGE.md` | Detailed usage guide |
-| `docs/GAPS_2026-03-16.md` | Known gaps and roadmap priorities |
-| `docs/STATUS_2026-03-16.md` | Current status of every subsystem |
+| `docs/GAPS_2026-03-17.md` | Known gaps and roadmap priorities |
+| `docs/STATUS_2026-03-17.md` | Current status of every subsystem |
 
 ---
 
