@@ -23,6 +23,18 @@ Inputs/Outputs:
 
 Side Effects:
 - Creates files/directories, writes DB rows, may open browser.
+
+TODO(ux): ICP is solo dev / small team building an agent. The CLI
+  experience should optimize for that persona:
+  - `ai init` should scaffold a working LLM-powered agent out of the box,
+    not just empty directories. Include a sample that calls a real LLM.
+  - `ai run` output should show a concise progress summary by default
+    (step name + status + duration), not just silence until completion.
+  - Add `ai quickstart` command that creates a minimal agent, runs it,
+    and opens the HTML visualization — a single-command "wow" moment.
+TODO(ux): Add input type coercion for `-i key=value` CLI args. Parse
+  numeric strings as numbers, "true"/"false" as booleans. Alternatively,
+  support `-i key:int=5` or `--input-json '{...}'` for explicit typing.
 """
 
 import argparse
@@ -42,6 +54,9 @@ from .state import RuntimeState
 from .storage import SQLiteStorage
 from .tools import ToolRegistry
 from .tools.echo import EchoTool
+from .tools.http import HttpTool
+from .tools.file import FileTool
+from .tools.shell import ShellTool
 from .tools.discovery import register_discovered_tools
 from .workflow import load_workflow, load_workflow_from_text
 from .workflow_registry import WorkflowRegistry, parse_workflow_reference
@@ -328,6 +343,9 @@ def _default_tool_registry(tools_dir: str = "tools") -> ToolRegistry:
 
     # Built-in tools (always available)
     registry.register(EchoTool())
+    registry.register(HttpTool())
+    registry.register(FileTool())
+    registry.register(ShellTool())
 
     # Discover tools from tools/ directory
     register_discovered_tools(registry, tools_dir)
@@ -335,11 +353,11 @@ def _default_tool_registry(tools_dir: str = "tools") -> ToolRegistry:
     return registry
 
 
-def _default_memory_manager() -> MemoryManager:
-    """Build default in-memory memory-manager implementation."""
+def _default_memory_manager(db_path: str = "runtime.db") -> MemoryManager:
+    """Build memory-manager with SQLite-backed episodic tier."""
     return MemoryManager(
         working=WorkingMemory(),
-        episodic=EpisodicMemory(),
+        episodic=EpisodicMemory(db_path=db_path),
         semantic=SemanticMemory(),
         procedural=ProceduralMemory(),
     )
@@ -594,7 +612,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         steps = workflow["steps"]
 
         storage = SQLiteStorage(cfg.db_path)
-        memory_manager = _default_memory_manager()
+        memory_manager = _default_memory_manager(cfg.db_path)
         tool_registry = _default_tool_registry(cfg.tools_dir)
 
         executor = Executor(
@@ -698,7 +716,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             steps=workflow["steps"],
             storage=storage,
             logger=StructuredLogger(),
-            memory_manager=_default_memory_manager(),
+            memory_manager=_default_memory_manager(cfg.db_path),
             tool_registry=_default_tool_registry(cfg.tools_dir),
         )
 

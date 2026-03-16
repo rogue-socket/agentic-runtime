@@ -17,6 +17,9 @@ class ProceduralMemory:
     # TODO: Implement persistent procedural memory.
     #   Should store learned workflows, playbooks, and reusable strategies that the
     #   runtime can recall when executing similar tasks in the future.
+    # NOTE: This is the lowest-priority memory tier. Requires episodic and semantic
+    #   tiers to be functional first, as procedural memory builds on run history
+    #   patterns.
     def __init__(self) -> None:
         """Initialize empty procedural memory store."""
         self._store: Dict[str, Any] = {}

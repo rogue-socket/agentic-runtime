@@ -17,6 +17,8 @@ class WorkingMemory:
     # TODO: Implement scoped working memory.
     #   Should manage active execution context (current task, recent messages, scratch
     #   state) with automatic compression/summarization when context grows too large.
+    # NOTE: This is lower priority than episodic memory. Ship episodic (SQLite-backed,
+    #   already implemented) as the first production-ready tier before investing here.
     def __init__(self) -> None:
         """Initialize empty working-memory buffer."""
         self._buffer: Dict[str, Any] = {}

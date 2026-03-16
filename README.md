@@ -78,6 +78,13 @@ Every run is inspectable, resumable, and replayable after the fact.
 
 ## Quickstart
 
+<!-- TODO(packaging): Replace PYTHONPATH hack with `pip install agentic-runtime`
+     once pyproject.toml and PyPI publishing are set up. The install step
+     should be: pip install agentic-runtime && ai init && ai run example_agent@v1 -->
+<!-- TODO(ux): Add a "5-minute getting started" section aimed at a solo dev
+     building their first agent. Walk through: install, init, set OPENAI_API_KEY,
+     run a workflow that calls a real LLM, inspect the result. -->
+
 ```bash
 # Install
 pip install -r requirements.txt
@@ -341,6 +348,15 @@ class GitHubTool:
 
 Tools are auto-discovered from the `tools/` directory.
 
+**Built-in tools** (always available):
+
+| Tool | Name | What it does |
+|---|---|---|
+| `EchoTool` | `tools.echo` | Returns input message (testing/examples) |
+| `HttpTool` | `tools.http` | HTTP/HTTPS requests with scheme validation (GET, POST, PUT, PATCH, DELETE) |
+| `FileTool` | `tools.file` | Read/write/append/list files, sandboxed to project root |
+| `ShellTool` | `tools.shell` | Execute shell commands with timeout and output capture |
+
 ### LLM provider registry
 
 Multi-provider management with environment-based credential resolution:
@@ -436,14 +452,18 @@ src/agent_runtime/
 ├── agent/                  # Agent manifest system
 │   ├── manifest.py         #   AgentManifest, loader, validator
 │   └── packaging.py        #   export/import as .tar.gz
-├── llm/                    # LLM provider registry
-│   └── registry.py         #   LLMProvider, ModelConfig, LLMRegistry
-├── memory/                 # Memory tier subsystem (scaffolding)
+├── llm/                    # LLM subsystem
+│   ├── registry.py         #   LLMProvider, ModelConfig, LLMRegistry
+│   ├── client.py           #   LLMClient — routes calls through adapters
+│   ├── adapters.py         #   OpenAIAdapter, AnthropicAdapter
+│   ├── handler.py          #   Built-in `llm` handler for workflow steps
+│   └── types.py            #   LLMResponse dataclass
+├── memory/                 # Memory tier subsystem
 │   ├── base.py             #   MemoryTier protocol, MemoryManager
-│   ├── working.py          #   WorkingMemory
-│   ├── episodic.py         #   EpisodicMemory
-│   ├── semantic.py         #   SemanticMemory
-│   └── procedural.py       #   ProceduralMemory
+│   ├── working.py          #   WorkingMemory (scaffolding)
+│   ├── episodic.py         #   EpisodicMemory (SQLite-backed)
+│   ├── semantic.py         #   SemanticMemory (scaffolding)
+│   └── procedural.py       #   ProceduralMemory (scaffolding)
 ├── storage/                # Persistence layer
 │   ├── base.py             #   Abstract Storage interface
 │   └── sqlite.py           #   SQLiteStorage implementation
@@ -452,6 +472,9 @@ src/agent_runtime/
 │   ├── registry.py         #   ToolRegistry
 │   ├── discovery.py        #   Auto-discovery from tools/ directory
 │   ├── echo.py             #   Built-in EchoTool
+│   ├── http.py             #   Built-in HttpTool
+│   ├── file.py             #   Built-in FileTool
+│   ├── shell.py            #   Built-in ShellTool
 │   └── validation.py       #   JSON Schema input validation
 └── visualization/          # Run visualization
     ├── run_loader.py       #   Load run data for rendering
@@ -465,7 +488,7 @@ src/agent_runtime/
 
 ## Tests
 
-15 test suites covering the full runtime surface:
+18 test suites covering the full runtime surface:
 
 ```bash
 PYTHONPATH=src pytest tests/ -v
@@ -488,6 +511,9 @@ PYTHONPATH=src pytest tests/ -v
 | `test_workflow_lock.py` | Workflow integrity hash lock |
 | `test_llm_registry.py` | LLM provider registry |
 | `test_agent_manifest.py` | Agent manifest: load, validate, export, import |
+| `test_anthropic_adapter.py` | Anthropic adapter + client routing |
+| `test_builtin_tools.py` | HTTP, File, Shell tools |
+| `test_episodic_memory.py` | SQLite-backed episodic memory |
 
 ---
 

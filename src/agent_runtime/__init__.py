@@ -22,6 +22,17 @@ Side Effects:
 - Imports module dependencies at package import time.
 """
 
+# TODO(sdk): Design and document a clean programmatic API surface for embedding
+#   the runtime in applications. Target experience:
+#     from agentic_runtime import Executor, run_workflow
+#     result = run_workflow("my_agent@v1", inputs={"issue": "..."})
+#   This should handle config loading, storage setup, and tool registration
+#   internally so callers don't need to wire 5 objects together.
+# TODO(sdk): Add a convenience `run_workflow()` function that wraps
+#   config loading + Executor construction + run invocation in one call.
+# TODO(sdk): Expose an async-first API (`await run_workflow_async(...)`) for
+#   embedding in FastAPI / Jupyter / async applications.
+
 from .core import Executor, Run, RunState, StepDefinition, StepExecution, StepStatus
 from .steps import StepHandlerRegistry, generate_summary, classify_severity, diagnose_issue, propose_fix, review_code
 from .handler_discovery import discover_handlers, register_discovered_handlers

@@ -84,11 +84,12 @@ class MemoryManager:
     def hydrate_state(self, state: Dict[str, Any]) -> None:
         """Merge memory snapshots into mutable runtime state.
 
-        # TODO: BUG
+        # TODO: BUG — P1 fix needed (prerequisite for memory tiers going live)
         # This `dict.update` strategy can overwrite top-level namespaces
         # (e.g., `inputs`, `steps`) and corrupt run-local state ownership.
-        # Suggested fix: merge under dedicated namespaces or deep-merge only
-        # allowed keys instead of blind top-level updates.
+        # Fix: each memory tier should write ONLY to `runtime.memory.<tier>`
+        # (e.g., `runtime.memory.episodic`) using deep-merge, never touching
+        # `inputs` or `steps` namespaces.
         """
         state.update(self.working.read(state))
         state.update(self.episodic.read(state))

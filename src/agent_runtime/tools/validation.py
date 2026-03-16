@@ -14,17 +14,15 @@ from typing import Any, Dict
 
 
 def validate_input(payload: Dict[str, Any], schema: Dict[str, Any]) -> None:
-    """Validate payload fields against a basic object schema.
-
-    # TODO: BUG
-    # The validator ignores `required` keys entirely, allowing calls with
-    # missing mandatory fields. Suggested fix: enforce `required` array and
-    # emit clear validation errors before tool execution.
-    """
+    """Validate payload fields against a basic object schema."""
     if not schema:
         return
     if schema.get("type") != "object":
         raise ValueError("Only object schemas are supported.")
+    required = schema.get("required", [])
+    for key in required:
+        if key not in payload:
+            raise ValueError(f"Missing required field: '{key}'")
     properties = schema.get("properties", {})
     for key, rule in properties.items():
         if key not in payload:

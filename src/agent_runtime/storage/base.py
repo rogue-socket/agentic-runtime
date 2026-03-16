@@ -18,7 +18,14 @@ if TYPE_CHECKING:
 
 
 class Storage(ABC):
-    """Abstract storage API for runtime persistence."""
+    """Abstract storage API for runtime persistence.
+
+    TODO(roadmap): Implement a PostgreSQL backend for team/production deployments.
+      The abstract interface is already backend-agnostic; a PostgresStorage
+      subclass should be a drop-in replacement for SQLiteStorage.
+    TODO(roadmap): Consider a remote-capable storage adapter (e.g., S3 + DynamoDB)
+      for cloud-native deployments where SQLite files aren't practical.
+    """
 
     @abstractmethod
     def create_run(self, run: Run) -> None:

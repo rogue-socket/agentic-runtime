@@ -5,6 +5,14 @@
 # Dependencies: Consumed by pip install -r requirements.txt.
 # Inputs/Outputs: Input to pip; output is an installed Python environment.
 # Side Effects: Installs packages into the active Python/Conda environment.
+#
+# TODO(packaging): Create pyproject.toml with proper package metadata, entry_points
+#   for the `ai` CLI command, version pinning, and classifiers. This file should
+#   become a fallback only. Target: `pip install agentic-runtime` from PyPI.
+# TODO(packaging): Add a Makefile or justfile with common dev tasks:
+#   install, test, lint, build, publish.
+# TODO(packaging): Consider shipping as a single `ai` CLI binary via PyInstaller
+#   or shiv for zero-dependency distribution to solo devs.
 
 PyYAML
 pytest

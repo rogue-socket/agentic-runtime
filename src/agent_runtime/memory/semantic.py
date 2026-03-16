@@ -17,6 +17,8 @@ class SemanticMemory:
     # TODO: Implement persistent semantic memory.
     #   Should store long-term knowledge (domain facts, documentation, policies) and
     #   support vector-similarity retrieval for context enrichment during model steps.
+    # NOTE: Requires embedding infrastructure (vector DB or SQLite FTS). Consider
+    #   sqlite-vss or chromadb as lightweight backends for solo dev use case.
     def __init__(self) -> None:
         """Initialize empty semantic store."""
         self._store: Dict[str, Any] = {}

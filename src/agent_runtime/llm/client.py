@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
-from .adapters import LLMAdapter, OpenAIAdapter
+from .adapters import LLMAdapter, OpenAIAdapter, AnthropicAdapter
 from .registry import LLMRegistry
 from .types import LLMResponse
 from ..logging import StructuredLogger
@@ -23,6 +23,7 @@ class LLMClient:
         self.logger = logger
         self.adapters = adapters or {
             OpenAIAdapter.provider_name: OpenAIAdapter(),
+            AnthropicAdapter.provider_name: AnthropicAdapter(),
         }
 
     def call(

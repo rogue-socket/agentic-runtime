@@ -35,6 +35,15 @@ class StructuredLogger:
     This logger intentionally keeps interface small so runtime modules
     can emit stable events without coupling to a heavy logging framework.
 
+    TODO(roadmap): Add OpenTelemetry trace/span export so runtime events
+      can be visualized in Jaeger, Grafana, Datadog, etc. Each run should
+      be a trace, each step a span, with LLM calls as child spans.
+    TODO(roadmap): Add optional webhook/callback event sink so external
+      systems can subscribe to execution events in real time.
+    TODO(roadmap): Emit Prometheus-compatible metrics (run count, step
+      duration histograms, error rates, LLM token usage) for production
+      monitoring dashboards.
+
     Example:
         >>> logger = StructuredLogger()
         >>> logger.info("RUN_START", {"run_id": "r1"})

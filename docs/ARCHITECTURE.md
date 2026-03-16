@@ -248,13 +248,25 @@ does not start with `_` is instantiated and registered.
 
 Classes imported from other modules (e.g. base classes) are skipped via `__module__` check.
 
-Built-in tools (`tools.echo`) are always available regardless of what's in `tools/`.
+Built-in tools (`tools.echo`, `tools.http`, `tools.file`, `tools.shell`) are always available regardless of what's in `tools/`.
+
+### Built-in tools
+
+| Tool | Name | Description |
+|------|------|-------------|
+| `EchoTool` | `tools.echo` | Returns input message (testing/examples) |
+| `HttpTool` | `tools.http` | HTTP/HTTPS requests with scheme validation |
+| `FileTool` | `tools.file` | Read/write/append/list files (sandboxed to root) |
+| `ShellTool` | `tools.shell` | Execute shell commands with timeout + output capture |
 
 Modules:
 - `tools/base.py` — `Tool` protocol, `ToolResult`, `RuntimeContext`
 - `tools/registry.py` — `ToolRegistry`
 - `tools/discovery.py` — `ToolDiscovery`, `discover_tools()`, `register_discovered_tools()`
 - `tools/echo.py` — built-in `EchoTool`
+- `tools/http.py` — built-in `HttpTool`
+- `tools/file.py` — built-in `FileTool`
+- `tools/shell.py` — built-in `ShellTool`
 - `tools/validation.py` — input schema validation
 
 ## 7. Persistence model (SQLite)
@@ -271,18 +283,14 @@ Properties:
 
 ## 8. Memory subsystem
 
-> **Status: Scaffolding** — interfaces are defined and wired into the execution
-> loop, but all four tiers are stub implementations.  No persistence, vector
-> search, or retrieval logic exists yet.
-
 The runtime manages four memory tiers through `MemoryManager`:
 
-| Tier | Class | Purpose |
-|------|-------|---------|
-| Working | `WorkingMemory` | Active context for current execution |
-| Episodic | `EpisodicMemory` | Historical run/interaction log |
-| Semantic | `SemanticMemory` | Long-term knowledge store |
-| Procedural | `ProceduralMemory` | Learned workflows and playbooks |
+| Tier | Class | Status | Purpose |
+|------|-------|--------|--------|
+| Working | `WorkingMemory` | Scaffolding | Active context for current execution |
+| Episodic | `EpisodicMemory` | **Implemented** | Historical run/interaction log (SQLite-backed) |
+| Semantic | `SemanticMemory` | Scaffolding | Long-term knowledge store |
+| Procedural | `ProceduralMemory` | Scaffolding | Learned workflows and playbooks |
 
 All tiers implement the `MemoryTier` protocol:
 - `read(context) -> Dict[str, Any]`
@@ -293,6 +301,24 @@ All tiers implement the `MemoryTier` protocol:
 - `persist_state(state)` — writes state to all tiers after execution
 
 Memory hooks are invoked at run start (hydrate) and run end (persist).
+
+### Episodic memory (SQLite)
+
+`EpisodicMemory` stores condensed episode records per run.  It tracks:
+- `workflow_id`, `run_id`, `status`
+- `inputs_summary` (key names), `outputs_summary` (step names)
+- `error` (if failed), `created_at`
+
+Query API:
+- `record(...)` — write a single episode row
+- `recall(workflow_id, limit)` — most recent episodes for a workflow
+- `recall_all(limit)` — most recent across all workflows
+
+`read()` hydrates `runtime.episodes` with past episodes for the current workflow,
+giving handlers context about prior runs.
+
+When no `db_path` is provided, `EpisodicMemory` operates as an in-memory stub
+(backward compatible with tests and default CLI).
 
 Modules:
 - `memory/base.py` — `MemoryTier` protocol and `MemoryManager`
@@ -491,10 +517,35 @@ llm:
 The registry is loaded from the `llm` section of `RuntimeConfig` during startup
 and is available for handlers to query which model to use.
 
-> **Status: Implemented** — registry, config loading, and credential resolution
-> are functional.  Actual LLM API call adapters (HTTP clients for
-> OpenAI/Anthropic/local) are not yet implemented — model-type step handlers
-> currently return deterministic stub output.
+### LLM call pipeline
+
+`LLMClient` routes requests through provider-specific adapters:
+
+```
+workflow YAML (handler: llm, model, prompt)
+  → make_llm_handler() → LLMClient.call()
+    → resolve provider/model
+    → adapter.call() (HTTP to provider API)
+    → LLMResponse (text, usage, raw)
+```
+
+Adapters:
+- `OpenAIAdapter` — Chat Completions API (`/v1/chat/completions`)
+- `AnthropicAdapter` — Messages API (`/v1/messages`)
+
+Both use stdlib `urllib` (zero additional dependencies).
+
+Built-in `llm` handler:
+- Registered as `handler: llm` in workflow YAML
+- Reads `model`, `prompt`, `system`, `provider`, `temperature`, `max_tokens` from step definition
+- Supports `{{ path }}` template syntax in prompts
+- Returns response text under configurable key (default: `text`)
+- Optional `include_metadata: true` captures provider, model, and token usage in output
+
+> **Status: Implemented** — registry, config loading, credential resolution,
+> OpenAI adapter, Anthropic adapter, LLM client, and built-in handler are
+> functional.  Adapters are synchronous (stdlib `urllib`); async adapters
+> for concurrent execution are a future enhancement.
 
 ## 19. Agent manifest system
 
@@ -590,8 +641,12 @@ and env vars so the operator can configure the environment.
 | Agent manifest system | Implemented |
 | Agent validate / export / import | Implemented |
 | Agent-aware run resolution | Implemented |
-| LLM API call adapters | Planned |
-| Memory tiers (4-tier) | Scaffolding |
+| LLM API call adapters | Implemented |
+| Anthropic adapter | Implemented |
+| Async executor | Implemented |
+| Built-in tools (HTTP, File, Shell) | Implemented |
+| Episodic memory (SQLite) | Implemented |
+| Memory tiers (working, semantic, procedural) | Scaffolding |
 | Multi-workflow agents | Planned |
 | DAG / parallel execution | Planned |
 | Tool permissions / sandboxing | Planned |

@@ -252,6 +252,12 @@ class Executor:
         workflow_yaml: Optional[str] = None,
         workflow_steps: Optional[List[str]] = None,
         input_hash: Optional[str] = None,
+        # TODO(streaming): Add an optional `on_event` callback parameter:
+        #   on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None
+        #   This should fire for STEP_START, STEP_COMPLETE, STEP_ERROR,
+        #   LLM_TOKEN (streaming), and RUN_COMPLETE events. This is the
+        #   primary integration point for UIs, API servers, and notebooks
+        #   that need real-time progress feedback.
     ) -> Run:
         """Async: create a new run and execute workflow from the first step."""
         if not self.step_order:
@@ -555,7 +561,12 @@ class Executor:
     def _resolve_next_step(self, step_def: StepDefinition, state: StateDict) -> Optional[str]:
         """Resolve next step via branch rules or sequential fallback."""
         # [TODO] Detect infinite loops caused by circular branching.
+        #   Suggested: maintain a visited set or step counter; raise
+        #   BranchResolutionError if a step is visited more than N times.
         # [TODO] Support parallel step execution when DAG scheduler is introduced.
+        # [TODO(roadmap)] Multi-agent composition: allow a step to invoke
+        #   a sub-workflow or delegate to another agent manifest. This is
+        #   the foundation for orchestrator-specialist agent patterns.
         if not step_def.next_rules:
             idx = self.step_order.index(step_def.step_id)
             if idx + 1 < len(self.step_order):

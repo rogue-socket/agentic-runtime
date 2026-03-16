@@ -5,6 +5,12 @@ and allows CLI flags to override any value.
 
 Precedence (highest wins):
     CLI flag  >  runtime.yaml  >  built-in default
+
+TODO(ux): For solo dev ICP, `ai init` should generate a runtime.yaml that
+  includes a commented-out but complete LLM provider config section, so new
+  users can see exactly what to fill in rather than reading docs.
+TODO(packaging): Once pyproject.toml exists, version should be read from
+  package metadata (importlib.metadata) rather than hardcoded.
 """
 
 from __future__ import annotations

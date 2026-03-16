@@ -177,13 +177,7 @@ class SQLiteStorage(Storage):
             )
 
     def append_step(self, run_id: str, step: StepExecution) -> None:
-        """Insert one step execution record.
-
-        # TODO: BUG
-        # `if step.input else None` (and similar checks below) stores empty
-        # dict payloads as NULL, losing the distinction between `{}` and
-        # missing data. Suggested fix: test `is not None` instead of truthiness.
-        """
+        """Insert one step execution record."""
         with self._connect() as conn:
             conn.execute(
                 """
@@ -195,12 +189,12 @@ class SQLiteStorage(Storage):
                     step.step_id,
                     step.step_type,
                     step.status,
-                    json_dumps(step.input) if step.input else None,
-                    json_dumps(step.output) if step.output else None,
+                    json_dumps(step.input) if step.input is not None else None,
+                    json_dumps(step.output) if step.output is not None else None,
                     step.error,
                     step.last_error,
-                    json_dumps(step.state_before) if step.state_before else None,
-                    json_dumps(step.state_after) if step.state_after else None,
+                    json_dumps(step.state_before) if step.state_before is not None else None,
+                    json_dumps(step.state_after) if step.state_after is not None else None,
                     step.execution_index,
                     step.started_at,
                     step.finished_at,
