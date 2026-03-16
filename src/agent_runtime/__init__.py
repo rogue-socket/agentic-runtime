@@ -28,7 +28,7 @@ from .handler_discovery import discover_handlers, register_discovered_handlers
 from .config import RuntimeConfig, load_config, apply_cli_overrides
 from .errors import WorkflowIntegrityError
 from .agent import AgentManifest, load_agent_manifest, validate_agent
-from .llm import LLMRegistry, LLMProvider, ModelConfig
+from .llm import LLMRegistry, LLMProvider, ModelConfig, LLMClient, LLMResponse
 from .workflow import load_workflow
 from .replay import RunReplayer, ReplayResult
 from .state import RuntimeState
@@ -59,6 +59,8 @@ __all__ = [
     "LLMRegistry",
     "LLMProvider",
     "ModelConfig",
+    "LLMClient",
+    "LLMResponse",
     "AgentManifest",
     "load_agent_manifest",
     "validate_agent",

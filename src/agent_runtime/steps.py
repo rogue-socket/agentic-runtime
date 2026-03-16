@@ -30,7 +30,7 @@ from .errors import HandlerNotFoundError
 from .state import RuntimeState
 
 StateDict = Dict[str, Any]
-StepHandler = Callable[[RuntimeState], StateDict]
+StepHandler = Callable[..., StateDict]
 
 
 class StepHandlerRegistry:

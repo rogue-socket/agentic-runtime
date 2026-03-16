@@ -48,6 +48,8 @@ from .workflow_registry import WorkflowRegistry, parse_workflow_reference
 from .visualization import GraphBuilder, RunLoader, TimelineBuilder, render_ascii, render_html
 from .utils import sha256_json
 from .agent import AgentManifest, load_agent_manifest, validate_agent, export_agent, import_agent
+from .llm import LLMClient
+from .llm.handler import make_llm_handler
 
 
 EXAMPLE_WORKFLOW = """workflow:
@@ -298,7 +300,10 @@ def _init_project(target_dir: str) -> None:
             f.write(RUNTIME_YAML_TEMPLATE)
 
 
-def _default_handler_registry(handlers_dir: str = "handlers") -> StepHandlerRegistry:
+def _default_handler_registry(
+    handlers_dir: str = "handlers",
+    llm_client: Optional[LLMClient] = None,
+) -> StepHandlerRegistry:
     """Create a handler registry with built-in handlers + discovered handlers."""
     registry = StepHandlerRegistry()
 
@@ -308,6 +313,8 @@ def _default_handler_registry(handlers_dir: str = "handlers") -> StepHandlerRegi
     registry.register("diagnose_issue", diagnose_issue)
     registry.register("propose_fix", propose_fix)
     registry.register("review_code", review_code)
+    if llm_client is not None:
+        registry.register("llm", make_llm_handler(llm_client))
 
     # Discover handlers from handlers/ directory
     register_discovered_handlers(registry, handlers_dir)
@@ -336,6 +343,10 @@ def _default_memory_manager() -> MemoryManager:
         semantic=SemanticMemory(),
         procedural=ProceduralMemory(),
     )
+
+def _default_llm_client(cfg: RuntimeConfig, logger: Optional[StructuredLogger] = None) -> LLMClient:
+    """Create an LLM client using the configured registry."""
+    return LLMClient(registry=cfg.llm_registry, logger=logger)
 
 
 def _load_workflow_for_run(
@@ -553,12 +564,14 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == "run":
+        logger = StructuredLogger()
+        llm_client = _default_llm_client(cfg, logger)
         # Try agent-aware resolution: check agents/ for a manifest matching
         # the workflow arg as an agent_id (with optional @version).
         agent_manifest = _try_resolve_agent(args.workflow)
 
         if agent_manifest is not None:
-            handler_registry = _default_handler_registry(cfg.handlers_dir)
+            handler_registry = _default_handler_registry(cfg.handlers_dir, llm_client)
             workflow = _load_workflow_for_run(
                 agent_manifest.workflow, handler_registry, cfg.workflows_dir,
             )
@@ -574,14 +587,13 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                         merged_inputs.append(f"{key}={value}")
             input_state = _build_input_state(merged_inputs, workflow.get("inputs", {}))
         else:
-            handler_registry = _default_handler_registry(cfg.handlers_dir)
+            handler_registry = _default_handler_registry(cfg.handlers_dir, llm_client)
             workflow = _load_workflow_for_run(args.workflow, handler_registry, cfg.workflows_dir)
             input_state = _build_input_state(args.input, workflow.get("inputs", {}))
 
         steps = workflow["steps"]
 
         storage = SQLiteStorage(cfg.db_path)
-        logger = StructuredLogger()
         memory_manager = _default_memory_manager()
         tool_registry = _default_tool_registry(cfg.tools_dir)
 
@@ -642,9 +654,9 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             print(latest_state)
 
         if run.workflow_yaml:
-            handler_registry = _default_handler_registry(cfg.handlers_dir)
-            workflow = load_workflow_from_text(run.workflow_yaml, handler_registry)
-            resume_step = determine_resume_step(workflow["steps"], steps)
+        handler_registry = _default_handler_registry(cfg.handlers_dir, _default_llm_client(cfg))
+        workflow = load_workflow_from_text(run.workflow_yaml, handler_registry)
+        resume_step = determine_resume_step(workflow["steps"], steps)
             if resume_step:
                 print(f"Resume point: step {resume_step}")
         if args.state_history:
@@ -656,7 +668,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         run = storage.load_run(args.run_id)
         validate_resume(run.status)
 
-        handler_registry = _default_handler_registry(cfg.handlers_dir)
+        handler_registry = _default_handler_registry(cfg.handlers_dir, _default_llm_client(cfg))
 
         workflow_text = run.workflow_yaml
         if workflow_text is None:

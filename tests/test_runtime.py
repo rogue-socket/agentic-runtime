@@ -10,6 +10,7 @@ Covers model/tool execution, workflow validation, retries, state version
 tracking, and memory hook invocation behavior.
 """
 
+import asyncio
 import sqlite3
 import tempfile
 from typing import Any, Dict
@@ -231,6 +232,54 @@ def test_tool_step_success() -> None:
     run = executor.run("wf", {"issue": "x"})
     assert run.status == StepStatus.COMPLETED
     assert run.state.data["steps"]["echo"]["x"] == 1
+
+
+def test_run_async_executes_tool_step() -> None:
+    """Ensure async execution path runs tool steps successfully."""
+    storage = _storage()
+    tool_registry = ToolRegistry()
+
+    class EchoTool:
+        name = "tools.echo"
+        description = "echo"
+        input_schema = {"type": "object", "properties": {"x": {"type": "number"}}}
+        timeout = None
+        retries = None
+
+        async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+            return ToolResult(success=True, output={"x": input["x"]}, error=None, metadata=None)
+
+    tool_registry.register(EchoTool())
+    steps = [StepDefinition(step_id="echo", step_type="tool", tool_name="tools.echo", raw_input={"x": 2})]
+    executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
+
+    async def _run() -> None:
+        run = await executor.run_async("wf", {"issue": "x"})
+        assert run.status == StepStatus.COMPLETED
+        assert run.state.data["steps"]["echo"]["x"] == 2
+
+    asyncio.run(_run())
+
+
+def test_run_raises_inside_event_loop() -> None:
+    """Sync run should refuse to execute inside a running event loop."""
+    storage = _storage()
+    tool_registry = ToolRegistry()
+    steps = [
+        StepDefinition(
+            step_id="generate_summary",
+            step_type="model",
+            handler=generate_summary,
+            input_spec={"issue": "inputs.issue"},
+        )
+    ]
+    executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
+
+    async def _run() -> None:
+        with pytest.raises(RuntimeError):
+            executor.run("wf", {"issue": "Login API fails for invalid token"})
+
+    asyncio.run(_run())
 
 
 def test_workflow_yaml_validation(tmp_path) -> None:

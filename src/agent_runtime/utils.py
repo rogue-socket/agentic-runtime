@@ -31,6 +31,7 @@ from typing import Any, Dict
 import json
 import hashlib
 import ast
+import re
 
 
 StateDict = Dict[str, Any]
@@ -114,6 +115,24 @@ def resolve_path(path: str, state: Dict[str, Any]) -> Any:
         else:
             raise KeyError(f"Path not found: {path}")
     return current
+
+
+_PATH_TEMPLATE_RE = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
+
+
+def render_path_template(text: str, state: Dict[str, Any]) -> str:
+    """Render ``{{ path }}`` placeholders using dot-path lookups.
+
+    Example:
+        >>> render_path_template("Issue: {{ inputs.issue }}", {"inputs": {"issue": "x"}})
+        'Issue: x'
+    """
+    # TODO: Add escaping and error context for large prompt templates.
+    def replace(match: re.Match[str]) -> str:
+        path = match.group(1).strip()
+        return str(resolve_path(path, state))
+
+    return _PATH_TEMPLATE_RE.sub(replace, text)
 
 
 def build_step_input(input_spec: Dict[str, Any], state: Dict[str, Any]) -> Dict[str, Any]:

@@ -33,6 +33,7 @@ import uuid
 import time
 from types import MappingProxyType
 import asyncio
+import inspect
 
 from .errors import BranchResolutionError, StepExecutionError, WorkflowIntegrityError
 from .logging import StructuredLogger
@@ -227,6 +228,32 @@ class Executor:
     ) -> Run:
         """Create a new run and execute workflow from the first step.
         """
+        self._ensure_no_running_loop("run_async")
+        return asyncio.run(
+            self.run_async(
+                workflow_id=workflow_id,
+                initial_state=initial_state,
+                workflow_version=workflow_version,
+                on_error=on_error,
+                workflow_hash=workflow_hash,
+                workflow_yaml=workflow_yaml,
+                workflow_steps=workflow_steps,
+                input_hash=input_hash,
+            )
+        )
+
+    async def run_async(
+        self,
+        workflow_id: str,
+        initial_state: StateDict,
+        workflow_version: Optional[str] = None,
+        on_error: str = "fail_fast",
+        workflow_hash: Optional[str] = None,
+        workflow_yaml: Optional[str] = None,
+        workflow_steps: Optional[List[str]] = None,
+        input_hash: Optional[str] = None,
+    ) -> Run:
+        """Async: create a new run and execute workflow from the first step."""
         if not self.step_order:
             raise StepExecutionError("Workflow must contain at least one step.")
 
@@ -251,7 +278,12 @@ class Executor:
         state_version = 0
         self.storage.save_state(run.run_id, None, state_version, run.state.data)
 
-        return self._execute_steps(run, start_step_id=self.step_order[0], on_error=on_error, state_version=state_version)
+        return await self._execute_steps_async(
+            run,
+            start_step_id=self.step_order[0],
+            on_error=on_error,
+            state_version=state_version,
+        )
 
     def resume(
         self,
@@ -262,6 +294,28 @@ class Executor:
         state_version: int,
         workflow_hash: Optional[str] = None,
     ) -> Run:
+        self._ensure_no_running_loop("resume_async")
+        return asyncio.run(
+            self.resume_async(
+                run=run,
+                resume_state=resume_state,
+                start_step_id=start_step_id,
+                on_error=on_error,
+                state_version=state_version,
+                workflow_hash=workflow_hash,
+            )
+        )
+
+    async def resume_async(
+        self,
+        run: Run,
+        resume_state: StateDict,
+        start_step_id: str,
+        on_error: str,
+        state_version: int,
+        workflow_hash: Optional[str] = None,
+    ) -> Run:
+        """Async: resume a failed run from a starting step id."""
         if run.workflow_hash and workflow_hash and run.workflow_hash != workflow_hash:
             raise WorkflowIntegrityError(
                 f"Workflow has been modified since original run. "
@@ -273,9 +327,14 @@ class Executor:
         if run.started_at is None:
             run.started_at = utc_now().isoformat()
         self.storage.update_run_status(run.run_id, run.status, None, started_at=run.started_at)
-        return self._execute_steps(run, start_step_id=start_step_id, on_error=on_error, state_version=state_version)
+        return await self._execute_steps_async(
+            run,
+            start_step_id=start_step_id,
+            on_error=on_error,
+            state_version=state_version,
+        )
 
-    def _execute_steps(self, run: Run, start_step_id: str, on_error: str, state_version: int) -> Run:
+    async def _execute_steps_async(self, run: Run, start_step_id: str, on_error: str, state_version: int) -> Run:
         """Execute steps sequentially/branched from a starting step id."""
         had_errors = False
         current_step_id: Optional[str] = start_step_id
@@ -309,6 +368,16 @@ class Executor:
                         step_input = build_step_input(step_def.input_spec, snapshot)
                     else:
                         step_input = snapshot
+                    if step_def.raw_input:
+                        if not isinstance(step_input, dict):
+                            raise StepExecutionError("Step input must be a dict.")
+                        step_input = copy.deepcopy(step_input)
+                        # TODO: Consider redacting prompts or secrets before persisting execution.input.
+                        step_input["__llm__"] = copy.deepcopy(step_def.raw_input)
+                        step_input["__llm_context__"] = {
+                            "run_id": run.run_id,
+                            "step_id": step_def.step_id,
+                        }
                     step_input_state = RuntimeState(step_input, enforce_structure=False)
                     execution.input = copy.deepcopy(step_input_state.to_dict())
                     execution.state_before = copy.deepcopy(snapshot)
@@ -318,13 +387,13 @@ class Executor:
                         if step_def.step_type == "model":
                             if step_def.handler is None:
                                 raise StepExecutionError("Missing model handler.")
-                            output = step_def.handler(step_input_state)
+                            output = _invoke_handler(step_def.handler, step_input_state, snapshot)
                         elif step_def.step_type == "tool":
                             if not step_def.tool_name:
                                 raise StepExecutionError("Missing tool name.")
                             tool = self.tool_registry.get(step_def.tool_name)
                             tool_input = step_input if step_def.input_spec is not None else format_template(step_def.raw_input or {}, snapshot)
-                            output = self._execute_tool(tool, tool_input, run.run_id, step_def.step_id, snapshot)
+                            output = await self._execute_tool_async(tool, tool_input, run.run_id, step_def.step_id, snapshot)
                         else:
                             raise StepExecutionError(f"Unknown step type: {step_def.step_type}")
 
@@ -336,7 +405,7 @@ class Executor:
                         if attempt < max_attempts:
                             delay = _compute_backoff_delay(attempt, backoff, initial_delay)
                             if delay > 0:
-                                time.sleep(delay)
+                                await asyncio.sleep(delay)
 
                 if last_error is not None:
                     raise last_error
@@ -418,14 +487,8 @@ class Executor:
 
         return run
 
-    def _execute_tool(self, tool, tool_input: Dict[str, Any], run_id: str, step_id: str, state: StateDict) -> Dict[str, Any]:
-        """Execute tool with validation, retries, and structured events.
-
-        # TODO: BUG
-        # Uses `asyncio.run(...)` which raises RuntimeError when called from
-        # an already running event loop (e.g., embedded async host apps).
-        # Suggested fix: support both sync/async contexts via loop detection.
-        """
+    async def _execute_tool_async(self, tool, tool_input: Dict[str, Any], run_id: str, step_id: str, state: StateDict) -> Dict[str, Any]:
+        """Execute tool with validation, retries, and structured events."""
         validate_input(tool_input, tool.input_schema)
         context = RuntimeContext(run_id=run_id, step_id=step_id, state=state, logger=self.logger)
 
@@ -440,9 +503,9 @@ class Executor:
             attempt += 1
             try:
                 if tool.timeout:
-                    result = asyncio.run(asyncio.wait_for(tool.execute(tool_input, context), timeout=tool.timeout))
+                    result = await asyncio.wait_for(tool.execute(tool_input, context), timeout=tool.timeout)
                 else:
-                    result = asyncio.run(tool.execute(tool_input, context))
+                    result = await tool.execute(tool_input, context)
                 if not isinstance(result, ToolResult):
                     raise StepExecutionError("Tool must return ToolResult.")
                 if not result.success:
@@ -475,6 +538,19 @@ class Executor:
                     raise
 
         raise StepExecutionError(f"Tool execution failed: {last_error}")
+
+    @staticmethod
+    def _ensure_no_running_loop(async_entrypoint: str) -> None:
+        """Raise when called from an existing event loop.
+
+        TODO: Provide an opt-in helper to run sync APIs in async contexts by
+        dispatching to a dedicated worker thread if we ever need that behavior.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        raise RuntimeError(f"Detected running event loop. Use `{async_entrypoint}()` instead.")
 
     def _resolve_next_step(self, step_def: StepDefinition, state: StateDict) -> Optional[str]:
         """Resolve next step via branch rules or sequential fallback."""
@@ -511,3 +587,26 @@ def _compute_backoff_delay(attempt: int, backoff: str, initial_delay: float) -> 
     if backoff == "exponential":
         return initial_delay * (2 ** (attempt - 2))
     raise StepExecutionError(f"Unsupported backoff strategy: {backoff}")
+
+
+def _handler_accepts_context(handler: StepHandler) -> bool:
+    """Return True if handler accepts a second positional argument."""
+    try:
+        sig = inspect.signature(handler)
+    except (TypeError, ValueError):
+        return False
+
+    positional = [
+        p for p in sig.parameters.values()
+        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+    ]
+    if len(positional) >= 2:
+        return True
+    return any(p.kind == p.VAR_POSITIONAL for p in sig.parameters.values())
+
+
+def _invoke_handler(handler: StepHandler, state: RuntimeState, snapshot: StateDict) -> StateDict:
+    """Invoke handler with optional full-state context when supported."""
+    if _handler_accepts_context(handler):
+        return handler(state, snapshot)  # type: ignore[misc]
+    return handler(state)

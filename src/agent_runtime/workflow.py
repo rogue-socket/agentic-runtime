@@ -62,6 +62,25 @@ def _validate_step(step: Dict[str, Any]) -> None:
             raise WorkflowValidationError("Step outputs must be a list of strings.")
     if "next" in step and not isinstance(step["next"], list):
         raise WorkflowValidationError("Step next must be a list of rules.")
+    if step["type"] == "model" and step.get("handler") == "llm":
+        if "prompt" not in step or not isinstance(step["prompt"], str):
+            raise WorkflowValidationError("LLM steps must include a string prompt.")
+        if "model" not in step or not isinstance(step["model"], str):
+            raise WorkflowValidationError("LLM steps must include a string model.")
+        if "system" in step and not isinstance(step["system"], str):
+            raise WorkflowValidationError("LLM system prompt must be a string.")
+        if "provider" in step and not isinstance(step["provider"], str):
+            raise WorkflowValidationError("LLM provider must be a string.")
+        if "response_key" in step and not isinstance(step["response_key"], str):
+            raise WorkflowValidationError("LLM response_key must be a string.")
+        if "temperature" in step and not isinstance(step["temperature"], (int, float)):
+            raise WorkflowValidationError("LLM temperature must be a number.")
+        if "max_tokens" in step and not isinstance(step["max_tokens"], int):
+            raise WorkflowValidationError("LLM max_tokens must be an integer.")
+        if "params" in step and not isinstance(step["params"], dict):
+            raise WorkflowValidationError("LLM params must be a mapping.")
+        if "include_metadata" in step and not isinstance(step["include_metadata"], bool):
+            raise WorkflowValidationError("LLM include_metadata must be a boolean.")
 
 
 def _extract_workflow_identity(raw: Dict[str, Any]) -> Tuple[str, Optional[str]]:
@@ -289,6 +308,22 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
                 produced_by[output_key] = step["id"]
 
         if step_type == "model":
+            llm_config = None
+            if step.get("handler") == "llm":
+                llm_config = {}
+                for key in (
+                    "prompt",
+                    "model",
+                    "system",
+                    "provider",
+                    "response_key",
+                    "temperature",
+                    "max_tokens",
+                    "params",
+                    "include_metadata",
+                ):
+                    if key in step:
+                        llm_config[key] = step[key]
             handler = handler_registry.get(step["handler"])
             steps.append(
                 StepDefinition(
@@ -299,6 +334,7 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
                     input_spec=input_spec if isinstance(input_spec, dict) else None,
                     input_contract=input_contract,
                     output_contract=output_contract,
+                    raw_input=llm_config,
                     next_rules=next_rules,
                 )
             )
