@@ -1,473 +1,550 @@
-<!--
-File: README.md
-
-Purpose:
-Primary onboarding guide for the agentic-runtime project.
-
-Description:
-Explains what the runtime does, why it exists, and how to run,
-inspect, resume, replay, and visualize workflows from the CLI.
-
-Key Components Referenced:
-- CLI commands (`ai run`, `ai inspect`, `ai resume`, `ai replay`, `ai visualize`)
-- Runtime state model and execution semantics
-- Sample workflows for branching, retry, and versioning behavior
-
-Dependencies:
-- Python runtime with packages in requirements.txt
-- Source package under src/agent_runtime
-
-Inputs/Outputs:
-- Input: developer commands and workflow YAML files
-- Output: runnable examples, developer guidance, and expected command usage
-
-Side Effects:
-- None directly; commands shown may create SQLite DBs and run artifacts.
--->
+<div align="center">
 
 # agentic-runtime
 
-A runtime for AI agents.
+**A deterministic execution runtime for AI agents.**
 
-Load agents, export agents, run agents — with deterministic execution, full state tracking, and failure recovery built in.  This is not a framework or a library you call into.  It is the execution substrate your agents run *on*.
+Define agents in YAML. Run them with full state tracking. Resume from failure. Replay any historical run. Package and ship agents as portable archives.
 
-## What problem this runtime solves
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](#setup)
+[![Tests](https://img.shields.io/badge/tests-15_suites-passing.svg)](#tests)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](#)
 
-When agent workflows scale, teams usually hit the same issues:
+</div>
 
-- no reproducible execution trace
-- state mutations from many places with unclear ownership
-- transient failures kill the whole run with no clean continuation
-- branching behavior is hard to inspect and verify
-- impossible to debug "what happened" after the fact
-- managing multiple LLM providers and API keys is ad-hoc
+---
 
-`agentic-runtime` solves that with first-class run execution semantics:
+## Why this exists
 
-- structured state (`inputs`, `steps`, `runtime`)
-- per-step execution records (`state_before`, `state_after`, `attempt_count`, errors)
-- retry policy at step level
-- deterministic resume from failure with workflow integrity lock
-- deterministic replay from persisted history (read-only simulation)
-- LLM provider registry with environment-based credential management
+Agent systems break in predictable ways as they scale:
 
-## Runtime capabilities
+| Problem | What happens |
+|---|---|
+| **No execution trace** | "What did the agent actually do?" — nobody knows |
+| **Uncontrolled state** | Multiple steps mutate a shared dict, ownership is unclear |
+| **Transient failures** | One API timeout kills a 10-step run — start over from scratch |
+| **Black-box branching** | Agent took path A instead of B — no way to see why |
+| **No postmortems** | Can't reproduce what happened yesterday |
+| **Ad-hoc LLM management** | API keys scattered, no unified provider config |
 
-- **Agent manifest system** (`agent.yaml`) — portable agent packaging with validate / export / import
-- `Run` lifecycle with durable records in SQLite
-- Step execution with retries/backoff
-- Conditional branching (`next` with `when` + `default`)
-- First-class tool interface (`Tool`, `ToolResult`, `RuntimeContext`)
-- State manager abstraction (`RuntimeState`) with namespaced writes
-- LLM provider registry (`LLMRegistry`) — manage multiple providers, models, and API keys
-- Workflow integrity lock — resume is blocked if workflow YAML changes after a run
-- Inspect modes:
-  - summary
-  - step-centric (`--steps`)
-  - state timeline (`--state-history`)
-- Replay subsystem (`ai replay`) with optional state verification
-- Run visualization (`ai visualize`) with ASCII, HTML, and timeline modes
-- Workflow hash + input hash for reproducibility checks
-- Workflow versioning (`workflow_id`, `workflow_version`, `workflow_hash`)
+`agentic-runtime` is built to solve these. It's not a framework you import — it's the execution substrate agents run **on**.
 
-## Setup
+---
 
-### Environment
-- Conda env name: `agent_runtime`
+## How it works
 
-### Install
+```
+                          ┌─────────────────────────────────────────┐
+   agent.yaml             │            agentic-runtime              │
+   ┌──────────┐           │                                         │
+   │ agent:   │           │  ┌──────────┐    ┌───────────────────┐  │
+   │   id     │──────────▶│  │ Executor │───▶│  SQLite Storage   │  │
+   │   version│           │  └────┬─────┘    │  - runs           │  │
+   │ workflow │           │       │          │  - steps          │  │
+   │ handlers │           │  ┌────▼─────┐    │  - state_versions │  │
+   │ tools    │           │  │  Steps   │    └───────────────────┘  │
+   │ providers│           │  │ ┌──────┐ │    ┌───────────────────┐  │
+   └──────────┘           │  │ │model │ │───▶│  Handler Registry │  │
+                          │  │ ├──────┤ │    └───────────────────┘  │
+   workflow.yaml          │  │ │ tool │ │    ┌───────────────────┐  │
+   ┌──────────┐           │  │ └──────┘ │───▶│   Tool Registry   │  │
+   │ steps:   │──────────▶│  └──────────┘    └───────────────────┘  │
+   │  - model │           │       │          ┌───────────────────┐  │
+   │  - tool  │           │       └─────────▶│  LLM Registry     │  │
+   │  - branch│           │                  │  (multi-provider)  │  │
+   └──────────┘           │                  └───────────────────┘  │
+                          └─────────────────────────────────────────┘
+                                     │
+                          ┌──────────▼──────────┐
+                          │   Durable Run Record │
+                          │   - state_before/after per step
+                          │   - attempt_count, errors
+                          │   - workflow_hash (integrity lock)
+                          │   - full state evolution
+                          └─────────────────────┘
+```
+
+**Execution contract:**
+
+1. Load workflow definition (from file, registry, or agent manifest)
+2. Create run record + initial state snapshot
+3. Execute steps sequentially — retry, branch, track state
+4. Persist every step record and state version to SQLite
+5. Terminal status: `COMPLETED` / `FAILED` / `COMPLETED_WITH_ERRORS`
+
+Every run is inspectable, resumable, and replayable after the fact.
+
+---
+
+## Quickstart
 
 ```bash
+# Install
 pip install -r requirements.txt
+
+# Scaffold a project
+PYTHONPATH=src python -m agent_runtime.cli init
+
+# Run the example agent
+PYTHONPATH=src python -m agent_runtime.cli run example_agent@v1
+
+# See what happened
+PYTHONPATH=src python -m agent_runtime.cli inspect <run_id> --steps
 ```
 
-### Initialize scaffold
-
-```bash
-PYTHONPATH=src ./ai init
-```
-
-Creates a project structure:
+This creates:
 
 ```
-├── workflows/
-│   └── example.yaml           # example workflow definition
-├── handlers/
-│   └── example_handler.py     # example model step handler
-├── tools/
-│   └── example_tool.py        # example tool implementation
+your-project/
 ├── agents/
-│   └── example_agent.yaml     # example agent manifest
-└── runtime.yaml               # runtime configuration
+│   └── example_agent.yaml     # agent manifest (the portable unit)
+├── workflows/
+│   └── example.yaml           # workflow definition
+├── handlers/
+│   └── example_handler.py     # model step handler
+├── tools/
+│   └── example_tool.py        # tool implementation
+└── runtime.yaml               # runtime configuration (LLM providers, paths, logging)
 ```
 
-## Core commands
+---
 
-### Agent commands
+## Key concepts
+
+### Agent manifest
+
+An `agent.yaml` is the portable unit of the runtime. It declares everything an agent needs to run:
+
+```yaml
+agent:
+  id: triage_agent
+  version: v2
+  description: "Triages incoming issues by severity"
+
+workflow: workflows/triage.yaml
+
+handlers:
+  - handlers/classify.py
+  - handlers/summarize.py
+
+tools:
+  - tools/github.py
+
+providers:
+  - name: openai
+    models: [gpt-4]
+
+env:
+  - GITHUB_TOKEN
+
+defaults:
+  issue: "unspecified"
+```
+
+Agents can be validated, exported as `.tar.gz` archives, and imported into other projects.
+
+### Workflows
+
+Ordered YAML steps with identity, versioning, retry policies, and conditional branching:
+
+```yaml
+workflow:
+  id: issue_triage
+  version: v1
+
+inputs:
+  issue:
+    description: The issue text to analyze
+    default: "Login API fails for invalid token"
+
+on_error: fail_fast
+
+steps:
+  - id: summarize
+    type: model
+    handler: generate_summary
+    inputs:
+      issue: inputs.issue
+    outputs: [summary]
+    retry:
+      attempts: 3
+      backoff: exponential
+      initial_delay: 1
+
+  - id: classify
+    type: model
+    handler: classify_severity
+    inputs:
+      summary: steps.summarize.summary
+    outputs: [severity]
+
+  - id: route
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.classify.severity
+    next:
+      - when: state.steps.classify.severity == "critical"
+        goto: escalate
+      - default: log_result
+```
+
+### Namespaced state
+
+State is structured — not a free-form dict:
+
+```json
+{
+  "inputs":  { },          // immutable run input
+  "steps":   { },          // per-step outputs (steps.<id>.*)
+  "runtime": { }           // runtime metadata
+}
+```
+
+This prevents cross-step key collisions, preserves output ownership, and makes debugging tractable.
+
+### Step contracts
+
+Declare what each step reads and writes:
+
+```yaml
+- id: summarize
+  inputs: [issue]           # reads from state
+  outputs: [summary]        # writes to state
+```
+
+The runtime enforces these at load time (future-read detection, output collision) and at execution time (output shape validation).
+
+---
+
+## CLI reference
+
+### Agent lifecycle
 
 ```bash
-# Validate an agent manifest (pre-flight: files, providers, env vars)
-PYTHONPATH=src ./ai validate agents/my_agent.yaml
-
-# Export an agent as a portable archive
-PYTHONPATH=src ./ai export agents/my_agent.yaml -o my_agent_v1.tar.gz
-
-# Import an agent archive into the project
-PYTHONPATH=src ./ai import my_agent_v1.tar.gz
-
-# List all agents in agents/ directory
-PYTHONPATH=src ./ai list
+ai validate agents/my_agent.yaml          # pre-flight checks (files, providers, env vars)
+ai export agents/my_agent.yaml -o out.tar.gz  # package as portable archive
+ai import agent_archive.tar.gz             # extract into project
+ai list                                    # list all agents
 ```
 
 ### Run
 
 ```bash
-# Run by agent id (resolves from agents/ directory, uses manifest defaults)
-PYTHONPATH=src ./ai run example_agent@v1
-
-# Run by workflow path (classic mode, no manifest)
-PYTHONPATH=src ./ai run workflows/example.yaml
-PYTHONPATH=src ./ai run example_workflow
-PYTHONPATH=src ./ai run code_review_agent@v2
-```
-
-Workflows with declared inputs use defaults when no `-i` flag is given.
-To override:
-
-```bash
-PYTHONPATH=src ./ai run workflows/example.yaml -i issue="Login API fails for invalid token"
-PYTHONPATH=src ./ai run code_review_agent@v2 -i issue="Custom issue text"
+ai run triage_agent@v2                     # run by agent id (resolves from agents/)
+ai run workflows/triage.yaml              # run by file path
+ai run code_review_agent                   # run latest version from workflow registry
+ai run triage_agent -i issue="crash on login"  # override default inputs
 ```
 
 ### Inspect
 
 ```bash
-PYTHONPATH=src ./ai inspect <run_id>
-PYTHONPATH=src ./ai inspect <run_id> --steps
-PYTHONPATH=src ./ai inspect <run_id> --state-history
+ai inspect <run_id>                        # run summary
+ai inspect <run_id> --steps                # step-by-step detail
+ai inspect <run_id> --state-history        # full state evolution
 ```
 
-### Resume failed run
+### Resume from failure
 
 ```bash
-PYTHONPATH=src ./ai resume <run_id>
+ai resume <run_id>                         # continue from first failed step
+ai resume <run_id> --workflow triage.yaml  # validate against specific workflow file
 ```
 
-### Replay deterministically (no tool/model calls)
+Resume enforces a **workflow integrity lock**: if the YAML has been modified since the original run, resume is blocked. This prevents resuming against a different workflow than the one that started the run.
+
+### Replay (read-only simulation)
 
 ```bash
-PYTHONPATH=src ./ai replay <run_id>
-PYTHONPATH=src ./ai replay <run_id> --verify-state
-PYTHONPATH=src ./ai replay <run_id> --until <step_id>
-PYTHONPATH=src ./ai replay <run_id> --step-by-step
+ai replay <run_id>                         # replay from persisted history
+ai replay <run_id> --verify-state          # check state consistency
+ai replay <run_id> --step-by-step          # pause between steps
+ai replay <run_id> --until classify        # replay up to a specific step
 ```
 
-### Visualize runs
+No handlers, tools, or APIs are called during replay. It reconstructs the run from stored data.
+
+### Visualize
 
 ```bash
-PYTHONPATH=src ./ai visualize <run_id> --ascii
-PYTHONPATH=src ./ai visualize <run_id> --timeline
-PYTHONPATH=src ./ai visualize <run_id>        # default HTML at .runs/<run_id>/visualization.html (auto-opens browser)
-PYTHONPATH=src ./ai visualize <run_id> --html # generate HTML without auto-opening browser
+ai visualize <run_id> --ascii              # terminal-friendly view
+ai visualize <run_id> --timeline           # state change timeline
+ai visualize <run_id>                      # HTML report (auto-opens browser)
 ```
 
-### State diff debugging
-
-When you need to know exactly what changed in state:
+### Debug state changes
 
 ```bash
-PYTHONPATH=src ./ai state-diff <run_id>
-PYTHONPATH=src ./ai state-diff <run_id> --step <step_id>
+ai state-diff <run_id>                     # all steps
+ai state-diff <run_id> --step classify     # one step
 ```
 
-Example output style:
-
-```text
-Step: plan
-+ steps.plan.tasks = ['t1', 't2']
-+ steps.plan.priority = high
-- steps.plan.draft_message (was hello)
+```
+Step: classify
++ steps.classify.severity = critical
++ steps.classify.confidence = 0.94
 ```
 
-## Sample workflows (ready to run)
+---
 
-Location: `workflows/samples/`
+## Architecture
 
-- `01_linear_issue_summary.yaml`
-- `02_retry_and_backoff.yaml`
-- `03_branching_triage.yaml`
-- `04_fail_and_resume.yaml`
-- `versioning/code_review_agent_v1.yaml`
-- `versioning/code_review_agent_v2.yaml`
+### Execution engine
 
-Run any sample:
+The `Executor` runs steps using a pointer model (not list iteration), which supports both linear flow and conditional branching with the same mechanism.
 
-```bash
-PYTHONPATH=src ./ai run workflows/samples/01_linear_issue_summary.yaml
+For each step:
+1. Snapshot `state_before`
+2. Build step input from state path mapping
+3. Execute with retry policy (fixed or exponential backoff)
+4. Validate output against declared contract
+5. Write output to `steps.<step_id>` namespace
+6. Snapshot `state_after`
+7. Persist `StepExecution` record + new state version
+8. Resolve next step (branch rules or sequential fallback)
+
+### Handler system
+
+Handlers are Python functions for `model` steps:
+
+```python
+def classify_severity(state: RuntimeState) -> dict:
+    issue = state.get("issue")
+    # your logic here
+    return {"severity": "critical", "confidence": 0.94}
 ```
 
-Override the default input:
+Handlers are auto-discovered from the `handlers/` directory. Two conventions:
+- **Zero-config:** Every public function is registered by name
+- **Explicit:** Define `__handlers__ = {"name": fn}` for full control
 
-```bash
-PYTHONPATH=src ./ai run workflows/samples/01_linear_issue_summary.yaml -i issue="Custom text"
+### Tool system
+
+Tools are structured objects for `tool` steps with schema validation, timeouts, retries, and runtime context injection:
+
+```python
+class GitHubTool:
+    name = "tools.github"
+    description = "Fetches issue details from GitHub"
+    input_schema = {
+        "type": "object",
+        "properties": {"repo": {"type": "string"}, "issue_number": {"type": "integer"}}
+    }
+    timeout = 30.0
+    retries = 2
+
+    async def execute(self, input, context: RuntimeContext) -> ToolResult:
+        # ...
+        return ToolResult(success=True, output={"title": "...", "body": "..."})
 ```
 
-## How teams use this runtime in practice
+Tools are auto-discovered from the `tools/` directory.
 
-### 1) Incident triage with branch visibility
+### LLM provider registry
 
-Use case:
-- Route issue categories through different execution paths.
-
-Workflow:
-- `workflows/samples/03_branching_triage.yaml`
-
-Run:
-
-```bash
-PYTHONPATH=src ./ai run workflows/samples/03_branching_triage.yaml -i issue="bug"
-```
-
-Why this helps:
-- `ai inspect` shows actual branch path taken in execution order.
-- You can verify branch decisions from persisted state.
-
-### 2) Stabilize flaky external interactions
-
-Use case:
-- A model/tool call fails transiently (timeouts, throttling).
-
-Workflow:
-- `workflows/samples/02_retry_and_backoff.yaml`
-
-Run:
-
-```bash
-PYTHONPATH=src ./ai run workflows/samples/02_retry_and_backoff.yaml -i issue="Login API fails for invalid token"
-```
-
-Why this helps:
-- Retry behavior is explicit in YAML.
-- `attempt_count` and `last_error` show exactly what happened.
-
-### 3) Recover failed runs without restarting
-
-Use case:
-- Mid-run failure after successful earlier steps.
-
-Workflow:
-- `workflows/samples/04_fail_and_resume.yaml`
-
-Run + inspect + resume:
-
-```bash
-PYTHONPATH=src ./ai run workflows/samples/04_fail_and_resume.yaml -i issue="Login API fails"
-PYTHONPATH=src ./ai inspect <run_id> --steps
-PYTHONPATH=src ./ai resume <run_id>
-```
-
-Why this helps:
-- Completed steps are not re-executed.
-- Resume continues from the first non-completed step deterministically.
-
-### 4) Deterministic debugging for postmortems
-
-Use case:
-- You need to reproduce a historical run exactly for analysis.
-
-Replay:
-
-```bash
-PYTHONPATH=src ./ai replay <run_id> --verify-state --step-by-step
-```
-
-Why this helps:
-- Replay injects recorded outputs/states.
-- No external systems are invoked.
-- You can audit state transitions step-by-step.
-
-## Workflow authoring model
-
-A workflow is ordered YAML steps with first-class identity and version metadata.
-
-Minimal example:
+Multi-provider management with environment-based credential resolution:
 
 ```yaml
-workflow:
-  id: example_workflow
-  version: v1
-on_error: fail_fast
-steps:
-  - id: generate_summary
-    type: model
-    handler: generate_summary
-    inputs:
-      issue: inputs.issue
-
-  - id: echo_tool
-    type: tool
-    tool: tools.echo
-    inputs:
-      message: steps.generate_summary.summary
+# runtime.yaml
+llm:
+  providers:
+    openai:
+      api_key_env: OPENAI_API_KEY
+      models:
+        gpt-4:
+          temperature: 0.2
+          max_tokens: 4096
+    anthropic:
+      api_key_env: ANTHROPIC_API_KEY
+      models:
+        claude-3-opus:
+          temperature: 0.3
 ```
 
-### Workflow versioning
+API keys are **never stored on disk** — resolved from environment variables at call time.
 
-Every run records:
-- `workflow_id`
-- `workflow_version`
-- `workflow_hash`
-- `workflow_yaml` (full snapshot)
+### Persistence
 
-This enables safe workflow evolution and reproducible history.
+SQLite with three tables:
 
-Execution options:
+| Table | Purpose |
+|---|---|
+| `runs` | Run metadata, status, workflow snapshot, hashes |
+| `steps` | Per-step execution records with full state snapshots |
+| `state_versions` | Ordered state evolution for replay and debugging |
+
+### Error hierarchy
+
+All exceptions inherit from `RuntimeErrorBase`:
+
+| Exception | When |
+|---|---|
+| `WorkflowValidationError` | Invalid YAML structure |
+| `StepExecutionError` | Handler/tool failure |
+| `ToolNotFoundError` | Unknown tool reference |
+| `HandlerNotFoundError` | Unknown handler reference |
+| `BranchResolutionError` | No matching branch rule |
+| `WorkflowIntegrityError` | Workflow modified after run (blocks resume) |
+| `AgentValidationError` | Invalid agent manifest |
+| `RunNotFoundError` | Run ID not in storage |
+| `ReplayDataMissingError` | Incomplete data for replay |
+| `ReplayMismatchError` | Replay state diverges from recorded |
+
+---
+
+## Sample workflows
+
+Ready-to-run examples in `workflows/samples/`:
+
+| Workflow | Demonstrates |
+|---|---|
+| `01_linear_issue_summary.yaml` | Basic linear execution |
+| `02_retry_and_backoff.yaml` | Retry with exponential backoff |
+| `03_branching_triage.yaml` | Conditional branching by severity |
+| `04_fail_and_resume.yaml` | Deliberate failure + resume recovery |
+| `versioning/code_review_agent_v1.yaml` | Workflow versioning (v1) |
+| `versioning/code_review_agent_v2.yaml` | Workflow versioning (v2) |
 
 ```bash
-# latest registered version in ./workflows
-PYTHONPATH=src ./ai run code_review_agent -i issue="Login API fails"
+# Run a sample
+PYTHONPATH=src python -m agent_runtime.cli run workflows/samples/03_branching_triage.yaml -i issue="critical bug"
 
-# explicit version
-PYTHONPATH=src ./ai run code_review_agent@v2 -i issue="Login API fails"
-
-# direct file path still supported
-PYTHONPATH=src ./ai run workflows/samples/versioning/code_review_agent_v1.yaml -i issue="Login API fails"
+# Inspect the branch path
+PYTHONPATH=src python -m agent_runtime.cli inspect <run_id> --steps
 ```
 
-### Step fields
+---
 
-- `id`: unique step id
-- `type`: `model` or `tool`
-- `handler`: name of a registered handler function (for `model` steps). A handler is a Python function `(RuntimeState) -> dict` that does the actual work for the step — the runtime manages retries, state, and persistence around it.
-- `tool`: tool name from registry (for `tool` steps)
-- `inputs`: explicit state-to-input mapping
-- `inputs` (contract mode): list of logical keys the step reads
-- `outputs`: list of logical keys the step writes
-- `retry`: optional attempts/backoff
-- `next`: optional branching rules
+## Project structure
 
-### Step contracts (type-safe state boundaries)
-
-You can declare read/write contracts per step:
-
-```yaml
-workflow:
-  id: triage_contracts
-  version: v1
-inputs_contract: [issue]
-steps:
-  - id: generate_summary
-    type: model
-    handler: generate_summary
-    inputs: [issue]
-    outputs: [summary]
+```
+src/agent_runtime/
+├── cli.py                  # CLI command surface (11 commands)
+├── core.py                 # Executor engine, Run/Step datamodels
+├── config.py               # runtime.yaml loader with CLI overrides
+├── errors.py               # Exception hierarchy (10 types)
+├── state.py                # RuntimeState — namespaced state manager
+├── steps.py                # Handler registry + built-in handlers
+├── workflow.py             # YAML workflow parser and validator
+├── workflow_registry.py    # Version-aware workflow resolution
+├── handler_discovery.py    # Auto-discovery from handlers/ directory
+├── resume.py               # Resume point determination
+├── replay.py               # Deterministic replay engine
+├── logging.py              # Structured JSON logger
+├── utils.py                # Hashing, path resolution, safe_eval
+├── agent/                  # Agent manifest system
+│   ├── manifest.py         #   AgentManifest, loader, validator
+│   └── packaging.py        #   export/import as .tar.gz
+├── llm/                    # LLM provider registry
+│   └── registry.py         #   LLMProvider, ModelConfig, LLMRegistry
+├── memory/                 # Memory tier subsystem (scaffolding)
+│   ├── base.py             #   MemoryTier protocol, MemoryManager
+│   ├── working.py          #   WorkingMemory
+│   ├── episodic.py         #   EpisodicMemory
+│   ├── semantic.py         #   SemanticMemory
+│   └── procedural.py       #   ProceduralMemory
+├── storage/                # Persistence layer
+│   ├── base.py             #   Abstract Storage interface
+│   └── sqlite.py           #   SQLiteStorage implementation
+├── tools/                  # Tool subsystem
+│   ├── base.py             #   Tool protocol, ToolResult, RuntimeContext
+│   ├── registry.py         #   ToolRegistry
+│   ├── discovery.py        #   Auto-discovery from tools/ directory
+│   ├── echo.py             #   Built-in EchoTool
+│   └── validation.py       #   JSON Schema input validation
+└── visualization/          # Run visualization
+    ├── run_loader.py       #   Load run data for rendering
+    ├── graph_builder.py    #   Execution graph construction
+    ├── timeline_builder.py #   State delta timeline
+    ├── ascii_renderer.py   #   Terminal renderer
+    └── html_renderer.py    #   HTML report renderer
 ```
 
-What runtime enforces:
-- future-read prevention (step cannot read key not yet available)
-- output collision prevention (two steps cannot declare same output key)
-- output shape enforcement at execution (step output keys must match declared `outputs`)
+---
 
-### Retry block
+## Tests
 
-```yaml
-retry:
-  attempts: 3
-  backoff: exponential   # fixed | exponential
-  initial_delay: 1
-```
-
-### Branching block
-
-```yaml
-next:
-  - when: state.inputs.priority == "high"
-    goto: urgent_path
-  - default: fallback_path
-```
-
-## Runtime state contract
-
-State is always structured:
-
-```json
-{
-  "inputs": {},
-  "steps": {},
-  "runtime": {}
-}
-```
-
-- `inputs`: immutable request context
-- `steps`: per-step outputs (`steps.<step_id>`)
-- `runtime`: runtime metadata
-
-`RuntimeState` provides controlled APIs (`get`, `set`, `exists`, `delete`, `snapshot`, `diff`) while persistence remains JSON-compatible.
-
-## Storage and observability
-
-SQLite tables:
-
-- `runs`
-- `steps`
-- `state_versions`
-
-Step records include:
-
-- `status`, `attempt_count`, `error`, `last_error`
-- `state_before`, `state_after`
-- `execution_index`, timing fields
-
-This is what powers inspect, resume, and replay.
-
-## Determinism guarantees (current)
-
-- run stores `workflow_hash` and `input_hash`
-- resume validates workflow integrity (hash lock — modified YAML blocks resume)
-- replay uses persisted step data, not live external execution
-
-## Current boundaries
-
-Not in scope yet:
-
-- LLM API call adapters (handlers return stub output; registry + config are ready)
-- Memory tier persistence (interfaces wired, implementations are stubs)
-- DAG scheduler / parallel execution
-- full state schema/type enforcement
-- advanced expression language beyond constrained eval
-- idempotency keys for side-effecting tools
-- tool sandboxing / permissions
-
-## Run tests
+15 test suites covering the full runtime surface:
 
 ```bash
-PYTHONPATH=src pytest -q
+PYTHONPATH=src pytest tests/ -v
 ```
 
-## Project layout
+| Suite | Coverage |
+|---|---|
+| `test_runtime.py` | Core executor lifecycle |
+| `test_branching.py` | Conditional branch resolution |
+| `test_branch_resume.py` | Resume from branched paths |
+| `test_resume.py` | Resume validation and semantics |
+| `test_retry_policy.py` | Retry/backoff behavior |
+| `test_replay.py` | Deterministic replay engine |
+| `test_state_manager.py` | RuntimeState operations |
+| `test_state_diff.py` | State diff computation |
+| `test_state_history.py` | State evolution tracking |
+| `test_step_contracts.py` | Input/output contract enforcement |
+| `test_visualization.py` | Graph/timeline builders, renderers |
+| `test_workflow_versioning.py` | Workflow registry + version resolution |
+| `test_workflow_lock.py` | Workflow integrity hash lock |
+| `test_llm_registry.py` | LLM provider registry |
+| `test_agent_manifest.py` | Agent manifest: load, validate, export, import |
 
-- `src/agent_runtime/cli.py` - `ai` command surface
-- `src/agent_runtime/config.py` - `runtime.yaml` config loader with CLI override support
-- `src/agent_runtime/core.py` - executor and run/step lifecycle
-- `src/agent_runtime/errors.py` - exception hierarchy (`WorkflowValidationError`, `StepExecutionError`, etc.)
-- `src/agent_runtime/handler_discovery.py` - auto-discovery of handler functions from `handlers/` directory
-- `src/agent_runtime/logging.py` - structured JSON logger
-- `src/agent_runtime/replay.py` - deterministic replay engine
-- `src/agent_runtime/resume.py` - resume-point resolution
-- `src/agent_runtime/state.py` - runtime state manager (`RuntimeState`)
-- `src/agent_runtime/steps.py` - step handler registry and built-in handlers
-- `src/agent_runtime/utils.py` - hashing, state path resolution, safe expression eval
-- `src/agent_runtime/workflow.py` - YAML parsing and validation
-- `src/agent_runtime/workflow_registry.py` - workflow version resolution from directory scan
-- `src/agent_runtime/agent/` - agent manifest system (`AgentManifest`, `validate_agent`, `export_agent`, `import_agent`)
-- `src/agent_runtime/llm/` - LLM provider registry (`LLMRegistry`, `LLMProvider`, `ModelConfig`)
-- `src/agent_runtime/memory/` - memory tier subsystem (`WorkingMemory`, `EpisodicMemory`, `SemanticMemory`, `ProceduralMemory`, `MemoryManager`)
-- `src/agent_runtime/storage/` - persistence layer (abstract `Storage` + `SQLiteStorage`)
-- `src/agent_runtime/tools/` - tool interface (`Tool`, `ToolResult`, `RuntimeContext`), registry, schema validation, discovery
-- `src/agent_runtime/visualization/` - run visualization (`RunLoader`, `GraphBuilder`, `TimelineBuilder`, ASCII and HTML renderers)
+---
 
-## Additional docs
+## Design decisions
 
-- `docs/USAGE.md`
-- `docs/ARCHITECTURE.md`
-- `docs/EXECUTION_WALKTHROUGH.md`
+| Decision | Rationale |
+|---|---|
+| **Step pointer, not list iteration** | Same model supports linear flow, branching, and resume without special cases |
+| **Namespaced state** (`inputs`/`steps`/`runtime`) | Prevents key collisions, makes ownership explicit, enables safe contracts |
+| **Workflow hash lock on resume** | Prevents silent behavior changes when resuming against modified YAML |
+| **Replay is read-only simulation** | Separates "what happened" from "what would happen" — no side effects |
+| **Tools are objects, handlers are functions** | Tools need schema/timeout/retry metadata; handlers are pure logic |
+| **Auto-discovery for handlers and tools** | Zero-config default, explicit `__handlers__` dict for control |
+| **Credentials from env vars only** | API keys never touch disk or YAML — resolved at call time |
+| **Agent manifest as portable unit** | `agent.yaml` + export/import = agents are shippable artifacts |
+
+---
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| `docs/ARCHITECTURE.md` | Full architectural specification (20 sections) |
+| `docs/EXECUTION_WALKTHROUGH.md` | Step-by-step execution trace walkthrough |
+| `docs/USAGE.md` | Detailed usage guide |
+| `docs/GAPS_2026-03-16.md` | Known gaps and roadmap priorities |
+| `docs/STATUS_2026-03-16.md` | Current status of every subsystem |
+
+---
+
+## Setup
+
+### Requirements
+
+- Python 3.10+
+- Dependencies: `pip install -r requirements.txt`
+
+### Environment
+
+```bash
+conda create -n agent_runtime python=3.10
+conda activate agent_runtime
+pip install -r requirements.txt
+```
+
+### Initialize a project
+
+```bash
+PYTHONPATH=src python -m agent_runtime.cli init --path my-agents
+cd my-agents
+```
+
+### Configure LLM providers
+
+Edit `runtime.yaml` and set environment variables:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
