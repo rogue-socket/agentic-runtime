@@ -179,6 +179,16 @@ class _DotDict:
         """
         self._data = data
 
+    def __len__(self) -> int:
+        """Return length of wrapped data (dict, list, or string)."""
+        if isinstance(self._data, (dict, list, str)):
+            return len(self._data)
+        raise TypeError(f"object of type '{type(self._data).__name__}' has no len()")
+
+    def __bool__(self) -> bool:
+        """Return truthiness of wrapped data."""
+        return bool(self._data)
+
     def __getattr__(self, item: str) -> Any:
         """Return dictionary entries via attribute access.
 
@@ -239,12 +249,24 @@ class _SafeExprValidator(ast.NodeVisitor):
         """
         if isinstance(node, (ast.Expression, ast.BoolOp, ast.Compare, ast.Name, ast.Load, ast.Attribute,
                              ast.Constant, ast.UnaryOp, ast.BinOp, ast.And, ast.Or, ast.Eq, ast.NotEq,
-                             ast.Gt, ast.GtE, ast.Lt, ast.LtE)):
+                             ast.Gt, ast.GtE, ast.Lt, ast.LtE,
+                             ast.Not, ast.USub, ast.UAdd, ast.Invert,
+                             ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod)):
             return super().visit(node)
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id == "len" and len(node.args) == 1:
                 return super().visit(node)
         raise ValueError("Unsupported expression")
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        """Block access to dunder attributes for safety.
+
+        # TODO(security): P2 — Without this check, expressions like
+        # state.__init__.__globals__ leak the utils module's namespace.
+        """
+        if node.attr.startswith("_"):
+            raise ValueError(f"Access to private attribute '{node.attr}' is not allowed")
+        return self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:
         """Validate that only whitelisted symbol names are used.

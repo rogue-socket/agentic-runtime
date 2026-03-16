@@ -31,7 +31,6 @@ from typing import Any, Callable, Dict, List, Optional
 import copy
 import uuid
 import time
-from types import MappingProxyType
 import asyncio
 import inspect
 
@@ -76,7 +75,7 @@ class RunState:
     def data(self) -> StateDict:
         """Return current state dictionary (read-only proxy if frozen)."""
         current = self._runtime_state.to_dict()
-        return MappingProxyType(current) if self._frozen else current
+        return dict(current) if self._frozen else current
 
     def freeze(self) -> None:
         """Mark state read-only for external mutation attempts."""
@@ -345,6 +344,23 @@ class Executor:
         had_errors = False
         current_step_id: Optional[str] = start_step_id
         execution_index = self.storage.load_max_execution_index(run.run_id) + 1
+        try:
+            return await self.__execute_steps_loop(
+                run, current_step_id, on_error, state_version, had_errors, execution_index
+            )
+        except Exception:
+            if run.status == StepStatus.RUNNING:
+                run.set_status(StepStatus.FAILED, error="Unexpected runtime error", completed_at=utc_now().isoformat())
+                self.storage.update_run_status(
+                    run.run_id, run.status, run.error, completed_at=run.completed_at
+                )
+                run.freeze()
+            raise
+
+    async def __execute_steps_loop(
+        self, run: Run, current_step_id: Optional[str], on_error: str,
+        state_version: int, had_errors: bool, execution_index: int,
+    ) -> Run:
         while current_step_id is not None:
             if current_step_id not in self.step_map:
                 raise StepExecutionError(f"Unknown step id: {current_step_id}")

@@ -77,7 +77,7 @@ class RunReplayer:
         replayed = 0
 
         for idx, step in enumerate(steps, start=1):
-            if step.state_before is None or step.state_after is None:
+            if step.state_before is None:
                 raise ReplayDataMissingError(f"Replay data missing for step: {step.step_id}")
 
             if verify_state and state != step.state_before:
@@ -89,7 +89,9 @@ class RunReplayer:
                 f"[{idx}] {step.step_id} ({step.step_type}) status={step.status} attempts={step.attempt_count or 1} (replayed)"
             )
 
-            state = copy.deepcopy(step.state_after)
+            if step.state_after is not None:
+                state = copy.deepcopy(step.state_after)
+            # Failed steps have no state_after — state carries forward unchanged
             replayed += 1
 
             if until is not None and step.step_id == until:

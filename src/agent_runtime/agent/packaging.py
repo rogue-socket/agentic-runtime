@@ -76,6 +76,17 @@ def import_agent(archive_path: str, project_root: str = ".") -> AgentManifest:
         # Extract to temp
         with tarfile.open(archive_path, "r:gz") as tar:
             # Security: reject paths that escape the extraction directory
+            # TODO(security): P0 — Two vulnerabilities remain:
+            #   1. Symlink attack: member.name is checked but member.issym()/islnk()
+            #      is not. A symlink (e.g., workflow.yaml -> /etc/shadow) passes
+            #      validation. shutil.copy2 follows symlinks, leaking file contents.
+            #      Fix: reject members where member.issym() or member.islnk().
+            #   2. Manifest path traversal: After extraction, manifest.workflow,
+            #      manifest.handlers, and manifest.tools paths are joined to
+            #      project_root without traversal validation. A manifest declaring
+            #      workflow: "../../.ssh/authorized_keys" writes outside the project.
+            #      Fix: normalize all manifest paths and verify they resolve within
+            #      project_root + os.sep before copying.
             for member in tar.getmembers():
                 member_path = os.path.normpath(member.name)
                 if member_path.startswith("..") or os.path.isabs(member_path):
