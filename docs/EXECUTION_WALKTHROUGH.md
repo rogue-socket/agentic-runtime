@@ -1,3 +1,12 @@
+<!--
+File: docs/EXECUTION_WALKTHROUGH.md
+Purpose: Step-by-step execution narrative for run, resume, replay, and visualization flows.
+Description: Shows runtime bootstrapping, state transitions, persistence checkpoints, and debug loops.
+Dependencies: CLI and runtime internals under src/agent_runtime.
+Inputs/Outputs: Input for developer learning; output is operational mental model.
+Side Effects: None.
+-->
+
 # Execution Walkthrough
 
 This walkthrough is a textbook-style trace of what happens at runtime for a typical workflow run, then failure/resume, then replay.

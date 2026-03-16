@@ -1,4 +1,27 @@
 #!/usr/bin/env python3
+"""File: ai
+
+Purpose:
+Executable entrypoint script for the runtime CLI.
+
+Description:
+Delegates process startup to `agent_runtime.cli.main` so users can
+invoke project commands via `./ai`.
+
+Key Components:
+- `agent_runtime.cli.main`
+
+Dependencies:
+- Python interpreter with `PYTHONPATH=src`
+
+Inputs/Outputs:
+- Input: CLI arguments from shell
+- Output: process exit code and console output from CLI subcommands
+
+Side Effects:
+- Depends on chosen command; can create DB records and files.
+"""
+
 from agent_runtime.cli import main
 
 if __name__ == "__main__":

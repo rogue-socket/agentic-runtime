@@ -1,9 +1,25 @@
 from __future__ import annotations
 
+"""File: tests/test_state_diff.py
+
+Purpose:
+Validate deep path-level state diff generation.
+"""
+
 from agent_runtime.state import RuntimeState
 
 
 def test_diff_paths_nested_changes() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_diff_paths_nested_changes
+        >>> # Example 2
+        >>> test_diff_paths_nested_changes
+    """
     before = {
         "inputs": {"issue": "x"},
         "steps": {"plan": {"draft_message": "hello"}},

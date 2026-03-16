@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+"""File: src/agent_runtime/resume.py
+
+Purpose:
+Provide resume-point resolution and resume eligibility checks.
+
+Description:
+Contains helpers used by CLI and executor resume flow to validate run
+status and compute the correct next step after failure/history replay.
+"""
+
 from typing import Dict, List, Optional, Tuple
 
 from .core import NextRule, StepDefinition, StepExecution, StepStatus
@@ -11,6 +21,13 @@ def determine_resume_step(
     workflow_steps: List[StepDefinition],
     executions: List[StepExecution],
 ) -> Optional[str]:
+    """Compute step id from which execution should resume.
+
+    Strategy:
+    - Resume failed step directly if one exists in history.
+    - If no failures, resolve next step from final executed step/branch.
+    - If no executions, return first workflow step.
+    """
     for execution in executions:
         if execution.status == StepStatus.FAILED:
             return execution.step_id
@@ -27,6 +44,7 @@ def determine_resume_step(
 
 
 def _resolve_next_step(step_def: StepDefinition, workflow_steps: List[StepDefinition], state: dict) -> Optional[str]:
+    """Resolve post-step next target using branch/default/sequential logic."""
     step_order = [s.step_id for s in workflow_steps]
     if not step_def.next_rules:
         idx = step_order.index(step_def.step_id)
@@ -51,6 +69,11 @@ def _resolve_next_step(step_def: StepDefinition, workflow_steps: List[StepDefini
 
 
 def validate_resume(run_status: str) -> None:
+    """Validate that a run status is resumable.
+
+    Raises:
+        StepExecutionError: For non-failed statuses.
+    """
     if run_status == StepStatus.COMPLETED or run_status == "COMPLETED_WITH_ERRORS":
         raise StepExecutionError("Cannot resume a completed run.")
     if run_status == StepStatus.RUNNING:

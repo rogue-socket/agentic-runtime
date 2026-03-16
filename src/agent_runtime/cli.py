@@ -1,5 +1,30 @@
 from __future__ import annotations
 
+"""File: src/agent_runtime/cli.py
+
+Purpose:
+Implement `ai` command-line interface for runtime operations.
+
+Description:
+Defines command parsing and handlers for project init, run, inspect,
+resume, replay, state diff, and visualization commands.
+
+Key Components:
+- `run_cli` command dispatcher
+- helper registries for default tool/memory setup
+- inspect/state-history rendering helpers
+
+Dependencies:
+- Core executor/runtime modules, SQLite storage, visualization builders
+
+Inputs/Outputs:
+- Input: CLI args and workflow references
+- Output: console reports, exit codes, and persisted run artifacts
+
+Side Effects:
+- Creates files/directories, writes DB rows, may open browser.
+"""
+
 import argparse
 import os
 from typing import Any, Dict, List, Optional
@@ -44,6 +69,7 @@ steps:
 
 
 def _init_project(target_dir: str) -> None:
+    """Create workflow scaffold files in target directory."""
     workflows_dir = os.path.join(target_dir, "workflows")
     os.makedirs(workflows_dir, exist_ok=True)
 
@@ -54,12 +80,14 @@ def _init_project(target_dir: str) -> None:
 
 
 def _default_tool_registry() -> ToolRegistry:
+    """Build default tool registry used by CLI runtime commands."""
     registry = ToolRegistry()
     registry.register(EchoTool())
     return registry
 
 
 def _default_memory_manager() -> MemoryManager:
+    """Build default in-memory memory-manager implementation."""
     return MemoryManager(
         working=WorkingMemory(),
         episodic=EpisodicMemory(),
@@ -73,6 +101,7 @@ def _load_workflow_for_run(
     handler_registry: StepHandlerRegistry,
     workflows_dir: str = "workflows",
 ) -> Dict[str, Any]:
+    """Resolve workflow from file path or id/version registry reference."""
     if os.path.exists(workflow_ref):
         return load_workflow(workflow_ref, handler_registry)
 
@@ -82,6 +111,7 @@ def _load_workflow_for_run(
 
 
 def run_cli(argv: Optional[List[str]] = None) -> int:
+    """Execute CLI command dispatch and return process exit code."""
     parser = argparse.ArgumentParser(prog="ai")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -330,6 +360,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
 
 def main() -> None:
+    """CLI entrypoint wrapper that exits with command status code."""
     raise SystemExit(run_cli())
 
 
@@ -338,12 +369,14 @@ if __name__ == "__main__":
 
 
 def _diff_state(before: dict, after: dict) -> dict:
+    """Return top-level state diff summary for CLI output."""
     # [TODO] Improve diff granularity beyond top-level keys.
     # [TODO] Add CLI graph visualization for branching workflows.
     return RuntimeState.diff(before, after)
 
 
 def _print_state_history(steps, latest_state) -> None:
+    """Print per-step state mutation summary for inspect command."""
     # [TODO] Support snapshot compression for large states.
     # [TODO] Handle large state output safely (pagination or truncation).
     # [TODO] Add secret redaction for sensitive fields.
@@ -381,6 +414,7 @@ def _print_state_history(steps, latest_state) -> None:
 
 
 def _render_timeline_text(run_id: str, timeline) -> str:
+    """Render timeline view to plain text for `visualize --timeline`."""
     lines = [f"Run: {run_id}", "", "State Timeline", "Initial State:", str(timeline.initial_state)]
     for item in timeline.steps:
         lines.append("\n----------------------------------------")

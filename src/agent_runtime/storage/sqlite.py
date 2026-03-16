@@ -1,5 +1,30 @@
 from __future__ import annotations
 
+"""File: src/agent_runtime/storage/sqlite.py
+
+Purpose:
+Implement SQLite-backed persistence for runs, steps, and state versions.
+
+Description:
+Provides concrete `Storage` operations used by executor, replay, and
+inspection paths, including schema bootstrap and lightweight migrations.
+
+Key Components:
+- `SQLiteStorage`
+- table creation/migration helpers
+- CRUD operations for run/step/state records
+
+Dependencies:
+- `sqlite3` and JSON helpers from `agent_runtime.utils`
+
+Inputs/Outputs:
+- Input: runtime dataclasses and run identifiers
+- Output: durable records and reconstructed runtime dataclasses
+
+Side Effects:
+- Creates/updates SQLite database schema and rows on disk.
+"""
+
 from typing import Any, Dict, Optional, TYPE_CHECKING
 import sqlite3
 
@@ -11,16 +36,21 @@ if TYPE_CHECKING:
 
 
 class SQLiteStorage(Storage):
+    """SQLite-backed implementation of the runtime storage contract."""
+
     def __init__(self, db_path: str) -> None:
+        """Initialize storage and ensure schema exists."""
         self.db_path = db_path
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
+        """Open SQLite connection with row access by column name."""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
 
     def _init_db(self) -> None:
+        """Create base tables and backfill newer columns if missing."""
         with self._connect() as conn:
             conn.executescript(
                 """
@@ -73,6 +103,7 @@ class SQLiteStorage(Storage):
             self._ensure_steps_columns(conn)
 
     def _ensure_steps_columns(self, conn: sqlite3.Connection) -> None:
+        """Add missing `steps` table columns for backward compatibility."""
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(steps)").fetchall()}
         if "attempts" not in columns:
             conn.execute("ALTER TABLE steps ADD COLUMN attempts INTEGER")
@@ -86,6 +117,7 @@ class SQLiteStorage(Storage):
             conn.execute("ALTER TABLE steps ADD COLUMN execution_index INTEGER")
 
     def _ensure_runs_columns(self, conn: sqlite3.Connection) -> None:
+        """Add missing `runs` table columns for backward compatibility."""
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
         if "workflow_hash" not in columns:
             conn.execute("ALTER TABLE runs ADD COLUMN workflow_hash TEXT")
@@ -99,6 +131,7 @@ class SQLiteStorage(Storage):
             conn.execute("ALTER TABLE runs ADD COLUMN input_hash TEXT")
 
     def create_run(self, run: Run) -> None:
+        """Insert initial run metadata row."""
         with self._connect() as conn:
             conn.execute(
                 """
@@ -130,6 +163,7 @@ class SQLiteStorage(Storage):
         started_at: Optional[str] = None,
         completed_at: Optional[str] = None,
     ) -> None:
+        """Update run status and optional timestamps/error."""
         with self._connect() as conn:
             conn.execute(
                 """
@@ -143,6 +177,13 @@ class SQLiteStorage(Storage):
             )
 
     def append_step(self, run_id: str, step: StepExecution) -> None:
+        """Insert one step execution record.
+
+        # TODO: BUG
+        # `if step.input else None` (and similar checks below) stores empty
+        # dict payloads as NULL, losing the distinction between `{}` and
+        # missing data. Suggested fix: test `is not None` instead of truthiness.
+        """
         with self._connect() as conn:
             conn.execute(
                 """
@@ -169,6 +210,7 @@ class SQLiteStorage(Storage):
             )
 
     def save_state(self, run_id: str, step_id: Optional[str], version: int, state: Dict[str, Any]) -> None:
+        """Insert one versioned state snapshot row."""
         from ..utils import utc_now
 
         with self._connect() as conn:
@@ -187,6 +229,7 @@ class SQLiteStorage(Storage):
             )
 
     def load_run(self, run_id: str) -> Run:
+        """Load run metadata row and convert to `Run` dataclass."""
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
             if row is None:
@@ -211,6 +254,7 @@ class SQLiteStorage(Storage):
             return run
 
     def load_steps(self, run_id: str) -> list[StepExecution]:
+        """Load ordered step execution rows for a run id."""
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM steps WHERE run_id = ? ORDER BY execution_index ASC, id ASC",
@@ -240,6 +284,7 @@ class SQLiteStorage(Storage):
             return steps
 
     def load_latest_state(self, run_id: str) -> Dict[str, Any]:
+        """Load most recent state snapshot by version."""
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT state_json FROM state_versions WHERE run_id = ? ORDER BY version DESC LIMIT 1",
@@ -250,6 +295,7 @@ class SQLiteStorage(Storage):
             return json_loads(row["state_json"])
 
     def load_initial_state(self, run_id: str) -> Dict[str, Any]:
+        """Load first persisted state snapshot by version."""
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT state_json FROM state_versions WHERE run_id = ? ORDER BY version ASC LIMIT 1",
@@ -260,6 +306,7 @@ class SQLiteStorage(Storage):
             return json_loads(row["state_json"])
 
     def load_latest_state_version(self, run_id: str) -> int:
+        """Return max state version number for a run."""
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT MAX(version) as max_version FROM state_versions WHERE run_id = ?",
@@ -270,6 +317,7 @@ class SQLiteStorage(Storage):
             return int(row["max_version"])
 
     def load_max_execution_index(self, run_id: str) -> int:
+        """Return max persisted execution index for a run."""
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT MAX(execution_index) as max_execution_index FROM steps WHERE run_id = ?",

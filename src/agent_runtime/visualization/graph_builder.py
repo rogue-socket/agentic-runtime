@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+"""File: src/agent_runtime/visualization/graph_builder.py
+
+Purpose:
+Build execution graph and branch decision views for visualization.
+
+Description:
+Converts persisted run timeline plus workflow metadata into graph nodes,
+edges, and branch evaluation records for renderers.
+"""
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -10,6 +20,8 @@ from .run_loader import RunVisualizationData
 
 @dataclass
 class BranchDecision:
+    """Represents one evaluated branch rule for a step."""
+
     step_id: str
     condition: str
     result: bool
@@ -19,6 +31,8 @@ class BranchDecision:
 
 @dataclass
 class GraphNode:
+    """Represents one step node in visualization graph."""
+
     step_id: str
     step_type: str
     status: str
@@ -29,6 +43,8 @@ class GraphNode:
 
 @dataclass
 class GraphEdge:
+    """Represents a directed edge between graph nodes."""
+
     source: str
     target: str
     kind: str
@@ -36,13 +52,18 @@ class GraphEdge:
 
 @dataclass
 class GraphView:
+    """Container for graph nodes, edges, and branch decisions."""
+
     nodes: List[GraphNode]
     edges: List[GraphEdge]
     branch_decisions: List[BranchDecision]
 
 
 class GraphBuilder:
+    """Build `GraphView` from `RunVisualizationData`."""
+
     def build(self, data: RunVisualizationData) -> GraphView:
+        """Construct execution and branch graph data from persisted run state."""
         executed_ids = [step.step_id for step in data.steps]
         executed_set = set(executed_ids)
 
@@ -121,6 +142,9 @@ class GraphBuilder:
 
 
 class StateDiffBuilder:
+    """Compatibility helper delegating to `RuntimeState.diff_paths`."""
+
     @staticmethod
     def diff(before: Dict[str, Any], after: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Return deep path-level diff for visualization consumers."""
         return RuntimeState.diff_paths(before, after)

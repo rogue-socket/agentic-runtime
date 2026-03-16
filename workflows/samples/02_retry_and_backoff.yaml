@@ -1,3 +1,10 @@
+# File: workflows/samples/02_retry_and_backoff.yaml
+# Purpose: Demonstrates per-step retry and backoff configuration.
+# Description: Configures exponential backoff on the model step before delivering output.
+# Dependencies: Runtime retry policy handling, `generate_summary`, and `tools.echo`.
+# Inputs/Outputs: Reads `inputs.issue`; writes summary and delivery tool output.
+# Side Effects: May introduce execution delay during retries.
+
 workflow:
   id: retry_and_backoff
   version: v1

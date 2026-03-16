@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+"""File: src/agent_runtime/visualization/html_renderer.py
+
+Purpose:
+Render run visualization data into a standalone HTML report.
+
+Description:
+Builds HTML sections for graph summary, branch decisions, step timeline,
+tool calls, and state timeline, then writes report to disk.
+"""
+
 from pathlib import Path
 from typing import Any
 import html
@@ -10,6 +20,17 @@ from .timeline_builder import TimelineView
 
 
 def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_path: str) -> str:
+    """Generate and write HTML visualization for a run.
+
+    Args:
+        run_id: Run identifier shown in report metadata.
+        graph: Graph view model from `GraphBuilder`.
+        timeline: Timeline view model from `TimelineBuilder`.
+        output_path: Destination HTML file path.
+
+    Returns:
+        Absolute/relative path written to disk.
+    """
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -172,4 +193,5 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
 
 
 def _pretty_json(data: Any) -> str:
+    """Render JSON-like object with stable formatting for HTML blocks."""
     return json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) if data is not None else "null"

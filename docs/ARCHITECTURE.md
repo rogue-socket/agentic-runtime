@@ -1,3 +1,12 @@
+<!--
+File: docs/ARCHITECTURE.md
+Purpose: Defines the runtime's architectural model and execution contracts.
+Description: Documents entities, control flow, state model, persistence, replay, and extension points.
+Dependencies: Mirrors behavior implemented in src/agent_runtime.
+Inputs/Outputs: Input for developers; output is shared architecture understanding.
+Side Effects: None.
+-->
+
 # Architecture
 
 This document describes the runtime as an execution system: data model, control flow, persistence, determinism guarantees, and extension points.

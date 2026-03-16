@@ -1,3 +1,11 @@
+# File: requirements.txt
+# Purpose: Declares minimal runtime and test dependencies for agentic-runtime.
+# Description: Pins the baseline packages needed for workflow parsing, typing support,
+# and test execution in local developer environments.
+# Dependencies: Consumed by pip install -r requirements.txt.
+# Inputs/Outputs: Input to pip; output is an installed Python environment.
+# Side Effects: Installs packages into the active Python/Conda environment.
+
 PyYAML
 pytest
 typing-extensions

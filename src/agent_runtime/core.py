@@ -1,5 +1,30 @@
 from __future__ import annotations
 
+"""File: src/agent_runtime/core.py
+
+Purpose:
+Implement runtime execution engine, run/step datamodels, and control flow.
+
+Description:
+Defines the `Executor` that runs workflow steps with retry, tool/model
+dispatch, branch routing, state persistence, and terminal status updates.
+
+Key Components:
+- Dataclasses: `Run`, `RunState`, `StepDefinition`, `StepExecution`
+- Execution orchestrator: `Executor`
+- Retry/backoff and branch resolution helpers
+
+Dependencies:
+- Storage abstraction, memory manager, tool registry, runtime state utilities
+
+Inputs/Outputs:
+- Input: normalized workflow steps and initial run state
+- Output: persisted run/step/state records and terminal run result
+
+Side Effects:
+- Writes to storage, may sleep for backoff, executes tool handlers.
+"""
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
@@ -23,6 +48,8 @@ StepHandler = Callable[[RuntimeState], StateDict]
 
 
 class StepStatus(str):
+    """Canonical run/step status constants."""
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
@@ -31,27 +58,35 @@ class StepStatus(str):
 
 @dataclass
 class RunState:
+    """Runtime wrapper around mutable run state payload."""
+
     _data: StateDict
     _frozen: bool = False
 
     def __post_init__(self) -> None:
+        """Initialize underlying `RuntimeState` wrapper."""
         self._runtime_state = RuntimeState(self._data, enforce_structure=True)
 
     def snapshot(self) -> StateDict:
+        """Return deep-copy state snapshot."""
         return self._runtime_state.snapshot()
 
     @property
     def data(self) -> StateDict:
+        """Return current state dictionary (read-only proxy if frozen)."""
         current = self._runtime_state.to_dict()
         return MappingProxyType(current) if self._frozen else current
 
     def freeze(self) -> None:
+        """Mark state read-only for external mutation attempts."""
         self._frozen = True
 
     def runtime(self) -> RuntimeState:
+        """Expose underlying runtime-state helper."""
         return self._runtime_state
 
     def set_step_output(self, step_id: str, output: StateDict) -> None:
+        """Persist output under `steps.<step_id>` namespace."""
         if self._frozen:
             raise StepExecutionError("RunState is frozen.")
         self._runtime_state.set_step_output(step_id, output, writer=step_id)
@@ -59,6 +94,8 @@ class RunState:
 
 @dataclass
 class StepDefinition:
+    """Workflow step definition normalized for execution."""
+
     step_id: str
     step_type: str
     handler: Optional[StepHandler] = None
@@ -73,6 +110,8 @@ class StepDefinition:
 
 @dataclass
 class NextRule:
+    """Branch rule mapping condition to target step id."""
+
     when: Optional[str]
     goto: str
     is_default: bool = False
@@ -80,6 +119,8 @@ class NextRule:
 
 @dataclass
 class RetryPolicy:
+    """Retry/backoff configuration for one step."""
+
     attempts: int = 1
     backoff: str = "fixed"
     initial_delay: float = 0.0
@@ -87,6 +128,8 @@ class RetryPolicy:
 
 @dataclass
 class StepExecution:
+    """Persisted execution record for one step attempt lifecycle."""
+
     step_id: str
     step_type: str
     status: str = StepStatus.PENDING
@@ -105,6 +148,8 @@ class StepExecution:
 
 @dataclass
 class Run:
+    """Top-level run record and mutable in-memory execution aggregate."""
+
     run_id: str
     workflow_id: str
     workflow_version: Optional[str]
@@ -124,14 +169,17 @@ class Run:
 
     @property
     def steps(self) -> List[StepExecution]:
+        """Return step list (copy when run is frozen)."""
         return list(self._steps) if self._frozen else self._steps
 
     def add_step(self, step: StepExecution) -> None:
+        """Append step record while run is mutable."""
         if self._frozen:
             raise StepExecutionError("Run is frozen.")
         self._steps.append(step)
 
     def set_status(self, status: str, error: Optional[str] = None, completed_at: Optional[str] = None) -> None:
+        """Update run status and optional error/terminal timestamp."""
         if self._frozen:
             raise StepExecutionError("Run is frozen.")
         self.status = status
@@ -141,11 +189,14 @@ class Run:
             self.completed_at = completed_at
 
     def freeze(self) -> None:
+        """Freeze run and state to prevent further mutation."""
         self._frozen = True
         self.state.freeze()
 
 
 class Executor:
+    """Execute workflow steps and persist deterministic run history."""
+
     def __init__(
         self,
         steps: List[StepDefinition],
@@ -154,6 +205,7 @@ class Executor:
         memory_manager: MemoryManager,
         tool_registry: ToolRegistry,
     ) -> None:
+        """Initialize executor dependencies and step lookup tables."""
         self.steps = steps
         self.step_order = [step.step_id for step in steps]
         self.step_map = {step.step_id: step for step in steps}
@@ -173,6 +225,11 @@ class Executor:
         workflow_steps: Optional[List[str]] = None,
         input_hash: Optional[str] = None,
     ) -> Run:
+        """Create a new run and execute workflow from the first step.
+        """
+        if not self.step_order:
+            raise StepExecutionError("Workflow must contain at least one step.")
+
         run = Run(
             run_id=str(uuid.uuid4()),
             workflow_id=workflow_id,
@@ -204,6 +261,7 @@ class Executor:
         on_error: str,
         state_version: int,
     ) -> Run:
+        """Resume an existing failed run from a specific step/state version."""
         run.state = RunState(_data=copy.deepcopy(resume_state))
         run.set_status(StepStatus.RUNNING)
         if run.started_at is None:
@@ -212,6 +270,7 @@ class Executor:
         return self._execute_steps(run, start_step_id=start_step_id, on_error=on_error, state_version=state_version)
 
     def _execute_steps(self, run: Run, start_step_id: str, on_error: str, state_version: int) -> Run:
+        """Execute steps sequentially/branched from a starting step id."""
         had_errors = False
         current_step_id: Optional[str] = start_step_id
         execution_index = self.storage.load_max_execution_index(run.run_id) + 1
@@ -354,6 +413,13 @@ class Executor:
         return run
 
     def _execute_tool(self, tool, tool_input: Dict[str, Any], run_id: str, step_id: str, state: StateDict) -> Dict[str, Any]:
+        """Execute tool with validation, retries, and structured events.
+
+        # TODO: BUG
+        # Uses `asyncio.run(...)` which raises RuntimeError when called from
+        # an already running event loop (e.g., embedded async host apps).
+        # Suggested fix: support both sync/async contexts via loop detection.
+        """
         validate_input(tool_input, tool.input_schema)
         context = RuntimeContext(run_id=run_id, step_id=step_id, state=state, logger=self.logger)
 
@@ -405,6 +471,7 @@ class Executor:
         raise StepExecutionError(f"Tool execution failed: {last_error}")
 
     def _resolve_next_step(self, step_def: StepDefinition, state: StateDict) -> Optional[str]:
+        """Resolve next step via branch rules or sequential fallback."""
         # [TODO] Detect infinite loops caused by circular branching.
         # [TODO] Support parallel step execution when DAG scheduler is introduced.
         if not step_def.next_rules:
@@ -430,6 +497,7 @@ class Executor:
 
 
 def _compute_backoff_delay(attempt: int, backoff: str, initial_delay: float) -> float:
+    """Compute retry delay for fixed or exponential backoff modes."""
     if attempt <= 1:
         return 0.0
     if backoff == "fixed":

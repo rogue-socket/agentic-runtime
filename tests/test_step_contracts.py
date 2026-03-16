@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""File: tests/test_step_contracts.py
+
+Purpose:
+Validate workflow contract parsing and runtime output enforcement rules.
+"""
+
 import tempfile
 
 import pytest
@@ -18,6 +24,16 @@ from agent_runtime.workflow import load_workflow_from_text
 
 
 def _memory_manager() -> MemoryManager:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _memory_manager
+        >>> # Example 2
+        >>> _memory_manager
+    """
     return MemoryManager(
         working=WorkingMemory(),
         episodic=EpisodicMemory(),
@@ -27,12 +43,32 @@ def _memory_manager() -> MemoryManager:
 
 
 def _storage() -> SQLiteStorage:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _storage
+        >>> # Example 2
+        >>> _storage
+    """
     tmp = tempfile.NamedTemporaryFile(delete=False)
     tmp.close()
     return SQLiteStorage(tmp.name)
 
 
 def test_contract_future_read_rejected() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_contract_future_read_rejected
+        >>> # Example 2
+        >>> test_contract_future_read_rejected
+    """
     raw = """
 name: contracts
 inputs_contract: [issue]
@@ -56,6 +92,16 @@ steps:
 
 
 def test_contract_output_collision_rejected() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_contract_output_collision_rejected
+        >>> # Example 2
+        >>> test_contract_output_collision_rejected
+    """
     raw = """
 name: contracts
 inputs_contract: [issue]
@@ -79,10 +125,30 @@ steps:
 
 
 def test_runtime_output_contract_enforced() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_runtime_output_contract_enforced
+        >>> # Example 2
+        >>> test_runtime_output_contract_enforced
+    """
     storage = _storage()
     tool_registry = ToolRegistry()
 
     def bad_handler(state):
+        """Auto-generated documentation for this callable.
+        
+        Describes purpose, expected inputs/outputs, and behavior in this module.
+        
+        Example:
+            >>> # Example 1
+            >>> bad_handler
+            >>> # Example 2
+            >>> bad_handler
+        """
         return {"wrong": "x"}
 
     steps = [
@@ -102,6 +168,16 @@ def test_runtime_output_contract_enforced() -> None:
 
 
 def test_contract_inputs_list_maps_correctly() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_contract_inputs_list_maps_correctly
+        >>> # Example 2
+        >>> test_contract_inputs_list_maps_correctly
+    """
     raw = """
 name: contracts
 inputs_contract: [issue]
@@ -115,6 +191,16 @@ steps:
     reg = StepHandlerRegistry()
 
     def summarize(state):
+        """Auto-generated documentation for this callable.
+        
+        Describes purpose, expected inputs/outputs, and behavior in this module.
+        
+        Example:
+            >>> # Example 1
+            >>> summarize
+            >>> # Example 2
+            >>> summarize
+        """
         return {"summary": f"sum:{state.get('issue')}"}
 
     reg.register("step_summarize", summarize)

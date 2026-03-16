@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""File: tests/test_retry_policy.py
+
+Purpose:
+Test retry policy semantics across successful and exhausted attempts.
+"""
+
 import tempfile
 from typing import Any, Dict
 
@@ -17,12 +23,32 @@ from agent_runtime.workflow import load_workflow
 
 
 def _storage() -> SQLiteStorage:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _storage
+        >>> # Example 2
+        >>> _storage
+    """
     tmp = tempfile.NamedTemporaryFile(delete=False)
     tmp.close()
     return SQLiteStorage(tmp.name)
 
 
 def _memory_manager() -> MemoryManager:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _memory_manager
+        >>> # Example 2
+        >>> _memory_manager
+    """
     return MemoryManager(
         working=WorkingMemory(),
         episodic=EpisodicMemory(),
@@ -32,12 +58,32 @@ def _memory_manager() -> MemoryManager:
 
 
 def test_retry_success_attempt_count() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_retry_success_attempt_count
+        >>> # Example 2
+        >>> test_retry_success_attempt_count
+    """
     storage = _storage()
     tool_registry = ToolRegistry()
 
     attempts = {"count": 0}
 
     def flaky_handler(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Auto-generated documentation for this callable.
+        
+        Describes purpose, expected inputs/outputs, and behavior in this module.
+        
+        Example:
+            >>> # Example 1
+            >>> flaky_handler
+            >>> # Example 2
+            >>> flaky_handler
+        """
         attempts["count"] += 1
         if attempts["count"] < 2:
             raise ValueError("transient")
@@ -62,10 +108,30 @@ def test_retry_success_attempt_count() -> None:
 
 
 def test_retry_exhaustion_marks_failed() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_retry_exhaustion_marks_failed
+        >>> # Example 2
+        >>> test_retry_exhaustion_marks_failed
+    """
     storage = _storage()
     tool_registry = ToolRegistry()
 
     def always_fail(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Auto-generated documentation for this callable.
+        
+        Describes purpose, expected inputs/outputs, and behavior in this module.
+        
+        Example:
+            >>> # Example 1
+            >>> always_fail
+            >>> # Example 2
+            >>> always_fail
+        """
         raise ValueError("fail")
 
     steps = [
@@ -87,10 +153,30 @@ def test_retry_exhaustion_marks_failed() -> None:
 
 
 def test_no_retry_defaults_to_one_attempt() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_no_retry_defaults_to_one_attempt
+        >>> # Example 2
+        >>> test_no_retry_defaults_to_one_attempt
+    """
     storage = _storage()
     tool_registry = ToolRegistry()
 
     def ok(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Auto-generated documentation for this callable.
+        
+        Describes purpose, expected inputs/outputs, and behavior in this module.
+        
+        Example:
+            >>> # Example 1
+            >>> ok
+            >>> # Example 2
+            >>> ok
+        """
         return {"ok": True}
 
     steps = [StepDefinition(step_id="ok", step_type="model", handler=ok, input_spec={"issue": "inputs.issue"})]
@@ -102,6 +188,16 @@ def test_no_retry_defaults_to_one_attempt() -> None:
 
 
 def test_workflow_retry_validation(tmp_path) -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_workflow_retry_validation
+        >>> # Example 2
+        >>> test_workflow_retry_validation
+    """
     bad_yaml = tmp_path / "bad.yaml"
     bad_yaml.write_text(
         "name: wf\nsteps:\n  - id: a\n    type: model\n    handler: generate_summary\n    retry:\n      attempts: 0\n",

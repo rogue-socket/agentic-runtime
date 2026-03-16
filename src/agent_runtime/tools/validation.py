@@ -1,9 +1,26 @@
 from __future__ import annotations
 
+"""File: src/agent_runtime/tools/validation.py
+
+Purpose:
+Provide lightweight schema validation for tool input payloads.
+
+Description:
+Supports a constrained subset of JSON-schema-like type checks used by
+the runtime before dispatching tool execution.
+"""
+
 from typing import Any, Dict
 
 
 def validate_input(payload: Dict[str, Any], schema: Dict[str, Any]) -> None:
+    """Validate payload fields against a basic object schema.
+
+    # TODO: BUG
+    # The validator ignores `required` keys entirely, allowing calls with
+    # missing mandatory fields. Suggested fix: enforce `required` array and
+    # emit clear validation errors before tool execution.
+    """
     if not schema:
         return
     if schema.get("type") != "object":

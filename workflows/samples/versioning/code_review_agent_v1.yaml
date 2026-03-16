@@ -1,3 +1,10 @@
+# File: workflows/samples/versioning/code_review_agent_v1.yaml
+# Purpose: Versioned workflow sample (v1) for registry resolution tests.
+# Description: Baseline two-step code review workflow for version comparison demos.
+# Dependencies: Workflow registry (`workflow.id` + `version`), `generate_summary`, `tools.echo`.
+# Inputs/Outputs: Reads `inputs.issue`; writes summary and echo output.
+# Side Effects: Produces run metadata with workflow_version=v1.
+
 workflow:
   id: code_review_agent
   version: v1

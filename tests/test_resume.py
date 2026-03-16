@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""File: tests/test_resume.py
+
+Purpose:
+Validate resume eligibility checks and resume execution flow.
+"""
+
 import tempfile
 from typing import Any, Dict
 
@@ -18,12 +24,32 @@ from agent_runtime.tools.registry import ToolRegistry
 
 
 def _storage() -> SQLiteStorage:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _storage
+        >>> # Example 2
+        >>> _storage
+    """
     tmp = tempfile.NamedTemporaryFile(delete=False)
     tmp.close()
     return SQLiteStorage(tmp.name)
 
 
 def _memory_manager() -> MemoryManager:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _memory_manager
+        >>> # Example 2
+        >>> _memory_manager
+    """
     return MemoryManager(
         working=WorkingMemory(),
         episodic=EpisodicMemory(),
@@ -33,13 +59,43 @@ def _memory_manager() -> MemoryManager:
 
 
 def test_resume_from_failed_step() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_resume_from_failed_step
+        >>> # Example 2
+        >>> test_resume_from_failed_step
+    """
     storage = _storage()
     tool_registry = ToolRegistry()
 
     def step_one(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Auto-generated documentation for this callable.
+        
+        Describes purpose, expected inputs/outputs, and behavior in this module.
+        
+        Example:
+            >>> # Example 1
+            >>> step_one
+            >>> # Example 2
+            >>> step_one
+        """
         return {"one": True}
 
     def step_two_fail(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Auto-generated documentation for this callable.
+        
+        Describes purpose, expected inputs/outputs, and behavior in this module.
+        
+        Example:
+            >>> # Example 1
+            >>> step_two_fail
+            >>> # Example 2
+            >>> step_two_fail
+        """
         raise ValueError("boom")
 
     steps = [
@@ -56,6 +112,16 @@ def test_resume_from_failed_step() -> None:
     assert resume_step == "step_two"
 
     def step_two_ok(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Auto-generated documentation for this callable.
+        
+        Describes purpose, expected inputs/outputs, and behavior in this module.
+        
+        Example:
+            >>> # Example 1
+            >>> step_two_ok
+            >>> # Example 2
+            >>> step_two_ok
+        """
         return {"two": True}
 
     resume_steps = [
@@ -72,10 +138,30 @@ def test_resume_from_failed_step() -> None:
 
 
 def test_validate_resume_blocks_completed() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_validate_resume_blocks_completed
+        >>> # Example 2
+        >>> test_validate_resume_blocks_completed
+    """
     with pytest.raises(StepExecutionError):
         validate_resume(StepStatus.COMPLETED)
 
 
 def test_validate_resume_blocks_running() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_validate_resume_blocks_running
+        >>> # Example 2
+        >>> test_validate_resume_blocks_running
+    """
     with pytest.raises(StepExecutionError):
         validate_resume(StepStatus.RUNNING)

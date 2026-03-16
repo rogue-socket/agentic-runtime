@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""File: tests/test_workflow_versioning.py
+
+Purpose:
+Validate workflow id/version parsing, registry resolution, and persistence.
+"""
+
 import tempfile
 
 import pytest
@@ -19,12 +25,32 @@ from agent_runtime.workflow_registry import WorkflowRegistry
 
 
 def _storage() -> SQLiteStorage:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _storage
+        >>> # Example 2
+        >>> _storage
+    """
     tmp = tempfile.NamedTemporaryFile(delete=False)
     tmp.close()
     return SQLiteStorage(tmp.name)
 
 
 def _memory_manager() -> MemoryManager:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _memory_manager
+        >>> # Example 2
+        >>> _memory_manager
+    """
     return MemoryManager(
         working=WorkingMemory(),
         episodic=EpisodicMemory(),
@@ -34,12 +60,32 @@ def _memory_manager() -> MemoryManager:
 
 
 def _handler_registry() -> StepHandlerRegistry:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _handler_registry
+        >>> # Example 2
+        >>> _handler_registry
+    """
     registry = StepHandlerRegistry()
     registry.register("generate_summary", generate_summary)
     return registry
 
 
 def test_workflow_parses_id_and_version() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_workflow_parses_id_and_version
+        >>> # Example 2
+        >>> test_workflow_parses_id_and_version
+    """
     raw = """
 workflow:
   id: code_review_agent
@@ -55,6 +101,16 @@ steps:
 
 
 def test_workflow_legacy_name_compatibility() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_workflow_legacy_name_compatibility
+        >>> # Example 2
+        >>> test_workflow_legacy_name_compatibility
+    """
     raw = """
 name: legacy_workflow
 steps:
@@ -68,6 +124,16 @@ steps:
 
 
 def test_workflow_registry_latest_version_resolution(tmp_path) -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_workflow_registry_latest_version_resolution
+        >>> # Example 2
+        >>> test_workflow_registry_latest_version_resolution
+    """
     wf_dir = tmp_path / "workflows"
     wf_dir.mkdir()
 
@@ -106,6 +172,16 @@ steps:
 
 
 def test_workflow_registry_duplicate_version_rejected() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_workflow_registry_duplicate_version_rejected
+        >>> # Example 2
+        >>> test_workflow_registry_duplicate_version_rejected
+    """
     registry = WorkflowRegistry()
     workflow = {
         "workflow_id": "agent",
@@ -118,6 +194,16 @@ def test_workflow_registry_duplicate_version_rejected() -> None:
 
 
 def test_run_persists_workflow_version() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_run_persists_workflow_version
+        >>> # Example 2
+        >>> test_run_persists_workflow_version
+    """
     storage = _storage()
     executor = Executor(
         steps=[

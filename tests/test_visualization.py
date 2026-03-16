@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""File: tests/test_visualization.py
+
+Purpose:
+Validate ASCII/HTML visualization generation for executed runs.
+"""
+
 import tempfile
 from pathlib import Path
 
@@ -17,6 +23,16 @@ from agent_runtime.visualization import GraphBuilder, RunLoader, TimelineBuilder
 
 
 class EchoTool:
+    """Auto-generated documentation for this class.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> EchoTool
+        >>> # Example 2
+        >>> EchoTool
+    """
     name = "tools.echo"
     description = "Echo"
     input_schema = {"type": "object", "properties": {"message": {"type": "string"}}}
@@ -24,16 +40,46 @@ class EchoTool:
     retries = None
 
     async def execute(self, input, context: RuntimeContext) -> ToolResult:
+        """Auto-generated documentation for this callable.
+        
+        Describes purpose, expected inputs/outputs, and behavior in this module.
+        
+        Example:
+            >>> # Example 1
+            >>> execute
+            >>> # Example 2
+            >>> execute
+        """
         return ToolResult(success=True, output={"message": input["message"]}, error=None, metadata=None)
 
 
 def _storage() -> SQLiteStorage:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _storage
+        >>> # Example 2
+        >>> _storage
+    """
     tmp = tempfile.NamedTemporaryFile(delete=False)
     tmp.close()
     return SQLiteStorage(tmp.name)
 
 
 def _memory_manager() -> MemoryManager:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _memory_manager
+        >>> # Example 2
+        >>> _memory_manager
+    """
     return MemoryManager(
         working=WorkingMemory(),
         episodic=EpisodicMemory(),
@@ -43,6 +89,16 @@ def _memory_manager() -> MemoryManager:
 
 
 def test_ascii_visualization_contains_sections() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_ascii_visualization_contains_sections
+        >>> # Example 2
+        >>> test_ascii_visualization_contains_sections
+    """
     storage = _storage()
     tools = ToolRegistry()
     tools.register(EchoTool())
@@ -77,6 +133,16 @@ def test_ascii_visualization_contains_sections() -> None:
 
 
 def test_html_visualization_writes_file() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_html_visualization_writes_file
+        >>> # Example 2
+        >>> test_html_visualization_writes_file
+    """
     storage = _storage()
     tools = ToolRegistry()
     tools.register(EchoTool())

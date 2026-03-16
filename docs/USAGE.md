@@ -1,3 +1,12 @@
+<!--
+File: docs/USAGE.md
+Purpose: Command-focused usage reference for daily runtime operations.
+Description: Covers setup, running workflows, inspect/resume/replay flows, and common debugging patterns.
+Dependencies: `ai` CLI and sample workflows.
+Inputs/Outputs: Input for users; output is executable command guidance.
+Side Effects: None.
+-->
+
 # Usage
 
 This guide is command-first and scenario-oriented.

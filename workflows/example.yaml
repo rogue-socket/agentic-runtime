@@ -1,3 +1,10 @@
+# File: workflows/example.yaml
+# Purpose: Baseline runnable workflow used by CLI examples and smoke checks.
+# Description: Demonstrates a linear model->tool flow with retry behavior.
+# Dependencies: `generate_summary` handler and `tools.echo` tool registration.
+# Inputs/Outputs: Reads `inputs.issue`; writes `steps.generate_summary` and `steps.echo_tool`.
+# Side Effects: Tool execution emits structured events and persists run history/state.
+
 workflow:
   id: example_workflow
   version: v1

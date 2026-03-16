@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""File: tests/test_replay.py
+
+Purpose:
+Validate deterministic replay behavior and replay safety guarantees.
+"""
+
 import tempfile
 from typing import Any, Dict
 
@@ -19,12 +25,32 @@ from agent_runtime.tools.registry import ToolRegistry
 
 
 def _storage() -> SQLiteStorage:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _storage
+        >>> # Example 2
+        >>> _storage
+    """
     tmp = tempfile.NamedTemporaryFile(delete=False)
     tmp.close()
     return SQLiteStorage(tmp.name)
 
 
 def _memory_manager() -> MemoryManager:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> _memory_manager
+        >>> # Example 2
+        >>> _memory_manager
+    """
     return MemoryManager(
         working=WorkingMemory(),
         episodic=EpisodicMemory(),
@@ -34,6 +60,16 @@ def _memory_manager() -> MemoryManager:
 
 
 class CountingTool:
+    """Auto-generated documentation for this class.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> CountingTool
+        >>> # Example 2
+        >>> CountingTool
+    """
     name = "tools.counting"
     description = "counts executions"
     input_schema = {"type": "object", "properties": {"message": {"type": "string"}}}
@@ -41,14 +77,44 @@ class CountingTool:
     retries = None
 
     def __init__(self) -> None:
+        """Auto-generated documentation for this callable.
+        
+        Describes purpose, expected inputs/outputs, and behavior in this module.
+        
+        Example:
+            >>> # Example 1
+            >>> __init__
+            >>> # Example 2
+            >>> __init__
+        """
         self.calls = 0
 
     async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+        """Auto-generated documentation for this callable.
+        
+        Describes purpose, expected inputs/outputs, and behavior in this module.
+        
+        Example:
+            >>> # Example 1
+            >>> execute
+            >>> # Example 2
+            >>> execute
+        """
         self.calls += 1
         return ToolResult(success=True, output={"message": input.get("message")}, error=None, metadata=None)
 
 
 def test_basic_replay() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_basic_replay
+        >>> # Example 2
+        >>> test_basic_replay
+    """
     storage = _storage()
     tool_registry = ToolRegistry()
     tool = CountingTool()
@@ -68,6 +134,16 @@ def test_basic_replay() -> None:
 
 
 def test_replay_state_matches() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_replay_state_matches
+        >>> # Example 2
+        >>> test_replay_state_matches
+    """
     storage = _storage()
     tool_registry = ToolRegistry()
     tool_registry.register(CountingTool())
@@ -83,6 +159,16 @@ def test_replay_state_matches() -> None:
 
 
 def test_replay_does_not_call_tools() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_replay_does_not_call_tools
+        >>> # Example 2
+        >>> test_replay_does_not_call_tools
+    """
     storage = _storage()
     tool_registry = ToolRegistry()
     tool = CountingTool()
@@ -100,11 +186,31 @@ def test_replay_does_not_call_tools() -> None:
 
 
 def test_replay_step_limit() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_replay_step_limit
+        >>> # Example 2
+        >>> test_replay_step_limit
+    """
     storage = _storage()
     tool_registry = ToolRegistry()
     tool_registry.register(CountingTool())
 
     def model_step(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Auto-generated documentation for this callable.
+        
+        Describes purpose, expected inputs/outputs, and behavior in this module.
+        
+        Example:
+            >>> # Example 1
+            >>> model_step
+            >>> # Example 2
+            >>> model_step
+        """
         return {"summary": "ok"}
 
     steps = [
@@ -121,6 +227,16 @@ def test_replay_step_limit() -> None:
 
 
 def test_replay_running_run_errors() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_replay_running_run_errors
+        >>> # Example 2
+        >>> test_replay_running_run_errors
+    """
     storage = _storage()
     from agent_runtime.core import Run, RunState
     run = Run(

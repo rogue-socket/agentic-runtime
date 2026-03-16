@@ -1,3 +1,12 @@
+<!--
+File: plan/AI_Workflow_Agent_Runtime_Master.md
+Purpose: Long-form product and technical vision document for the runtime.
+Description: Captures strategic framing, conceptual model, and terminology used to motivate implementation direction.
+Dependencies: Informational companion to architecture and source modules.
+Inputs/Outputs: Input for planning and alignment; output is design intent context.
+Side Effects: None.
+-->
+
 **AI WORKFLOW AGENT RUNTIME**
 
 *The Master Reference Document*

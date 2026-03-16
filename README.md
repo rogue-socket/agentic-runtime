@@ -1,3 +1,30 @@
+<!--
+File: README.md
+
+Purpose:
+Primary onboarding guide for the agentic-runtime project.
+
+Description:
+Explains what the runtime does, why it exists, and how to run,
+inspect, resume, replay, and visualize workflows from the CLI.
+
+Key Components Referenced:
+- CLI commands (`ai run`, `ai inspect`, `ai resume`, `ai replay`, `ai visualize`)
+- Runtime state model and execution semantics
+- Sample workflows for branching, retry, and versioning behavior
+
+Dependencies:
+- Python runtime with packages in requirements.txt
+- Source package under src/agent_runtime
+
+Inputs/Outputs:
+- Input: developer commands and workflow YAML files
+- Output: runnable examples, developer guidance, and expected command usage
+
+Side Effects:
+- None directly; commands shown may create SQLite DBs and run artifacts.
+-->
+
 # agentic-runtime
 
 A deterministic execution runtime for AI workflows.

@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+"""File: src/agent_runtime/visualization/timeline_builder.py
+
+Purpose:
+Build step-by-step timeline view with state deltas for visual outputs.
+
+Description:
+Converts persisted step records into timeline items enriched with deep
+state-change lists and optional tool metadata.
+"""
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -9,6 +19,8 @@ from .run_loader import RunVisualizationData
 
 @dataclass
 class StateDelta:
+    """Represents one path-level state mutation."""
+
     op: str
     path: str
     before: Any
@@ -17,6 +29,8 @@ class StateDelta:
 
 @dataclass
 class StepTimelineItem:
+    """Per-step timeline record used by renderers."""
+
     step_id: str
     step_type: str
     status: str
@@ -34,13 +48,18 @@ class StepTimelineItem:
 
 @dataclass
 class TimelineView:
+    """Timeline container including initial/step/latest state snapshots."""
+
     initial_state: Dict[str, Any]
     steps: List[StepTimelineItem]
     latest_state: Dict[str, Any]
 
 
 class TimelineBuilder:
+    """Build `TimelineView` from normalized run visualization data."""
+
     def build(self, data: RunVisualizationData) -> TimelineView:
+        """Construct ordered timeline items and associated state deltas."""
         items: List[StepTimelineItem] = []
         for step in data.steps:
             before = step.state_before or {}

@@ -1,3 +1,9 @@
+"""File: src/agent_runtime/visualization/__init__.py
+
+Purpose:
+Expose visualization loading/building/rendering APIs.
+"""
+
 from .run_loader import RunLoader, RunVisualizationData
 from .graph_builder import GraphBuilder, GraphView
 from .timeline_builder import TimelineBuilder, TimelineView

@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+"""File: src/agent_runtime/visualization/run_loader.py
+
+Purpose:
+Load persisted run artifacts and workflow metadata for visualization.
+
+Description:
+Reads run/step/state records from storage and derives workflow step meta
+including branch rules so graph/timeline builders have full context.
+"""
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -11,6 +21,8 @@ from ..storage.base import Storage
 
 @dataclass
 class WorkflowRule:
+    """Normalized branch rule metadata for visualization."""
+
     when: Optional[str]
     goto: str
     is_default: bool
@@ -18,6 +30,8 @@ class WorkflowRule:
 
 @dataclass
 class WorkflowStepMeta:
+    """Metadata extracted from workflow YAML per step."""
+
     step_id: str
     step_type: str
     tool_name: Optional[str]
@@ -26,6 +40,8 @@ class WorkflowStepMeta:
 
 @dataclass
 class RunVisualizationData:
+    """Container of all artifacts needed by visualization builders."""
+
     run: Run
     steps: List[StepExecution]
     latest_state: Dict[str, Any]
@@ -35,10 +51,14 @@ class RunVisualizationData:
 
 
 class RunLoader:
+    """Load and normalize persisted run data for visualization pipeline."""
+
     def __init__(self, storage: Storage) -> None:
+        """Store storage backend used for visualization data loading."""
         self.storage = storage
 
     def load(self, run_id: str) -> RunVisualizationData:
+        """Load run record, timeline artifacts, and workflow metadata."""
         run = self.storage.load_run(run_id)
         steps = self.storage.load_steps(run_id)
         latest_state = self.storage.load_latest_state(run_id)

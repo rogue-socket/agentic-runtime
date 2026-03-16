@@ -1,9 +1,25 @@
 from __future__ import annotations
 
+"""File: tests/test_state_history.py
+
+Purpose:
+Test CLI state-diff helper output semantics.
+"""
+
 from agent_runtime.cli import _diff_state
 
 
 def test_diff_state_basic() -> None:
+    """Auto-generated documentation for this callable.
+    
+    Describes purpose, expected inputs/outputs, and behavior in this module.
+    
+    Example:
+        >>> # Example 1
+        >>> test_diff_state_basic
+        >>> # Example 2
+        >>> test_diff_state_basic
+    """
     before = {"inputs": {"issue": "x"}, "steps": {}}
     after = {"inputs": {"issue": "x"}, "steps": {"a": {"ok": True}}}
     diff = _diff_state(before, after)

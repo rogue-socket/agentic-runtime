@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+"""File: src/agent_runtime/visualization/ascii_renderer.py
+
+Purpose:
+Render run visualization data into terminal-friendly ASCII text.
+
+Description:
+Transforms graph and timeline view models into structured sections that
+summarize execution path, branch decisions, and state mutations.
+"""
+
 from typing import List
 
 from .graph_builder import GraphView
@@ -17,6 +27,12 @@ _STATUS_ICON = {
 
 
 def render_ascii(run_id: str, graph: GraphView, timeline: TimelineView) -> str:
+    """Render graph/timeline models as plain-text report.
+
+    Example:
+        >>> isinstance(render_ascii("r1", graph=GraphView([], [], []), timeline=TimelineView({}, [], {})), str)
+        True
+    """
     lines: List[str] = []
     lines.append(f"Run: {run_id}")
     lines.append("")

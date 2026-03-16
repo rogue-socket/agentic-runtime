@@ -1,5 +1,30 @@
 from __future__ import annotations
 
+"""File: src/agent_runtime/workflow.py
+
+Purpose:
+Load and validate workflow YAML definitions into runtime step objects.
+
+Description:
+Transforms raw YAML into `StepDefinition` instances with validated retry,
+branch, and contract metadata, then returns runtime-ready workflow data.
+
+Key Components:
+- `_parse_workflow` core parser
+- `_validate_step` schema checks
+- identity extraction and load helpers
+
+Dependencies:
+- `yaml`, core dataclasses, handler registry
+
+Inputs/Outputs:
+- Input: workflow file path or raw YAML text
+- Output: normalized workflow dictionary consumed by CLI/executor
+
+Side Effects:
+- Reads workflow files from disk in `load_workflow`.
+"""
+
 from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
@@ -10,6 +35,15 @@ from .utils import sha256_text
 
 
 def _validate_step(step: Dict[str, Any]) -> None:
+    """Validate one raw step mapping.
+
+    Ensures required fields by type and verifies optional field shapes
+    for inputs/outputs/branch rules before object construction.
+
+    Example:
+        >>> _validate_step({"id": "a", "type": "model", "handler": "h"})
+        >>> _validate_step({"id": "b", "type": "tool", "tool": "tools.echo"})
+    """
     if "id" not in step or not isinstance(step["id"], str):
         raise WorkflowValidationError("Each step must have a string id.")
     if "type" not in step or step["type"] not in {"model", "tool"}:
@@ -31,6 +65,15 @@ def _validate_step(step: Dict[str, Any]) -> None:
 
 
 def _extract_workflow_identity(raw: Dict[str, Any]) -> Tuple[str, Optional[str]]:
+    """Extract workflow id/version from modern or legacy schema.
+
+    Supports `workflow.id` + `workflow.version` and legacy `name` for
+    backwards compatibility with older sample/tests.
+
+    Example:
+        >>> _extract_workflow_identity({"workflow": {"id": "w", "version": "v1"}})
+        ('w', 'v1')
+    """
     workflow_meta = raw.get("workflow")
     if workflow_meta is not None:
         if not isinstance(workflow_meta, dict):
@@ -51,6 +94,17 @@ def _extract_workflow_identity(raw: Dict[str, Any]) -> Tuple[str, Optional[str]]
 
 
 def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dict[str, Any]:
+    """Parse raw workflow YAML into runtime execution metadata.
+
+    This performs structural validation, resolves handlers, parses retry
+    and branch rules, validates contracts, and computes workflow hash.
+
+    Example:
+        >>> reg = StepHandlerRegistry(); reg.register("h", lambda s: {"ok": True})
+        >>> wf = _parse_workflow("name: w\\nsteps:\\n  - id: a\\n    type: model\\n    handler: h\\n", reg)
+        >>> wf["workflow_id"]
+        'w'
+    """
     raw = yaml.safe_load(raw_text)
 
     if not isinstance(raw, dict):
@@ -208,10 +262,26 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
 
 
 def load_workflow(path: str, handler_registry: StepHandlerRegistry) -> Dict[str, Any]:
+    """Load workflow YAML from file path and parse it.
+
+    Example:
+        >>> isinstance(load_workflow, object)
+        True
+    """
     with open(path, "r", encoding="utf-8") as f:
         raw_text = f.read()
     return _parse_workflow(raw_text, handler_registry)
 
 
 def load_workflow_from_text(raw_text: str, handler_registry: StepHandlerRegistry) -> Dict[str, Any]:
+    """Parse workflow from in-memory YAML text.
+
+    Useful for tests and replay/inspect flows where workflow YAML is
+    stored in the database instead of read from filesystem.
+
+    Example:
+        >>> reg = StepHandlerRegistry(); reg.register("h", lambda s: {"ok": True})
+        >>> load_workflow_from_text("name: w\\nsteps:\\n  - id: a\\n    type: model\\n    handler: h\\n", reg)["workflow_id"]
+        'w'
+    """
     return _parse_workflow(raw_text, handler_registry)

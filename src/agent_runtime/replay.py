@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+"""File: src/agent_runtime/replay.py
+
+Purpose:
+Provide deterministic replay of completed/failed runs from stored data.
+
+Description:
+`RunReplayer` reconstructs state transitions from persisted step history
+without invoking handlers/tools, enabling reproducible debugging.
+"""
+
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional
 import copy
@@ -11,13 +21,18 @@ from .storage.base import Storage
 
 @dataclass
 class ReplayResult:
+    """Summary of replay operation outcome."""
+
     run_id: str
     final_state: Dict[str, Any]
     steps_replayed: int
 
 
 class RunReplayer:
+    """Reconstruct run progression from persisted history."""
+
     def __init__(self, storage: Storage, printer: Callable[[str], None] = print) -> None:
+        """Initialize replayer with storage backend and output callback."""
         self.storage = storage
         self.printer = printer
 
@@ -29,6 +44,18 @@ class RunReplayer:
         verify_state: bool = False,
         pause_fn: Optional[Callable[[], str]] = None,
     ) -> ReplayResult:
+        """Replay a run deterministically from persisted state transitions.
+
+        Args:
+            run_id: Run identifier to replay.
+            step_by_step: Pause between replayed steps.
+            until: Optional step id boundary (inclusive).
+            verify_state: Validate reconstructed pre-step state exactly.
+            pause_fn: Optional callback used when pausing.
+
+        Returns:
+            ReplayResult with final reconstructed state and count.
+        """
         try:
             run = self.storage.load_run(run_id)
         except ValueError as exc:

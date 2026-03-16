@@ -1,3 +1,10 @@
+# File: workflows/samples/01_linear_issue_summary.yaml
+# Purpose: Minimal linear workflow sample.
+# Description: Runs a summary model step then echoes the generated summary through a tool.
+# Dependencies: `generate_summary` handler and `tools.echo`.
+# Inputs/Outputs: Reads `inputs.issue`; emits per-step outputs under `steps.*`.
+# Side Effects: Persists run/step/state history in storage.
+
 workflow:
   id: linear_issue_summary
   version: v1
