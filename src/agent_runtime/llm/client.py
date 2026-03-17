@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
-from .adapters import LLMAdapter, OpenAIAdapter, AnthropicAdapter
+from .adapters import LLMAdapter, OpenAIAdapter, AnthropicAdapter, GeminiAdapter
 from .registry import LLMRegistry
 from .types import LLMResponse
 from ..logging import StructuredLogger
@@ -24,6 +24,7 @@ class LLMClient:
         self.adapters = adapters or {
             OpenAIAdapter.provider_name: OpenAIAdapter(),
             AnthropicAdapter.provider_name: AnthropicAdapter(),
+            GeminiAdapter.provider_name: GeminiAdapter(),
         }
 
     def call(

@@ -1,0 +1,50 @@
+# File: workflows/samples/06_gemini_call.yaml
+# Purpose: Demonstrate a Gemini-backed workflow using handler: llm.
+# Description: Summarizes an issue via Gemini, then echoes the summary.
+# Dependencies: handler: llm, tools.echo
+# Inputs/Outputs: Reads inputs.issue; produces LLM-generated summary.
+# Side Effects: Makes HTTP calls to the Gemini API.
+#
+# Setup:
+#   1. Configure Gemini in runtime.yaml (or run `ai setup --provider gemini`):
+#        llm:
+#          providers:
+#            gemini:
+#              api_key_env: GEMINI_API_KEY
+#              models:
+#                gemini-2.5-flash:
+#                  temperature: 0.2
+#                  max_tokens: 512
+#   2. Set the API key: export GEMINI_API_KEY=...
+#   3. Run:
+#      ai run workflows/samples/06_gemini_call.yaml -i issue="Login fails with 401"
+
+workflow:
+  id: gemini_issue_summary
+  version: v1
+
+inputs:
+  issue:
+    description: The issue text to summarize
+    default: "Checkout intermittently returns 500 errors during peak traffic."
+
+on_error: fail_fast
+
+steps:
+  - id: summarize
+    type: model
+    handler: llm
+    model: gemini/gemini-2.5-flash
+    prompt: "Summarize this issue in 2-3 concise sentences:\n\n{{ inputs.issue }}"
+    system: "You are a senior software engineer triaging production issues. Be concise and precise."
+    temperature: 0.3
+    max_tokens: 256
+    response_key: summary
+    inputs:
+      issue: inputs.issue
+
+  - id: echo_summary
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.summarize.summary

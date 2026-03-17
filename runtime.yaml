@@ -1,0 +1,75 @@
+# Runtime configuration for agentic-runtime.
+# CLI flags override values set here.
+# Uncomment and edit sections as needed.
+
+# ─── Storage ──────────────────────────────────────────────────────────
+# SQLite database path for run persistence.
+db_path: runtime.db
+
+# ─── Directory paths ──────────────────────────────────────────────────
+workflows_dir: workflows
+handlers_dir: handlers
+tools_dir: tools
+
+# ─── State overwrite policy ───────────────────────────────────────────
+# Controls what happens when a step overwrites an existing state key.
+#   warn   - log a structured warning (default)
+#   strict - raise an error and fail the step
+#   allow  - silently allow overwrites
+# overwrite_policy: warn
+
+# ─── LLM providers ───────────────────────────────────────────────────
+# API keys are resolved from environment variables — never store keys here.
+# Uncomment and configure providers you intend to use.
+#
+# default_llm_provider: openai    # used when model has no provider/ prefix
+#
+# llm:
+#   providers:
+#     openai:
+#       api_key_env: OPENAI_API_KEY
+#       models:
+#         gpt-4:
+#           temperature: 0.2
+#           max_tokens: 4096
+#         gpt-4o:
+#           temperature: 0.1
+#           max_tokens: 8192
+#     anthropic:
+#       api_key_env: ANTHROPIC_API_KEY
+#       models:
+#         claude-3-opus:
+#           temperature: 0.3
+#           max_tokens: 4096
+#     local:
+#       api_key_env: LOCAL_LLM_KEY
+#       base_url: http://localhost:8080/v1
+#       models:
+#         llama-3:
+#           temperature: 0.5
+#           max_tokens: 2048
+
+# ─── Memory ───────────────────────────────────────────────────────────
+# Working memory: ephemeral per-run scratch space.
+# memory:
+#   working:
+#     max_entries: 50            # sliding window size for context entries
+#     max_scratch_bytes: 256000  # byte budget for scratch key-value store
+
+# ─── Shell tool restrictions ──────────────────────────────────────────
+# Regex patterns matched against the first token (program name) of commands.
+# Denylist is checked first.
+# shell:
+#   allowlist:
+#     - python
+#     - git
+#     - npm
+#   denylist:
+#     - rm
+#     - sudo
+#     - chmod
+
+# ─── Logging ──────────────────────────────────────────────────────────
+# logging:
+#   level: info               # debug | info | warning | error
+#   format: json              # json | text

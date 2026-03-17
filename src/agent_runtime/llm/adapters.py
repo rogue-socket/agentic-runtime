@@ -178,3 +178,133 @@ class AnthropicAdapter:
             usage=raw.get("usage"),
             raw=raw,
         )
+
+
+class GeminiAdapter:
+    """Adapter for the Gemini generateContent REST API."""
+
+    provider_name = "gemini"
+
+    _GEN_CONFIG_KEYS = {
+        "temperature",
+        "topP",
+        "topK",
+        "maxOutputTokens",
+        "candidateCount",
+        "stopSequences",
+        "presencePenalty",
+        "frequencyPenalty",
+        "responseMimeType",
+        "responseSchema",
+        "responseJsonSchema",
+        "thinkingConfig",
+    }
+
+    _PARAM_ALIASES = {
+        "max_tokens": "maxOutputTokens",
+        "max_output_tokens": "maxOutputTokens",
+        "top_p": "topP",
+        "top_k": "topK",
+        "stop": "stopSequences",
+        "stop_sequences": "stopSequences",
+        "candidate_count": "candidateCount",
+        "presence_penalty": "presencePenalty",
+        "frequency_penalty": "frequencyPenalty",
+        "response_mime_type": "responseMimeType",
+        "response_schema": "responseSchema",
+        "response_json_schema": "responseJsonSchema",
+        "thinking_config": "thinkingConfig",
+    }
+
+    def call(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        prompt: str,
+        system: Optional[str],
+        params: Dict[str, Any],
+        base_url: Optional[str],
+        context: Optional[Dict[str, Any]],
+    ) -> LLMResponse:
+        if not api_key:
+            raise ValueError("Missing Gemini API key.")
+
+        base = base_url or "https://generativelanguage.googleapis.com/v1beta"
+        model_path = model if model.startswith("models/") else f"models/{model}"
+        url = base.rstrip("/") + f"/{model_path}:generateContent"
+
+        body: Dict[str, Any] = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": prompt}],
+                }
+            ]
+        }
+        if system:
+            body["system_instruction"] = {"parts": [{"text": system}]}
+
+        generation_config: Dict[str, Any] = {}
+        params = dict(params or {})
+        inline_config = params.pop("generationConfig", None)
+        if isinstance(inline_config, dict):
+            generation_config.update(inline_config)
+        inline_config = params.pop("generation_config", None)
+        if isinstance(inline_config, dict):
+            generation_config.update(inline_config)
+
+        for key, value in params.items():
+            if value is None:
+                continue
+            target = self._PARAM_ALIASES.get(key, key)
+            if target not in self._GEN_CONFIG_KEYS:
+                continue
+            if target == "stopSequences":
+                if isinstance(value, str):
+                    value = [value]
+            generation_config[target] = value
+
+        if generation_config:
+            body["generationConfig"] = generation_config
+
+        data = json.dumps(body).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "x-goog-api-key": api_key,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req) as resp:
+                raw = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            body_text = exc.read().decode("utf-8") if exc.fp else ""
+            raise RuntimeError(f"Gemini API error ({exc.code}): {body_text}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"Gemini API request failed: {exc}") from exc
+
+        candidates = raw.get("candidates") or []
+        if not candidates:
+            raise RuntimeError("Gemini API returned no candidates.")
+        content = candidates[0].get("content") or {}
+        parts = content.get("parts") or []
+        text_parts = [
+            part.get("text", "")
+            for part in parts
+            if isinstance(part, dict) and part.get("text")
+        ]
+        if not text_parts:
+            raise RuntimeError("Gemini API returned no text content.")
+
+        return LLMResponse(
+            text="".join(text_parts),
+            provider=self.provider_name,
+            model=model,
+            usage=raw.get("usageMetadata") or raw.get("usage"),
+            raw=raw,
+        )

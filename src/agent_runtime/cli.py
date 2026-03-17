@@ -35,6 +35,7 @@ TODO(ux): ICP is solo dev / small team building an agent. The CLI
 """
 
 import argparse
+import getpass
 import os
 import re
 import sys
@@ -72,6 +73,24 @@ _SECRET_KEY_RE = re.compile(
     re.IGNORECASE,
 )
 
+_DEFAULT_PROVIDER_ENV = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "local": "LOCAL_LLM_KEY",
+}
+
+_DEFAULT_PROVIDER_MODEL = {
+    "openai": "gpt-4o",
+    "anthropic": "claude-3-opus",
+    "gemini": "gemini-2.5-flash",
+    "local": "llama-3",
+}
+
+_DEFAULT_PROVIDER_BASE_URL = {
+    "local": "http://localhost:8080/v1",
+}
+
 
 def _redact(obj: Any) -> Any:
     """Recursively redact values whose keys look like secrets."""
@@ -83,6 +102,96 @@ def _redact(obj: Any) -> Any:
     if isinstance(obj, list):
         return [_redact(item) for item in obj]
     return obj
+
+
+def _parse_env_line(line: str) -> Optional[tuple[str, str]]:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    if stripped.startswith("export "):
+        stripped = stripped[len("export "):].lstrip()
+    if "=" not in stripped:
+        return None
+    key, _, value = stripped.partition("=")
+    key = key.strip()
+    value = value.strip()
+    if not key:
+        return None
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        value = value[1:-1]
+    return key, value
+
+
+def _load_dotenv(path: str = ".env") -> None:
+    """Load environment variables from a local .env file if present."""
+    if not os.path.isfile(path):
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                parsed = _parse_env_line(line)
+                if parsed is None:
+                    continue
+                key, value = parsed
+                os.environ.setdefault(key, value)
+    except OSError:
+        return
+
+
+def _quote_env_value(value: str) -> str:
+    if not value:
+        return value
+    if re.search(r"\s|#", value):
+        escaped = value.replace('"', '\\"')
+        return f"\"{escaped}\""
+    return value
+
+
+def _update_dotenv(path: str, updates: Dict[str, str]) -> None:
+    lines: List[str] = []
+    seen: set[str] = set()
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                parsed = _parse_env_line(line)
+                if parsed is None:
+                    lines.append(line)
+                    continue
+                key, _ = parsed
+                if key in updates:
+                    lines.append(f"{key}={_quote_env_value(updates[key])}\n")
+                    seen.add(key)
+                else:
+                    lines.append(line)
+    for key, value in updates.items():
+        if key not in seen:
+            lines.append(f"{key}={_quote_env_value(value)}\n")
+    with open(path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+
+def _prompt_value(prompt: str, default: Optional[str] = None, secret: bool = False) -> str:
+    suffix = f" [{default}]" if default else ""
+    full_prompt = f"{prompt}{suffix}: "
+    if secret:
+        value = getpass.getpass(full_prompt)
+    else:
+        value = input(full_prompt)
+    if not value and default is not None:
+        return default
+    return value.strip()
+
+
+def _prompt_yes_no(prompt: str, default: bool = True) -> bool:
+    hint = "Y/n" if default else "y/N"
+    while True:
+        raw = input(f"{prompt} [{hint}]: ").strip().lower()
+        if not raw:
+            return default
+        if raw in ("y", "yes"):
+            return True
+        if raw in ("n", "no"):
+            return False
 
 
 EXAMPLE_WORKFLOW = """workflow:
@@ -260,6 +369,12 @@ tools_dir: tools
 #         claude-3-opus:
 #           temperature: 0.3
 #           max_tokens: 4096
+#     gemini:
+#       api_key_env: GEMINI_API_KEY
+#       models:
+#         gemini-2.5-flash:
+#           temperature: 0.2
+#           max_tokens: 8192
 #     local:
 #       api_key_env: LOCAL_LLM_KEY
 #       base_url: http://localhost:8080/v1
@@ -560,6 +675,19 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     init_parser = subparsers.add_parser("init", help="Initialize a new workflow project")
     init_parser.add_argument("--path", default=".", help="Target directory")
 
+    setup_parser = subparsers.add_parser("setup", help="Configure API keys and runtime settings")
+    setup_parser.add_argument("--path", default=".", help="Project root (contains runtime.yaml)")
+    setup_parser.add_argument("--provider", choices=["openai", "anthropic", "gemini", "local"], help="LLM provider")
+    setup_parser.add_argument("--api-key-env", help="Env var name to use for the API key")
+    setup_parser.add_argument("--api-key", help="API key value (optional)")
+    setup_parser.add_argument("--model", help="Model id to add to runtime.yaml")
+    setup_parser.add_argument("--base-url", help="Base URL (mainly for local/proxy providers)")
+    setup_parser.add_argument("--temperature", type=float, help="Model temperature")
+    setup_parser.add_argument("--max-tokens", type=int, help="Model max_tokens")
+    setup_parser.add_argument("--no-dotenv", action="store_true", help="Do not write .env")
+    setup_parser.add_argument("--no-default", action="store_true", help="Do not set default provider")
+    setup_parser.add_argument("--check", action="store_true", help="Verify configured providers and API keys")
+
     run_parser = subparsers.add_parser("run", help="Run a workflow")
     run_parser.add_argument("workflow", help="Workflow path or workflow_id[@version]")
     run_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
@@ -617,6 +745,143 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         _init_project(args.path)
         print(f"Initialized workflow project at {os.path.abspath(args.path)}")
         return 0
+
+    if args.command == "setup":
+        project_root = os.path.abspath(args.path)
+        runtime_path = os.path.join(project_root, "runtime.yaml")
+        dotenv_path = os.path.join(project_root, ".env")
+
+        if not os.path.isdir(project_root):
+            raise SystemExit(f"Project path does not exist: {project_root}")
+
+        if args.check:
+            _load_dotenv(dotenv_path)
+            if not os.path.exists(runtime_path):
+                print(f"No runtime.yaml found at {runtime_path}")
+                return 1
+            cfg = load_config(runtime_path)
+            providers = cfg.llm_registry.list_providers()
+            if not providers:
+                print("No LLM providers configured in runtime.yaml.")
+                return 1
+            statuses = cfg.llm_registry.check_credentials()
+            all_ok = True
+            print("LLM provider check:")
+            for name in providers:
+                provider_obj = cfg.llm_registry.get_provider(name)
+                if provider_obj is None:
+                    continue
+                has_key = statuses.get(name, False)
+                all_ok = all_ok and has_key
+                key_status = "set" if has_key else "missing"
+                print(f"  - {name}")
+                print(f"    api_key_env: {provider_obj.api_key_env} ({key_status})")
+                models = provider_obj.list_models()
+                if models:
+                    print(f"    models: {', '.join(models)}")
+                else:
+                    print("    models: (none)")
+            return 0 if all_ok else 1
+
+        if not os.path.exists(runtime_path):
+            with open(runtime_path, "w", encoding="utf-8") as f:
+                f.write(RUNTIME_YAML_TEMPLATE)
+
+        provider = (args.provider or _prompt_value(
+            "Default LLM provider (openai/anthropic/gemini/local)",
+            default="openai",
+        )).strip().lower()
+        if provider not in ("openai", "anthropic", "gemini", "local"):
+            raise SystemExit(f"Unsupported provider: {provider}")
+
+        api_key_env = args.api_key_env or _DEFAULT_PROVIDER_ENV.get(provider, "")
+        if not api_key_env:
+            api_key_env = _prompt_value("API key env var name (e.g. OPENAI_API_KEY)")
+
+        api_key = args.api_key
+        if api_key is None:
+            api_key = _prompt_value(
+                f"Paste {api_key_env} (leave blank to skip)",
+                secret=True,
+            )
+
+        write_dotenv = not args.no_dotenv
+        if write_dotenv and api_key:
+            write_dotenv = _prompt_yes_no(f"Write {api_key_env} to .env", default=True)
+        if write_dotenv and api_key:
+            _update_dotenv(dotenv_path, {api_key_env: api_key})
+            print(f"Wrote {api_key_env} to {dotenv_path}")
+        elif api_key and not write_dotenv:
+            print(f"Skipped writing {api_key_env} to .env")
+
+        model_default = _DEFAULT_PROVIDER_MODEL.get(provider)
+        model_id = args.model or _prompt_value(
+            "Default model id", default=model_default or ""
+        )
+        temperature = args.temperature if args.temperature is not None else 0.2
+        max_tokens = args.max_tokens if args.max_tokens is not None else 4096
+
+        base_url = args.base_url
+        if provider == "local" and not base_url:
+            base_url = _prompt_value(
+                "Base URL for local provider",
+                default=_DEFAULT_PROVIDER_BASE_URL.get("local", ""),
+            )
+
+        # Update runtime.yaml
+        try:
+            with open(runtime_path, "r", encoding="utf-8") as f:
+                raw = yaml.safe_load(f) or {}
+        except Exception:
+            raw = {}
+        if not isinstance(raw, dict):
+            raw = {}
+
+        if not args.no_default:
+            raw["default_llm_provider"] = provider
+
+        llm_block = raw.get("llm")
+        if not isinstance(llm_block, dict):
+            llm_block = {}
+        providers_block = llm_block.get("providers")
+        if not isinstance(providers_block, dict):
+            providers_block = {}
+        provider_block = providers_block.get(provider)
+        if not isinstance(provider_block, dict):
+            provider_block = {}
+
+        provider_block["api_key_env"] = api_key_env
+        if base_url:
+            provider_block["base_url"] = base_url
+
+        models_block = provider_block.get("models")
+        if not isinstance(models_block, dict):
+            models_block = {}
+        if model_id:
+            model_block = models_block.get(model_id)
+            if not isinstance(model_block, dict):
+                model_block = {}
+            model_block["temperature"] = temperature
+            model_block["max_tokens"] = max_tokens
+            models_block[model_id] = model_block
+        provider_block["models"] = models_block
+
+        providers_block[provider] = provider_block
+        llm_block["providers"] = providers_block
+        if not args.no_default:
+            llm_block["default_provider"] = provider
+        raw["llm"] = llm_block
+
+        with open(runtime_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(raw, f, sort_keys=False)
+
+        print(f"Updated {runtime_path}")
+        print("Setup complete. You can now run `ai run ...`.")
+        if api_key and not write_dotenv:
+            print(f"Remember to export {api_key_env} before running.")
+        return 0
+
+    _load_dotenv()
 
     # Load runtime.yaml config with CLI overrides
     cfg = load_config()

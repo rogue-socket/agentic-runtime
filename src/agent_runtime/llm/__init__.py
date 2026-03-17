@@ -3,7 +3,7 @@
 from .registry import LLMRegistry, LLMProvider, ModelConfig
 from .client import LLMClient
 from .types import LLMResponse
-from .adapters import OpenAIAdapter, AnthropicAdapter
+from .adapters import OpenAIAdapter, AnthropicAdapter, GeminiAdapter
 
 __all__ = [
     "LLMRegistry",
@@ -13,4 +13,5 @@ __all__ = [
     "LLMResponse",
     "OpenAIAdapter",
     "AnthropicAdapter",
+    "GeminiAdapter",
 ]

@@ -376,6 +376,12 @@ llm:
       models:
         claude-3-opus:
           temperature: 0.3
+    gemini:
+      api_key_env: GEMINI_API_KEY
+      models:
+        gemini-2.5-flash:
+          temperature: 0.2
+          max_tokens: 8192
 ```
 
 API keys are **never stored on disk** — resolved from environment variables at call time.
@@ -419,6 +425,7 @@ Ready-to-run examples in `workflows/samples/`:
 | `02_retry_and_backoff.yaml` | Retry with exponential backoff |
 | `03_branching_triage.yaml` | Conditional branching by severity |
 | `04_fail_and_resume.yaml` | Deliberate failure + resume recovery |
+| `06_gemini_call.yaml` | Gemini-backed LLM call |
 | `versioning/code_review_agent_v1.yaml` | Workflow versioning (v1) |
 | `versioning/code_review_agent_v2.yaml` | Workflow versioning (v2) |
 
@@ -455,7 +462,7 @@ src/agent_runtime/
 ├── llm/                    # LLM subsystem
 │   ├── registry.py         #   LLMProvider, ModelConfig, LLMRegistry
 │   ├── client.py           #   LLMClient — routes calls through adapters
-│   ├── adapters.py         #   OpenAIAdapter, AnthropicAdapter
+│   ├── adapters.py         #   OpenAIAdapter, AnthropicAdapter, GeminiAdapter
 │   ├── handler.py          #   Built-in `llm` handler for workflow steps
 │   └── types.py            #   LLMResponse dataclass
 ├── memory/                 # Memory tier subsystem
@@ -512,6 +519,7 @@ PYTHONPATH=src pytest tests/ -v
 | `test_llm_registry.py` | LLM provider registry |
 | `test_agent_manifest.py` | Agent manifest: load, validate, export, import |
 | `test_anthropic_adapter.py` | Anthropic adapter + client routing |
+| `test_gemini_adapter.py` | Gemini adapter + client routing |
 | `test_builtin_tools.py` | HTTP, File, Shell tools |
 | `test_episodic_memory.py` | SQLite-backed episodic memory |
 
@@ -568,9 +576,12 @@ cd my-agents
 
 ### Configure LLM providers
 
-Edit `runtime.yaml` and set environment variables:
+Use `ai setup` to configure providers, or edit `runtime.yaml` and set environment variables:
 
 ```bash
+ai setup --provider gemini
+
 export OPENAI_API_KEY="sk-..."
 export ANTHROPIC_API_KEY="sk-ant-..."
+export GEMINI_API_KEY="..."
 ```

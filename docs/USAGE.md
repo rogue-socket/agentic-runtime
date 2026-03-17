@@ -395,17 +395,33 @@ workflows_dir: workflows
 handlers_dir: handlers
 tools_dir: tools
 
-# model:
-#   provider: openai
-#   model: gpt-4
-#   temperature: 0.2
-#   max_tokens: 4096
-#   api_key_env: OPENAI_API_KEY
+# llm:
+#   providers:
+#     openai:
+#       api_key_env: OPENAI_API_KEY
+#       models:
+#         gpt-4o:
+#           temperature: 0.2
+#           max_tokens: 4096
+#     anthropic:
+#       api_key_env: ANTHROPIC_API_KEY
+#       models:
+#         claude-3-opus:
+#           temperature: 0.3
+#     gemini:
+#       api_key_env: GEMINI_API_KEY
+#       models:
+#         gemini-2.5-flash:
+#           temperature: 0.2
+#           max_tokens: 8192
 
 # logging:
 #   level: info
 #   format: json
 ```
+
+Tip: `ai setup` can scaffold this config and write `.env`, and
+`ai setup --check` validates which provider keys are available.
 
 Precedence: `--db-path` flag > `runtime.yaml` value > built-in default (`runtime.db`).
 
