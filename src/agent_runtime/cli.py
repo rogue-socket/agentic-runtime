@@ -32,15 +32,15 @@ TODO(ux): ICP is solo dev / small team building an agent. The CLI
     (step name + status + duration), not just silence until completion.
   - Add `ai quickstart` command that creates a minimal agent, runs it,
     and opens the HTML visualization — a single-command "wow" moment.
-TODO(ux): Add input type coercion for `-i key=value` CLI args. Parse
-  numeric strings as numbers, "true"/"false" as booleans. Alternatively,
-  support `-i key:int=5` or `--input-json '{...}'` for explicit typing.
 """
 
 import argparse
 import os
+import re
+import sys
 from typing import Any, Dict, List, Optional
 import webbrowser
+import yaml
 
 from .core import Executor, StepStatus
 from .config import RuntimeConfig, load_config, apply_cli_overrides
@@ -58,6 +58,7 @@ from .tools.http import HttpTool
 from .tools.file import FileTool
 from .tools.shell import ShellTool
 from .tools.discovery import register_discovered_tools
+from .errors import WorkflowValidationError
 from .workflow import load_workflow, load_workflow_from_text
 from .workflow_registry import WorkflowRegistry, parse_workflow_reference
 from .visualization import GraphBuilder, RunLoader, TimelineBuilder, render_ascii, render_html
@@ -65,6 +66,23 @@ from .utils import sha256_json
 from .agent import AgentManifest, load_agent_manifest, validate_agent, export_agent, import_agent
 from .llm import LLMClient
 from .llm.handler import make_llm_handler
+
+_SECRET_KEY_RE = re.compile(
+    r"(api[_-]?key|secret|token|password|credential|auth|bearer)",
+    re.IGNORECASE,
+)
+
+
+def _redact(obj: Any) -> Any:
+    """Recursively redact values whose keys look like secrets."""
+    if isinstance(obj, dict):
+        return {
+            k: ("***REDACTED***" if _SECRET_KEY_RE.search(k) else _redact(v))
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_redact(item) for item in obj]
+    return obj
 
 
 EXAMPLE_WORKFLOW = """workflow:
@@ -201,17 +219,30 @@ class ExampleTool:
 
 RUNTIME_YAML_TEMPLATE = """# Runtime configuration for agentic-runtime.
 # CLI flags override values set here.
+# Uncomment and edit sections as needed.
 
+# ─── Storage ──────────────────────────────────────────────────────────
 # SQLite database path for run persistence.
 db_path: runtime.db
 
-# Directory paths for project components.
+# ─── Directory paths ──────────────────────────────────────────────────
 workflows_dir: workflows
 handlers_dir: handlers
 tools_dir: tools
 
-# LLM provider registry.
+# ─── State overwrite policy ───────────────────────────────────────────
+# Controls what happens when a step overwrites an existing state key.
+#   warn   - log a structured warning (default)
+#   strict - raise an error and fail the step
+#   allow  - silently allow overwrites
+# overwrite_policy: warn
+
+# ─── LLM providers ───────────────────────────────────────────────────
 # API keys are resolved from environment variables — never store keys here.
+# Uncomment and configure providers you intend to use.
+#
+# default_llm_provider: openai    # used when model has no provider/ prefix
+#
 # llm:
 #   providers:
 #     openai:
@@ -237,7 +268,27 @@ tools_dir: tools
 #           temperature: 0.5
 #           max_tokens: 2048
 
-# Logging configuration.
+# ─── Memory ───────────────────────────────────────────────────────────
+# Working memory: ephemeral per-run scratch space.
+# memory:
+#   working:
+#     max_entries: 50            # sliding window size for context entries
+#     max_scratch_bytes: 256000  # byte budget for scratch key-value store
+
+# ─── Shell tool restrictions ──────────────────────────────────────────
+# Regex patterns matched against the first token (program name) of commands.
+# Denylist is checked first.
+# shell:
+#   allowlist:
+#     - python
+#     - git
+#     - npm
+#   denylist:
+#     - rm
+#     - sudo
+#     - chmod
+
+# ─── Logging ──────────────────────────────────────────────────────────
 # logging:
 #   level: info               # debug | info | warning | error
 #   format: json              # json | text
@@ -337,7 +388,11 @@ def _default_handler_registry(
     return registry
 
 
-def _default_tool_registry(tools_dir: str = "tools") -> ToolRegistry:
+def _default_tool_registry(
+    tools_dir: str = "tools",
+    shell_allowlist: Optional[list] = None,
+    shell_denylist: Optional[list] = None,
+) -> ToolRegistry:
     """Create a tool registry with built-in tools + discovered tools."""
     registry = ToolRegistry()
 
@@ -345,7 +400,10 @@ def _default_tool_registry(tools_dir: str = "tools") -> ToolRegistry:
     registry.register(EchoTool())
     registry.register(HttpTool())
     registry.register(FileTool())
-    registry.register(ShellTool())
+    registry.register(ShellTool(
+        allowlist=shell_allowlist or None,
+        denylist=shell_denylist or None,
+    ))
 
     # Discover tools from tools/ directory
     register_discovered_tools(registry, tools_dir)
@@ -353,12 +411,16 @@ def _default_tool_registry(tools_dir: str = "tools") -> ToolRegistry:
     return registry
 
 
-def _default_memory_manager(db_path: str = "runtime.db") -> MemoryManager:
-    """Build memory-manager with SQLite-backed episodic tier."""
+def _default_memory_manager(
+    db_path: str = "runtime.db",
+    max_entries: int = 50,
+    max_scratch_bytes: int = 256_000,
+) -> MemoryManager:
+    """Build memory-manager with SQLite-backed episodic and semantic tiers."""
     return MemoryManager(
-        working=WorkingMemory(),
+        working=WorkingMemory(max_entries=max_entries, max_scratch_bytes=max_scratch_bytes),
         episodic=EpisodicMemory(db_path=db_path),
-        semantic=SemanticMemory(),
+        semantic=SemanticMemory(db_path=db_path),
         procedural=ProceduralMemory(),
     )
 
@@ -379,6 +441,38 @@ def _load_workflow_for_run(
     ref = parse_workflow_reference(workflow_ref)
     registry = WorkflowRegistry.from_directory(workflows_dir, handler_registry)
     return registry.get(ref.workflow_id, ref.version)
+
+
+def _coerce_value(raw: str) -> Any:
+    """Auto-coerce a CLI input string to its most likely Python type.
+
+    Conversion order:
+    1. ``true`` / ``false`` (case-insensitive) \u2192 bool
+    2. Integer literal \u2192 int
+    3. Float literal \u2192 float
+    4. JSON array or object \u2192 parsed value
+    5. Fallback \u2192 str (unchanged)
+    """
+    lower = raw.strip().lower()
+    if lower == "true":
+        return True
+    if lower == "false":
+        return False
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    if raw.startswith(("{", "[")) and raw.endswith(("}", "]")):
+        import json as _json
+        try:
+            return _json.loads(raw)
+        except _json.JSONDecodeError:
+            pass
+    return raw
 
 
 def _try_resolve_agent(
@@ -417,7 +511,12 @@ def _try_resolve_agent(
 def _build_input_state(
     raw_inputs: List[str], workflow_inputs: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Parse ``-i key=value`` pairs and validate against the workflow input schema."""
+    """Parse ``-i key=value`` pairs and validate against the workflow input schema.
+
+    Values are auto-coerced: ``true``/``false`` become booleans, numeric
+    strings become int or float, and JSON-like values (arrays/objects) are
+    parsed.  Plain strings are kept as-is.
+    """
     provided: Dict[str, Any] = {}
     for item in raw_inputs:
         if "=" not in item:
@@ -426,7 +525,7 @@ def _build_input_state(
         key = key.strip()
         if not key:
             raise SystemExit(f"Invalid input: empty key in {item!r}")
-        provided[key] = value
+        provided[key] = _coerce_value(value)
 
     if not workflow_inputs:
         # No declared inputs — pass through as-is.
@@ -491,7 +590,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     state_diff_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
     state_diff_parser.add_argument("--step", help="Optional step id filter")
 
-    visualize_parser = subparsers.add_parser("visualize", help="Visualize run execution")
+    visualize_parser = subparsers.add_parser("visualize", aliases=["viz"], help="Visualize run execution")
     visualize_parser.add_argument("run_id", help="Run ID")
     visualize_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
     visualize_parser.add_argument("--ascii", action="store_true", help="Render ASCII visualization")
@@ -582,38 +681,66 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == "run":
-        logger = StructuredLogger()
+        logger = StructuredLogger(stream=sys.stderr)
         llm_client = _default_llm_client(cfg, logger)
         # Try agent-aware resolution: check agents/ for a manifest matching
         # the workflow arg as an agent_id (with optional @version).
         agent_manifest = _try_resolve_agent(args.workflow)
 
-        if agent_manifest is not None:
-            handler_registry = _default_handler_registry(cfg.handlers_dir, llm_client)
-            workflow = _load_workflow_for_run(
-                agent_manifest.workflow, handler_registry, cfg.workflows_dir,
-            )
-            # Merge defaults: agent defaults < CLI -i overrides
-            merged_inputs = list(args.input)
-            if agent_manifest.defaults:
-                provided_keys = set()
-                for item in args.input:
-                    if "=" in item:
-                        provided_keys.add(item.partition("=")[0].strip())
-                for key, value in agent_manifest.defaults.items():
-                    if key not in provided_keys:
-                        merged_inputs.append(f"{key}={value}")
-            input_state = _build_input_state(merged_inputs, workflow.get("inputs", {}))
-        else:
-            handler_registry = _default_handler_registry(cfg.handlers_dir, llm_client)
-            workflow = _load_workflow_for_run(args.workflow, handler_registry, cfg.workflows_dir)
-            input_state = _build_input_state(args.input, workflow.get("inputs", {}))
+        try:
+            if agent_manifest is not None:
+                handler_registry = _default_handler_registry(cfg.handlers_dir, llm_client)
+                workflow = _load_workflow_for_run(
+                    agent_manifest.workflow, handler_registry, cfg.workflows_dir,
+                )
+                # Merge defaults: agent defaults < CLI -i overrides
+                merged_inputs = list(args.input)
+                if agent_manifest.defaults:
+                    provided_keys = set()
+                    for item in args.input:
+                        if "=" in item:
+                            provided_keys.add(item.partition("=")[0].strip())
+                    for key, value in agent_manifest.defaults.items():
+                        if key not in provided_keys:
+                            merged_inputs.append(f"{key}={value}")
+                input_state = _build_input_state(merged_inputs, workflow.get("inputs", {}))
+            else:
+                handler_registry = _default_handler_registry(cfg.handlers_dir, llm_client)
+                workflow = _load_workflow_for_run(args.workflow, handler_registry, cfg.workflows_dir)
+                input_state = _build_input_state(args.input, workflow.get("inputs", {}))
+        except FileNotFoundError:
+            print(f"Error: workflow file not found: {args.workflow}", file=sys.stderr)
+            return 1
+        except yaml.YAMLError as exc:
+            print(f"Error: invalid YAML in workflow file: {exc}", file=sys.stderr)
+            return 1
+        except WorkflowValidationError as exc:
+            print(f"Error: workflow validation failed: {exc}", file=sys.stderr)
+            return 1
 
         steps = workflow["steps"]
 
         storage = SQLiteStorage(cfg.db_path)
-        memory_manager = _default_memory_manager(cfg.db_path)
-        tool_registry = _default_tool_registry(cfg.tools_dir)
+        memory_manager = _default_memory_manager(
+            cfg.db_path,
+            max_entries=cfg.working_memory_max_entries,
+            max_scratch_bytes=cfg.working_memory_max_scratch_bytes,
+        )
+        tool_registry = _default_tool_registry(
+            cfg.tools_dir,
+            shell_allowlist=cfg.shell_allowlist or None,
+            shell_denylist=cfg.shell_denylist or None,
+        )
+
+        def _progress_callback(event: str, payload: Dict[str, Any]) -> None:
+            step_id = payload.get("step_id", "")
+            step_type = payload.get("step_type", "")
+            if event == "STEP_COMPLETE":
+                duration = payload.get("duration_ms", "?")
+                print(f"  \u2713 {step_id} ({step_type}) \u2014 {duration}ms")
+            elif event == "STEP_ERROR":
+                error = payload.get("error", "unknown error")
+                print(f"  \u2717 {step_id} ({step_type}) \u2014 {error}")
 
         executor = Executor(
             steps=steps,
@@ -621,6 +748,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             logger=logger,
             memory_manager=memory_manager,
             tool_registry=tool_registry,
+            overwrite_policy=cfg.overwrite_policy,
+            on_event=_progress_callback,
         )
 
         run = executor.run(
@@ -634,6 +763,9 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             input_hash=sha256_json(input_state),
         )
         print(f"Run {run.run_id} status: {run.status}")
+        if run.status == "FAILED" and run.error:
+            print(f"Error: {run.error}")
+            print(f"\nRun `ai inspect {run.run_id}` to see full execution details.")
         return 0 if run.status == "COMPLETED" else 1
 
     if args.command == "inspect":
@@ -654,7 +786,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                     print(f"attempts: {step.attempt_count}")
                 if step.output is not None:
                     print("output:")
-                    print(step.output)
+                    print(_redact(step.output))
                 if step.error is not None:
                     print("error:")
                     print(step.error)
@@ -669,12 +801,12 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                 attempts = step.attempt_count if step.attempt_count is not None else "n/a"
                 print(f"  {idx}. {step.step_id} ({step.step_type}) -> {step.status} ({duration}, attempts: {attempts})")
             print("Latest state:")
-            print(latest_state)
+            print(_redact(latest_state))
 
         if run.workflow_yaml:
-        handler_registry = _default_handler_registry(cfg.handlers_dir, _default_llm_client(cfg))
-        workflow = load_workflow_from_text(run.workflow_yaml, handler_registry)
-        resume_step = determine_resume_step(workflow["steps"], steps)
+            handler_registry = _default_handler_registry(cfg.handlers_dir, _default_llm_client(cfg))
+            workflow = load_workflow_from_text(run.workflow_yaml, handler_registry)
+            resume_step = determine_resume_step(workflow["steps"], steps)
             if resume_step:
                 print(f"Resume point: step {resume_step}")
         if args.state_history:
@@ -716,8 +848,17 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             steps=workflow["steps"],
             storage=storage,
             logger=StructuredLogger(),
-            memory_manager=_default_memory_manager(cfg.db_path),
-            tool_registry=_default_tool_registry(cfg.tools_dir),
+            memory_manager=_default_memory_manager(
+                cfg.db_path,
+                max_entries=cfg.working_memory_max_entries,
+                max_scratch_bytes=cfg.working_memory_max_scratch_bytes,
+            ),
+            tool_registry=_default_tool_registry(
+                cfg.tools_dir,
+                shell_allowlist=cfg.shell_allowlist or None,
+                shell_denylist=cfg.shell_denylist or None,
+            ),
+            overwrite_policy=cfg.overwrite_policy,
         )
 
         print(f"Resuming run {run.run_id} from step: {resume_step}")
@@ -766,11 +907,11 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                 op = change["op"]
                 path = change["path"]
                 if op == "+":
-                    print(f"+ {path} = {change['after']}")
+                    print(f"+ {path} = {_redact(change['after'])}")
                 elif op == "-":
-                    print(f"- {path} (was {change['before']})")
+                    print(f"- {path} (was {_redact(change['before'])})")
                 else:
-                    print(f"~ {path}: {change['before']} -> {change['after']}")
+                    print(f"~ {path}: {_redact(change['before'])} -> {_redact(change['after'])}")
         return 0
 
     if args.command == "visualize":
@@ -820,13 +961,12 @@ def _print_state_history(steps, latest_state) -> None:
     """Print per-step state mutation summary for inspect command."""
     # [TODO] Support snapshot compression for large states.
     # [TODO] Handle large state output safely (pagination or truncation).
-    # [TODO] Add secret redaction for sensitive fields.
     if not steps:
         return
     initial = steps[0].state_before or latest_state
     print("\nState history:")
     print("Initial state:")
-    print(initial)
+    print(_redact(initial))
     print("\n----------------------------------------")
     for idx, step in enumerate(steps, start=1):
         print(f"Step {idx} {step.step_id}")
@@ -847,10 +987,10 @@ def _print_state_history(steps, latest_state) -> None:
             print("(no changes)")
         if step.output is not None:
             print("Output:")
-            print(step.output)
+            print(_redact(step.output))
         if step.state_after is not None:
             print("State after:")
-            print(step.state_after)
+            print(_redact(step.state_after))
         print("\n----------------------------------------")
 
 

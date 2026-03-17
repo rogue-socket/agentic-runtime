@@ -11,7 +11,8 @@ and inspection logic independent of concrete backend technology.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from contextlib import contextmanager
+from typing import Any, Dict, Generator, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..core import Run, StepExecution
@@ -26,6 +27,24 @@ class Storage(ABC):
     TODO(roadmap): Consider a remote-capable storage adapter (e.g., S3 + DynamoDB)
       for cloud-native deployments where SQLite files aren't practical.
     """
+
+    @contextmanager
+    def transaction(self) -> Generator[None, None, None]:
+        """Group multiple storage operations into an atomic unit.
+
+        Within the yielded block, all write operations (``create_run``,
+        ``update_run_status``, ``append_step``, ``save_state``) are
+        deferred to a single commit.  If any operation raises, all
+        writes in the block are rolled back.
+
+        The default implementation is a no-op pass-through — backends
+        that support transactions (e.g. SQLite, PostgreSQL) override
+        this to provide real atomicity.
+
+        Safe to nest: inner ``transaction()`` calls are absorbed by the
+        outermost transaction (savepoints are not used).
+        """
+        yield
 
     @abstractmethod
     def create_run(self, run: Run) -> None:

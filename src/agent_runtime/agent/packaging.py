@@ -72,26 +72,20 @@ def import_agent(archive_path: str, project_root: str = ".") -> AgentManifest:
     if not os.path.isfile(archive_path):
         raise AgentValidationError(f"Archive not found: {archive_path}")
 
+    abs_project_root = os.path.abspath(project_root)
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         # Extract to temp
         with tarfile.open(archive_path, "r:gz") as tar:
-            # Security: reject paths that escape the extraction directory
-            # TODO(security): P0 — Two vulnerabilities remain:
-            #   1. Symlink attack: member.name is checked but member.issym()/islnk()
-            #      is not. A symlink (e.g., workflow.yaml -> /etc/shadow) passes
-            #      validation. shutil.copy2 follows symlinks, leaking file contents.
-            #      Fix: reject members where member.issym() or member.islnk().
-            #   2. Manifest path traversal: After extraction, manifest.workflow,
-            #      manifest.handlers, and manifest.tools paths are joined to
-            #      project_root without traversal validation. A manifest declaring
-            #      workflow: "../../.ssh/authorized_keys" writes outside the project.
-            #      Fix: normalize all manifest paths and verify they resolve within
-            #      project_root + os.sep before copying.
             for member in tar.getmembers():
                 member_path = os.path.normpath(member.name)
                 if member_path.startswith("..") or os.path.isabs(member_path):
                     raise AgentValidationError(
                         f"Unsafe path in archive: {member.name}"
+                    )
+                if member.issym() or member.islnk():
+                    raise AgentValidationError(
+                        f"Symlink or hard link not allowed in archive: {member.name}"
                     )
             tar.extractall(tmp_dir)
 
@@ -102,28 +96,28 @@ def import_agent(archive_path: str, project_root: str = ".") -> AgentManifest:
 
         manifest = load_agent_manifest(manifest_path)
 
+        def _safe_copy(rel_path: str, label: str) -> None:
+            """Copy a file from tmp extraction into project_root, rejecting traversal."""
+            resolved = os.path.normpath(os.path.join(abs_project_root, rel_path))
+            if resolved != abs_project_root and not resolved.startswith(abs_project_root + os.sep):
+                raise AgentValidationError(
+                    f"{label} path escapes project root: {rel_path}"
+                )
+            src = os.path.join(tmp_dir, rel_path)
+            if os.path.isfile(src):
+                os.makedirs(os.path.dirname(resolved) or ".", exist_ok=True)
+                shutil.copy2(src, resolved)
+
         # Copy workflow
-        src_wf = os.path.join(tmp_dir, manifest.workflow)
-        dst_wf = os.path.join(project_root, manifest.workflow)
-        if os.path.isfile(src_wf):
-            os.makedirs(os.path.dirname(dst_wf) or ".", exist_ok=True)
-            shutil.copy2(src_wf, dst_wf)
+        _safe_copy(manifest.workflow, "Workflow")
 
         # Copy handlers
         for h in manifest.handlers:
-            src = os.path.join(tmp_dir, h)
-            dst = os.path.join(project_root, h)
-            if os.path.isfile(src):
-                os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
-                shutil.copy2(src, dst)
+            _safe_copy(h, "Handler")
 
         # Copy tools
         for t in manifest.tools:
-            src = os.path.join(tmp_dir, t)
-            dst = os.path.join(project_root, t)
-            if os.path.isfile(src):
-                os.makedirs(os.path.dirname(dst) or ".", exist_ok=True)
-                shutil.copy2(src, dst)
+            _safe_copy(t, "Tool")
 
         # Place manifest in agents/ directory
         agents_dir = os.path.join(project_root, "agents")

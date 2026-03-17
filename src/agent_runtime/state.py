@@ -26,6 +26,15 @@ Side Effects:
 from typing import Any, Dict, Optional
 import copy
 
+from .logging import StructuredLogger
+
+# Overwrite policies
+OVERWRITE_WARN = "warn"     # log a warning but allow the write (default)
+OVERWRITE_STRICT = "strict" # raise on any overwrite attempt
+OVERWRITE_ALLOW = "allow"   # silently allow overwrites
+
+_VALID_POLICIES = {OVERWRITE_WARN, OVERWRITE_STRICT, OVERWRITE_ALLOW}
+
 
 class RuntimeState:
     """Mutable runtime state wrapper with dot-path helpers.
@@ -39,19 +48,34 @@ class RuntimeState:
         'x'
     """
 
-    def __init__(self, data: Optional[Dict[str, Any]] = None, enforce_structure: bool = True) -> None:
+    def __init__(
+        self,
+        data: Optional[Dict[str, Any]] = None,
+        enforce_structure: bool = True,
+        overwrite_policy: str = OVERWRITE_WARN,
+        logger: Optional[StructuredLogger] = None,
+    ) -> None:
         """Initialize runtime state with optional structure enforcement.
 
         Args:
             data: Initial nested state dictionary.
             enforce_structure: Ensure `inputs/steps/runtime` namespaces exist.
+            overwrite_policy: One of 'warn', 'strict', or 'allow'.
+            logger: StructuredLogger for overwrite warnings (uses default if None).
 
         Example:
             >>> RuntimeState({}, enforce_structure=True).to_dict()["steps"]
             {}
         """
+        if overwrite_policy not in _VALID_POLICIES:
+            raise ValueError(
+                f"Invalid overwrite_policy '{overwrite_policy}'; "
+                f"must be one of {sorted(_VALID_POLICIES)}"
+            )
         self._data: Dict[str, Any] = copy.deepcopy(data) if data is not None else {}
         self._meta: Dict[str, Dict[str, Any]] = {}
+        self._overwrite_policy = overwrite_policy
+        self._logger = logger or StructuredLogger()
         if enforce_structure:
             self._data.setdefault("inputs", {})
             self._data.setdefault("steps", {})
@@ -124,7 +148,18 @@ class RuntimeState:
         parent, leaf = self._resolve_parent(key, create=True)
         if leaf in parent and parent[leaf] != value:
             writer = step_name or "unknown"
-            print(f"STATE WARNING: key '{key}' overwritten by step '{writer}'")
+            if self._overwrite_policy == OVERWRITE_STRICT:
+                raise KeyError(
+                    f"State key '{key}' already set; overwrite rejected "
+                    f"(policy=strict, writer='{writer}')"
+                )
+            elif self._overwrite_policy == OVERWRITE_WARN:
+                self._logger.info("STATE_OVERWRITE", {
+                    "key": key,
+                    "writer": writer,
+                    "old_value": repr(parent[leaf]),
+                    "new_value": repr(value),
+                })
         parent[leaf] = value
         if step_name is not None:
             self._meta[key] = {"written_by": step_name}

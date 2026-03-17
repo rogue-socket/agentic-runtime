@@ -7,7 +7,9 @@ Define memory tier protocol and coordinator used by the executor.
 
 Description:
 `MemoryManager` orchestrates hydration/persistence across working,
-episodic, semantic, and procedural memory tiers.
+episodic, semantic, and procedural memory tiers.  Each tier writes
+exclusively to its own namespace under ``runtime.memory.<tier>`` to
+prevent cross-tier state corruption.
 
 Key Components:
 - `MemoryTier` protocol
@@ -28,37 +30,31 @@ from typing import Any, Dict, Protocol
 
 
 class MemoryTier(Protocol):
-    """Protocol implemented by memory tiers.
+    """Protocol implemented by memory tiers."""
 
-    Example:
-        >>> hasattr(MemoryTier, "read")
-        True
-    """
     def read(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Auto-generated documentation for this callable.
-        
-        Describes purpose, expected inputs/outputs, and behavior in this module.
-        
-        Example:
-            >>> # Example 1
-            >>> read
-            >>> # Example 2
-            >>> read
-        """
+        """Return tier-specific data to merge into state."""
         ...
 
     def write(self, payload: Dict[str, Any]) -> None:
-        """Auto-generated documentation for this callable.
-        
-        Describes purpose, expected inputs/outputs, and behavior in this module.
-        
-        Example:
-            >>> # Example 1
-            >>> write
-            >>> # Example 2
-            >>> write
-        """
+        """Persist relevant data from current state."""
         ...
+
+
+_TIER_NAMES = ("working", "episodic", "semantic", "procedural")
+
+
+def _deep_merge(target: Dict[str, Any], source: Dict[str, Any]) -> None:
+    """Recursively merge *source* into *target* in place.
+
+    Dict values are merged recursively; non-dict values from *source*
+    overwrite *target*.
+    """
+    for key, value in source.items():
+        if key in target and isinstance(target[key], dict) and isinstance(value, dict):
+            _deep_merge(target[key], value)
+        else:
+            target[key] = value
 
 
 class MemoryManager:
@@ -66,6 +62,10 @@ class MemoryManager:
 
     Executor uses this class before and after each step so transient and
     persistent memories can contribute to run state evolution.
+
+    Each tier's output is namespaced under ``runtime.memory.<tier>`` to
+    prevent cross-tier collisions and protect the ``inputs``/``steps``
+    namespaces from accidental overwrites.
     """
 
     def __init__(
@@ -84,27 +84,26 @@ class MemoryManager:
     def hydrate_state(self, state: Dict[str, Any]) -> None:
         """Merge memory snapshots into mutable runtime state.
 
-        # TODO: BUG — P1 fix needed (prerequisite for memory tiers going live)
-        # This `dict.update` strategy can overwrite top-level namespaces
-        # (e.g., `inputs`, `steps`) and corrupt run-local state ownership.
-        # Fix: each memory tier should write ONLY to `runtime.memory.<tier>`
-        # (e.g., `runtime.memory.episodic`) using deep-merge, never touching
-        # `inputs` or `steps` namespaces.
+        Each tier writes only to ``runtime.memory.<tier>`` using deep-merge,
+        preserving the ``inputs`` and ``steps`` namespaces.
         """
-        state.update(self.working.read(state))
-        state.update(self.episodic.read(state))
-        state.update(self.semantic.read(state))
-        state.update(self.procedural.read(state))
+        runtime = state.setdefault("runtime", {})
+        memory_ns = runtime.setdefault("memory", {})
+
+        for name, tier in self._tiers():
+            tier_data = tier.read(state)
+            if tier_data:
+                tier_ns = memory_ns.setdefault(name, {})
+                _deep_merge(tier_ns, tier_data)
 
     def persist_state(self, state: Dict[str, Any]) -> None:
-        """Persist current state into each memory tier.
+        """Persist current state into each memory tier."""
+        for _name, tier in self._tiers():
+            tier.write(state)
 
-        Example:
-            >>> # Called by executor after step output commit.
-            >>> True
-            True
-        """
-        self.working.write(state)
-        self.episodic.write(state)
-        self.semantic.write(state)
-        self.procedural.write(state)
+    def _tiers(self):
+        """Yield (name, tier) pairs."""
+        yield "working", self.working
+        yield "episodic", self.episodic
+        yield "semantic", self.semantic
+        yield "procedural", self.procedural

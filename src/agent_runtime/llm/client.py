@@ -121,8 +121,10 @@ class LLMClient:
             return provider_name, model_id
 
         providers = self.registry.list_providers()
+        if self.registry.default_provider:
+            return self.registry.default_provider, model
         if len(providers) == 1:
             return providers[0], model
 
-        # TODO: Allow a default provider in runtime.yaml to avoid ambiguity.
-        raise ValueError("Provider not specified and multiple providers are configured.")
+        raise ValueError("Provider not specified and multiple providers are configured. "
+                         "Set default_llm_provider in runtime.yaml or use provider/model syntax.")

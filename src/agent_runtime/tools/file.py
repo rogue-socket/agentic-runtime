@@ -50,15 +50,9 @@ class FileTool:
         self.root = os.path.abspath(root or _DEFAULT_ROOT)
 
     def _safe_path(self, relative: str) -> Optional[str]:
-        """Resolve path and verify it stays within root.
-
-        # TODO(security): P0 — The current `startswith(self.root)` check is
-        # bypassed by sibling directories that share a prefix. E.g. if root is
-        # "/project" then "/projectx/secret.txt".startswith("/project") is True.
-        # Fix: change to `resolved == self.root or resolved.startswith(self.root + os.sep)`.
-        """
+        """Resolve path and verify it stays within root."""
         resolved = os.path.normpath(os.path.join(self.root, relative))
-        if not resolved.startswith(self.root):
+        if resolved != self.root and not resolved.startswith(self.root + os.sep):
             return None
         return resolved
 

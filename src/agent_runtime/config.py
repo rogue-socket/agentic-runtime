@@ -9,6 +9,7 @@ Precedence (highest wins):
 TODO(ux): For solo dev ICP, `ai init` should generate a runtime.yaml that
   includes a commented-out but complete LLM provider config section, so new
   users can see exactly what to fill in rather than reading docs.
+  STATUS: Done \u2014 RUNTIME_YAML_TEMPLATE now includes all config sections.
 TODO(packaging): Once pyproject.toml exists, version should be read from
   package metadata (importlib.metadata) rather than hardcoded.
 """
@@ -43,11 +44,28 @@ class RuntimeConfig:
     log_level: str = "info"
     log_format: str = "json"
 
+    # State overwrite policy: 'warn', 'strict', or 'allow'
+    overwrite_policy: str = "warn"
+
+    # Working memory limits
+    working_memory_max_entries: int = 50
+    working_memory_max_scratch_bytes: int = 256_000
+
+    # Shell tool command restrictions (regex patterns)
+    shell_allowlist: list = field(default_factory=list)
+    shell_denylist: list = field(default_factory=list)
+
+    # Default LLM provider (used when model string has no provider/ prefix)
+    default_llm_provider: str = ""
+
 
 _DEFAULTS = RuntimeConfig()
 
 # Keys in runtime.yaml that map to flat RuntimeConfig fields
-_FLAT_KEYS = {"db_path", "workflows_dir", "handlers_dir", "tools_dir"}
+_FLAT_KEYS = {
+    "db_path", "workflows_dir", "handlers_dir", "tools_dir",
+    "overwrite_policy", "default_llm_provider",
+}
 
 
 def load_config(config_path: str = "runtime.yaml") -> RuntimeConfig:
@@ -73,12 +91,32 @@ def load_config(config_path: str = "runtime.yaml") -> RuntimeConfig:
     if isinstance(raw.get("llm"), dict):
         cfg.llm_registry = LLMRegistry.from_config(raw["llm"])
 
+    # Apply top-level default_llm_provider if the llm section didn't set one
+    if cfg.default_llm_provider and not cfg.llm_registry.default_provider:
+        cfg.llm_registry.default_provider = cfg.default_llm_provider
+
     logging_block = raw.get("logging")
     if isinstance(logging_block, dict):
         if "level" in logging_block:
             cfg.log_level = logging_block["level"]
         if "format" in logging_block:
             cfg.log_format = logging_block["format"]
+
+    memory_block = raw.get("memory")
+    if isinstance(memory_block, dict):
+        working = memory_block.get("working")
+        if isinstance(working, dict):
+            if "max_entries" in working:
+                cfg.working_memory_max_entries = int(working["max_entries"])
+            if "max_scratch_bytes" in working:
+                cfg.working_memory_max_scratch_bytes = int(working["max_scratch_bytes"])
+
+    shell_block = raw.get("shell")
+    if isinstance(shell_block, dict):
+        if isinstance(shell_block.get("allowlist"), list):
+            cfg.shell_allowlist = shell_block["allowlist"]
+        if isinstance(shell_block.get("denylist"), list):
+            cfg.shell_denylist = shell_block["denylist"]
 
     return cfg
 

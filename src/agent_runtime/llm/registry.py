@@ -105,8 +105,19 @@ class LLMRegistry:
     (typically inside ``runtime.yaml``).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, default_provider: Optional[str] = None) -> None:
         self._providers: Dict[str, LLMProvider] = {}
+        self._default_provider = default_provider
+
+    # ---- default provider -----
+
+    @property
+    def default_provider(self) -> Optional[str]:
+        return self._default_provider
+
+    @default_provider.setter
+    def default_provider(self, name: Optional[str]) -> None:
+        self._default_provider = name
 
     # ---- registration -----
 
@@ -170,6 +181,9 @@ class LLMRegistry:
         """
         registry = cls()
         providers_raw = llm_section.get("providers", {})
+        default = llm_section.get("default_provider")
+        if isinstance(default, str) and default:
+            registry.default_provider = default
         if not isinstance(providers_raw, dict):
             return registry
 

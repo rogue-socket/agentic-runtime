@@ -7,12 +7,15 @@ Security notes:
 - Commands are passed through the system shell.  Only use this tool with
   trusted workflow definitions — never expose it to untrusted user input.
 - A maximum output size is enforced to prevent memory exhaustion.
+- An optional allowlist/denylist restricts which commands may be executed.
 """
 
 from __future__ import annotations
 
+import re
+import shlex
 import subprocess
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .base import RuntimeContext, ToolResult
 
@@ -22,7 +25,19 @@ _MAX_OUTPUT_BYTES = 1_048_576  # 1 MB
 
 
 class ShellTool:
-    """Execute shell commands and capture output."""
+    """Execute shell commands and capture output.
+
+    Command restrictions can be configured via ``allowlist`` and
+    ``denylist``.  Each list contains shell-glob or regex patterns
+    matched against the first token (program name) of the command.
+
+    - If ``allowlist`` is set, **only** commands whose program name
+      matches at least one pattern are allowed.
+    - If ``denylist`` is set, commands whose program name matches
+      any pattern are rejected.
+    - ``denylist`` is checked first — a command denied by the denylist
+      is rejected even if it matches an allowlist entry.
+    """
 
     name = "tools.shell"
     description = "Run a shell command and return stdout, stderr, and return code"
@@ -47,10 +62,56 @@ class ShellTool:
     timeout: Optional[float] = None
     retries: Optional[int] = None
 
+    def __init__(
+        self,
+        allowlist: Optional[List[str]] = None,
+        denylist: Optional[List[str]] = None,
+    ) -> None:
+        """Initialize with optional command restrictions.
+
+        Args:
+            allowlist: If set, only programs matching one of these patterns
+                are permitted.  Patterns are matched as anchored regexes
+                against the first token of the command.
+            denylist: Programs matching any of these patterns are rejected
+                regardless of the allowlist.
+        """
+        self._allowlist = [re.compile(p) for p in allowlist] if allowlist else None
+        self._denylist = [re.compile(p) for p in denylist] if denylist else None
+
+    def _extract_program(self, command: str) -> str:
+        """Extract the first token (program name) from a command string."""
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            tokens = command.split()
+        return tokens[0] if tokens else ""
+
+    def _check_command(self, command: str) -> Optional[str]:
+        """Return an error message if the command is restricted, else None."""
+        program = self._extract_program(command)
+        if not program:
+            return None
+
+        if self._denylist:
+            for pattern in self._denylist:
+                if pattern.fullmatch(program):
+                    return f"Command '{program}' is blocked by denylist"
+
+        if self._allowlist:
+            if not any(p.fullmatch(program) for p in self._allowlist):
+                return f"Command '{program}' is not in the allowlist"
+
+        return None
+
     async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
         command = input.get("command", "")
         if not command:
             return ToolResult(success=False, output=None, error="command is required", metadata=None)
+
+        restriction_error = self._check_command(command)
+        if restriction_error:
+            return ToolResult(success=False, output=None, error=restriction_error, metadata=None)
 
         cwd = input.get("cwd")
         cmd_timeout = input.get("timeout", _DEFAULT_TIMEOUT)

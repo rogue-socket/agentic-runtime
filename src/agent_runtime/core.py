@@ -46,6 +46,10 @@ from .utils import StateDict, build_step_input, format_template, safe_eval, utc_
 
 StepHandler = Callable[[RuntimeState], StateDict]
 
+# Lifecycle event callback signature.
+# Receives an event name (e.g. "STEP_START") and a payload dict.
+EventCallback = Callable[[str, Dict[str, Any]], None]
+
 
 class StepStatus(str):
     """Canonical run/step status constants."""
@@ -62,10 +66,17 @@ class RunState:
 
     _data: StateDict
     _frozen: bool = False
+    _overwrite_policy: str = "warn"
+    _logger: Optional[StructuredLogger] = None
 
     def __post_init__(self) -> None:
         """Initialize underlying `RuntimeState` wrapper."""
-        self._runtime_state = RuntimeState(self._data, enforce_structure=True)
+        self._runtime_state = RuntimeState(
+            self._data,
+            enforce_structure=True,
+            overwrite_policy=self._overwrite_policy,
+            logger=self._logger,
+        )
 
     def snapshot(self) -> StateDict:
         """Return deep-copy state snapshot."""
@@ -204,6 +215,8 @@ class Executor:
         logger: Optional[StructuredLogger],
         memory_manager: MemoryManager,
         tool_registry: ToolRegistry,
+        overwrite_policy: str = "warn",
+        on_event: Optional[EventCallback] = None,
     ) -> None:
         """Initialize executor dependencies and step lookup tables."""
         self.steps = steps
@@ -213,6 +226,13 @@ class Executor:
         self.logger = logger
         self.memory_manager = memory_manager
         self.tool_registry = tool_registry
+        self.overwrite_policy = overwrite_policy
+        self.on_event = on_event
+
+    def _emit(self, event: str, payload: Dict[str, Any]) -> None:
+        """Fire the on_event callback if registered."""
+        if self.on_event is not None:
+            self.on_event(event, payload)
 
     def run(
         self,
@@ -251,16 +271,16 @@ class Executor:
         workflow_yaml: Optional[str] = None,
         workflow_steps: Optional[List[str]] = None,
         input_hash: Optional[str] = None,
-        # TODO(streaming): Add an optional `on_event` callback parameter:
-        #   on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None
-        #   This should fire for STEP_START, STEP_COMPLETE, STEP_ERROR,
-        #   LLM_TOKEN (streaming), and RUN_COMPLETE events. This is the
-        #   primary integration point for UIs, API servers, and notebooks
-        #   that need real-time progress feedback.
+        on_event: Optional[EventCallback] = None,
     ) -> Run:
         """Async: create a new run and execute workflow from the first step."""
         if not self.step_order:
             raise StepExecutionError("Workflow must contain at least one step.")
+
+        # Per-call on_event overrides the instance-level callback.
+        prev_on_event = self.on_event
+        if on_event is not None:
+            self.on_event = on_event
 
         run = Run(
             run_id=str(uuid.uuid4()),
@@ -270,25 +290,35 @@ class Executor:
             workflow_yaml=workflow_yaml,
             workflow_steps=workflow_steps,
             input_hash=input_hash,
-            status=StepStatus.PENDING,
+            status=StepStatus.RUNNING,
             created_at=utc_now().isoformat(),
-            state=RunState(_data={"inputs": copy.deepcopy(initial_state), "steps": {}, "runtime": {}}),
+            started_at=utc_now().isoformat(),
+            state=RunState(
+                _data={"inputs": copy.deepcopy(initial_state), "steps": {}, "runtime": {}},
+                _overwrite_policy=self.overwrite_policy,
+                _logger=self.logger,
+            ),
         )
-        self.storage.create_run(run)
-
-        run.set_status(StepStatus.RUNNING)
-        run.started_at = utc_now().isoformat()
-        self.storage.update_run_status(run.run_id, run.status, None, started_at=run.started_at)
 
         state_version = 0
-        self.storage.save_state(run.run_id, None, state_version, run.state.data)
 
-        return await self._execute_steps_async(
-            run,
-            start_step_id=self.step_order[0],
-            on_error=on_error,
-            state_version=state_version,
-        )
+        # Persist run record and initial state version atomically.
+        # A crash between these would leave a run with no state — unresumable.
+        with self.storage.transaction():
+            self.storage.create_run(run)
+            self.storage.save_state(run.run_id, None, state_version, run.state.data)
+
+        self._emit("RUN_START", {"run_id": run.run_id, "workflow_id": workflow_id})
+
+        try:
+            return await self._execute_steps_async(
+                run,
+                start_step_id=self.step_order[0],
+                on_error=on_error,
+                state_version=state_version,
+            )
+        finally:
+            self.on_event = prev_on_event
 
     def resume(
         self,
@@ -327,7 +357,11 @@ class Executor:
                 f"Original hash: {run.workflow_hash}, current hash: {workflow_hash}. "
                 f"Cannot safely resume — the workflow YAML must match the original run."
             )
-        run.state = RunState(_data=copy.deepcopy(resume_state))
+        run.state = RunState(
+            _data=copy.deepcopy(resume_state),
+            _overwrite_policy=self.overwrite_policy,
+            _logger=self.logger,
+        )
         run.set_status(StepStatus.RUNNING)
         if run.started_at is None:
             run.started_at = utc_now().isoformat()
@@ -375,6 +409,13 @@ class Executor:
                 execution_index=execution_index,
             )
             run.add_step(execution)
+
+            self._emit("STEP_START", {
+                "run_id": run.run_id,
+                "step_id": step_def.step_id,
+                "step_type": step_def.step_type,
+                "execution_index": execution_index,
+            })
 
             try:
                 max_attempts = step_def.retry.attempts if step_def.retry else 1
@@ -462,21 +503,26 @@ class Executor:
 
                 execution.output = output
                 execution.status = StepStatus.COMPLETED
+                self._emit("STEP_COMPLETE", {
+                    "run_id": run.run_id,
+                    "step_id": step_def.step_id,
+                    "step_type": step_def.step_type,
+                    "duration_ms": execution.duration_ms,
+                })
             except Exception as exc:  # noqa: BLE001
                 execution.status = StepStatus.FAILED
                 execution.error = f"{type(exc).__name__}: {exc}"
                 if execution.last_error is None:
                     execution.last_error = execution.error
                 had_errors = True
+                self._emit("STEP_ERROR", {
+                    "run_id": run.run_id,
+                    "step_id": step_def.step_id,
+                    "step_type": step_def.step_type,
+                    "error": execution.error,
+                })
                 if on_error == "fail_fast":
                     run.set_status(StepStatus.FAILED, error=execution.error, completed_at=utc_now().isoformat())
-                    self.storage.update_run_status(
-                        run.run_id,
-                        run.status,
-                        run.error,
-                        completed_at=run.completed_at,
-                    )
-                    run.freeze()
             finally:
                 if execution.finished_at is None:
                     execution.finished_at = utc_now().isoformat()
@@ -485,13 +531,28 @@ class Executor:
                     end = datetime.fromisoformat(execution.finished_at)
                     execution.duration_ms = int((end - start).total_seconds() * 1000)
 
+            # Persist the step record, state snapshot, and (on failure) status
+            # update together.  If any write fails or the process crashes
+            # mid-batch, SQLite rolls back the entire group — no orphaned
+            # step records without matching state versions.
+            with self.storage.transaction():
                 self.storage.append_step(run.run_id, execution)
 
+                if execution.status == StepStatus.FAILED and on_error == "fail_fast":
+                    self.storage.update_run_status(
+                        run.run_id,
+                        run.status,
+                        run.error,
+                        completed_at=run.completed_at,
+                    )
+                else:
+                    state_version += 1
+                    self.storage.save_state(run.run_id, execution.step_id, state_version, run.state.data)
+
             if execution.status == StepStatus.FAILED and on_error == "fail_fast":
+                run.freeze()
                 break
 
-            state_version += 1
-            self.storage.save_state(run.run_id, execution.step_id, state_version, run.state.data)
             execution_index += 1
 
             current_step_id = self._resolve_next_step(step_def, run.state.data)
@@ -506,6 +567,12 @@ class Executor:
                 completed_at=run.completed_at,
             )
             run.freeze()
+
+        self._emit("RUN_COMPLETE", {
+            "run_id": run.run_id,
+            "status": run.status,
+            "error": run.error,
+        })
 
         return run
 
