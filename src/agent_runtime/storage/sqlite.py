@@ -178,6 +178,8 @@ class SQLiteStorage(Storage):
                 started_at TEXT,
                 finished_at TEXT,
                 duration_ms INTEGER,
+                handler_duration_ms INTEGER,
+                tool_duration_ms INTEGER,
                 attempts INTEGER,
                 FOREIGN KEY(run_id) REFERENCES runs(id)
             );
@@ -208,6 +210,10 @@ class SQLiteStorage(Storage):
             conn.execute("ALTER TABLE steps ADD COLUMN state_after_json TEXT")
         if "execution_index" not in columns:
             conn.execute("ALTER TABLE steps ADD COLUMN execution_index INTEGER")
+        if "handler_duration_ms" not in columns:
+            conn.execute("ALTER TABLE steps ADD COLUMN handler_duration_ms INTEGER")
+        if "tool_duration_ms" not in columns:
+            conn.execute("ALTER TABLE steps ADD COLUMN tool_duration_ms INTEGER")
 
     def _ensure_runs_columns(self, conn: sqlite3.Connection) -> None:
         """Add missing `runs` table columns for backward compatibility."""
@@ -271,8 +277,12 @@ class SQLiteStorage(Storage):
         """Insert one step execution record."""
         self._conn_execute(
             """
-            INSERT INTO steps (run_id, step_id, type, status, input_json, output_json, error, last_error, state_before_json, state_after_json, execution_index, started_at, finished_at, duration_ms, attempts)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO steps (
+                run_id, step_id, type, status, input_json, output_json, error, last_error,
+                state_before_json, state_after_json, execution_index, started_at, finished_at,
+                duration_ms, handler_duration_ms, tool_duration_ms, attempts
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -289,6 +299,8 @@ class SQLiteStorage(Storage):
                 step.started_at,
                 step.finished_at,
                 step.duration_ms,
+                step.handler_duration_ms,
+                step.tool_duration_ms,
                 step.attempt_count,
             ),
         )
@@ -358,6 +370,8 @@ class SQLiteStorage(Storage):
                     state_before=json_loads(row["state_before_json"]) if row["state_before_json"] else None,
                     state_after=json_loads(row["state_after_json"]) if row["state_after_json"] else None,
                     duration_ms=row["duration_ms"],
+                    handler_duration_ms=row["handler_duration_ms"],
+                    tool_duration_ms=row["tool_duration_ms"],
                     attempt_count=row["attempts"],
                     execution_index=row["execution_index"],
                 )

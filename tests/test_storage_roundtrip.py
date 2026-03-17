@@ -9,7 +9,6 @@ from __future__ import annotations
 import tempfile
 
 from agent_runtime.core import Run, StepExecution, StepStatus
-from agent_runtime.state import RunState
 from agent_runtime.storage.sqlite import SQLiteStorage
 
 

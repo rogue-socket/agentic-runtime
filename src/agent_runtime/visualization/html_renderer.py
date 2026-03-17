@@ -61,6 +61,7 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
     timeline_rows = []
     tool_rows = []
     for item in timeline.steps:
+        call_duration = item.tool_duration_ms if item.tool_duration_ms is not None else item.handler_duration_ms
         timeline_rows.append(
             "<tr>"
             f"<td>{html.escape(item.step_id)}</td>"
@@ -68,6 +69,7 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
             f"<td>{html.escape(item.status)}</td>"
             f"<td>{item.attempts}</td>"
             f"<td>{item.duration_ms if item.duration_ms is not None else 'n/a'}</td>"
+            f"<td>{call_duration if call_duration is not None else 'n/a'}</td>"
             f"<td>{html.escape(item.started_at or '')}</td>"
             f"<td>{html.escape(item.finished_at or '')}</td>"
             f"<td>{html.escape(item.tool_name or '')}</td>"
@@ -84,7 +86,7 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
                 "<td><pre>"
                 + html.escape(_pretty_json(item.output_data))
                 + "</pre></td>"
-                f"<td>{item.duration_ms if item.duration_ms is not None else 'n/a'}</td>"
+                f"<td>{item.tool_duration_ms if item.tool_duration_ms is not None else (item.duration_ms if item.duration_ms is not None else 'n/a')}</td>"
                 "</tr>"
             )
 
@@ -114,6 +116,10 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
     # [TODO] Replace text edge list with interactive graph rendering (e.g., Mermaid) without external network dependencies.
     edge_lines = [f"{edge.source} -> {edge.target} [{edge.kind}]" for edge in graph.edges]
 
+    run_duration = timeline.run_duration_ms if timeline.run_duration_ms is not None else "n/a"
+    run_started = html.escape(timeline.run_started_at or "n/a")
+    run_completed = html.escape(timeline.run_completed_at or "n/a")
+
     html_doc = f"""<!doctype html>
 <html>
 <head>
@@ -142,6 +148,14 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
 <body>
   <h1>Run Visualization</h1>
   <p class=\"small\"><strong>Run:</strong> {html.escape(run_id)}</p>
+  <section>
+    <div class=\"card\">
+      <h2>Run Summary</h2>
+      <p><strong>Started:</strong> {run_started}</p>
+      <p><strong>Completed:</strong> {run_completed}</p>
+      <p><strong>Total Duration (ms):</strong> {run_duration}</p>
+    </div>
+  </section>
 
   <section>
     <h2>Execution Graph</h2>
@@ -165,7 +179,7 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
   <section>
     <h2>Step Timeline</h2>
     <table>
-      <thead><tr><th>Step</th><th>Type</th><th>Status</th><th>Attempts</th><th>Duration (ms)</th><th>Started</th><th>Finished</th><th>Tool</th></tr></thead>
+      <thead><tr><th>Step</th><th>Type</th><th>Status</th><th>Attempts</th><th>Duration (ms)</th><th>Call Duration (ms)</th><th>Started</th><th>Finished</th><th>Tool</th></tr></thead>
       <tbody>{''.join(timeline_rows)}</tbody>
     </table>
   </section>

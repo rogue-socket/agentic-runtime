@@ -26,6 +26,24 @@ pip install -r requirements.txt
 PYTHONPATH=src ./ai init
 ```
 
+Or use the guided onboarding wizard:
+
+```bash
+ai
+```
+
+or:
+
+```bash
+ai onboard --path my-project
+```
+
+The wizard initializes the project (if needed), configures an LLM provider,
+writes `.env`, and optionally runs a sample workflow.
+
+When run with no args, `ai` opens a home screen with common actions
+(setup, run sample, inspect, visualize).
+
 Creates a project structure:
 
 ```
@@ -486,20 +504,28 @@ HTML visualization (default mode, auto-opens browser):
 PYTHONPATH=src ./ai visualize <run_id>
 ```
 
-HTML visualization without auto-opening browser:
+HTML visualization with explicit HTML mode (also auto-opens browser):
 
 ```bash
 PYTHONPATH=src ./ai visualize <run_id> --html
 ```
 
+HTML visualization without auto-opening browser:
+
+```bash
+PYTHONPATH=src ./ai visualize <run_id> --html --no-open
+```
+
 Output:
 - file path `.runs/<run_id>/visualization.html`
 - default mode attempts to open the file in the default browser
-- `--html` generates the file without opening the browser
+- `--html` also opens the browser unless `--no-open` is provided
 
 HTML includes:
 - execution graph view
 - branch decision table
+- run summary (start, completion, total duration)
+- per-step call durations (tool/LLM)
 - step timeline with attempts/duration
 - tool call table (args/result/latency)
 - state timeline with per-step diffs

@@ -154,6 +154,8 @@ class StepExecution:
     output: Optional[StateDict] = None
     error: Optional[str] = None
     duration_ms: Optional[int] = None
+    handler_duration_ms: Optional[int] = None
+    tool_duration_ms: Optional[int] = None
     attempt_count: Optional[int] = None
     last_error: Optional[str] = None
     state_before: Optional[StateDict] = None
@@ -434,6 +436,8 @@ class Executor:
 
                 output = None
                 last_error: Optional[Exception] = None
+                handler_duration_ms: Optional[int] = None
+                tool_duration_ms: Optional[int] = None
                 for attempt in range(1, max_attempts + 1):
                     snapshot = run.state.snapshot()
                     execution.state_before = copy.deepcopy(snapshot)
@@ -460,13 +464,17 @@ class Executor:
                         if step_def.step_type == "model":
                             if step_def.handler is None:
                                 raise StepExecutionError("Missing model handler.")
+                            call_start = time.monotonic()
                             output = _invoke_handler(step_def.handler, step_input_state, snapshot)
+                            handler_duration_ms = int((time.monotonic() - call_start) * 1000)
                         elif step_def.step_type == "tool":
                             if not step_def.tool_name:
                                 raise StepExecutionError("Missing tool name.")
                             tool = self.tool_registry.get(step_def.tool_name)
                             tool_input = step_input if step_def.input_spec is not None else format_template(step_def.raw_input or {}, snapshot)
-                            output = await self._execute_tool_async(tool, tool_input, run.run_id, step_def.step_id, snapshot)
+                            output, tool_duration_ms = await self._execute_tool_async(
+                                tool, tool_input, run.run_id, step_def.step_id, snapshot
+                            )
                         else:
                             raise StepExecutionError(f"Unknown step type: {step_def.step_type}")
 
@@ -513,24 +521,14 @@ class Executor:
 
                 execution.output = output
                 execution.status = StepStatus.COMPLETED
-                self._emit("STEP_COMPLETE", {
-                    "run_id": run.run_id,
-                    "step_id": step_def.step_id,
-                    "step_type": step_def.step_type,
-                    "duration_ms": execution.duration_ms,
-                })
+                execution.handler_duration_ms = handler_duration_ms
+                execution.tool_duration_ms = tool_duration_ms
             except Exception as exc:  # noqa: BLE001
                 execution.status = StepStatus.FAILED
                 execution.error = f"{type(exc).__name__}: {exc}"
                 if execution.last_error is None:
                     execution.last_error = execution.error
                 had_errors = True
-                self._emit("STEP_ERROR", {
-                    "run_id": run.run_id,
-                    "step_id": step_def.step_id,
-                    "step_type": step_def.step_type,
-                    "error": execution.error,
-                })
                 if on_error == "fail_fast":
                     run.set_status(StepStatus.FAILED, error=execution.error, completed_at=utc_now().isoformat())
             finally:
@@ -540,6 +538,26 @@ class Executor:
                     start = datetime.fromisoformat(execution.started_at)
                     end = datetime.fromisoformat(execution.finished_at)
                     execution.duration_ms = int((end - start).total_seconds() * 1000)
+
+            if execution.status == StepStatus.COMPLETED:
+                self._emit("STEP_COMPLETE", {
+                    "run_id": run.run_id,
+                    "step_id": step_def.step_id,
+                    "step_type": step_def.step_type,
+                    "duration_ms": execution.duration_ms,
+                    "handler_duration_ms": execution.handler_duration_ms,
+                    "tool_duration_ms": execution.tool_duration_ms,
+                })
+            else:
+                self._emit("STEP_ERROR", {
+                    "run_id": run.run_id,
+                    "step_id": step_def.step_id,
+                    "step_type": step_def.step_type,
+                    "error": execution.error,
+                    "duration_ms": execution.duration_ms,
+                    "handler_duration_ms": execution.handler_duration_ms,
+                    "tool_duration_ms": execution.tool_duration_ms,
+                })
 
             # Persist the step record, state snapshot, and (on failure) status
             # update together.  If any write fails or the process crashes
@@ -586,7 +604,14 @@ class Executor:
 
         return run
 
-    async def _execute_tool_async(self, tool, tool_input: Dict[str, Any], run_id: str, step_id: str, state: StateDict) -> Dict[str, Any]:
+    async def _execute_tool_async(
+        self,
+        tool,
+        tool_input: Dict[str, Any],
+        run_id: str,
+        step_id: str,
+        state: StateDict,
+    ) -> tuple[Dict[str, Any], int]:
         """Execute tool with validation, retries, and structured events."""
         validate_input(tool_input, tool.input_schema)
         context = RuntimeContext(run_id=run_id, step_id=step_id, state=state, logger=self.logger)
@@ -609,6 +634,7 @@ class Executor:
                     raise StepExecutionError("Tool must return ToolResult.")
                 if not result.success:
                     raise StepExecutionError(result.error or "Tool execution failed.")
+                duration_ms = int((time.monotonic() - start) * 1000)
                 if self.logger:
                     self.logger.info(
                         "TOOL_SUCCESS",
@@ -616,10 +642,10 @@ class Executor:
                             "tool_name": tool.name,
                             "run_id": run_id,
                             "step_id": step_id,
-                            "execution_time_ms": int((time.monotonic() - start) * 1000),
+                            "execution_time_ms": duration_ms,
                         },
                     )
-                return result.output or {}
+                return result.output or {}, duration_ms
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 if attempt > retries:

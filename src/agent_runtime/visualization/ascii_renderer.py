@@ -35,6 +35,11 @@ def render_ascii(run_id: str, graph: GraphView, timeline: TimelineView) -> str:
     """
     lines: List[str] = []
     lines.append(f"Run: {run_id}")
+    if timeline.run_duration_ms is not None:
+        lines.append(f"Run Duration: {timeline.run_duration_ms}ms")
+    if timeline.run_started_at or timeline.run_completed_at:
+        lines.append(f"Started: {timeline.run_started_at or 'n/a'}")
+        lines.append(f"Completed: {timeline.run_completed_at or 'n/a'}")
     lines.append("")
     lines.append("Execution Graph")
     lines.append("start")
@@ -58,6 +63,9 @@ def render_ascii(run_id: str, graph: GraphView, timeline: TimelineView) -> str:
     for item in timeline.steps:
         duration = f"{item.duration_ms}ms" if item.duration_ms is not None else "n/a"
         lines.append(f" - {item.step_id} ({item.step_type}) {item.status} attempts={item.attempts} duration={duration}")
+        call_duration = item.tool_duration_ms if item.tool_duration_ms is not None else item.handler_duration_ms
+        if call_duration is not None:
+            lines.append(f"   call_duration: {call_duration}ms")
         if item.tool_name:
             lines.append(f"   tool: {item.tool_name}")
         if item.error:

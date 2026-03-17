@@ -194,6 +194,32 @@ def _prompt_yes_no(prompt: str, default: bool = True) -> bool:
             return False
 
 
+def _prompt_choice(prompt: str, choices: List[str], default: str) -> str:
+    choices_lower = [c.lower() for c in choices]
+    while True:
+        raw = input(f"{prompt} {choices} [{default}]: ").strip()
+        if not raw:
+            return default
+        if raw.lower() in choices_lower:
+            return choices[choices_lower.index(raw.lower())]
+
+
+def _prompt_int(prompt: str, min_value: int, max_value: int, default: int) -> int:
+    while True:
+        raw = input(f"{prompt} [{default}]: ").strip()
+        if not raw:
+            return default
+        try:
+            value = int(raw)
+        except ValueError:
+            print("Please enter a number.")
+            continue
+        if value < min_value or value > max_value:
+            print(f"Choose a number between {min_value} and {max_value}.")
+            continue
+        return value
+
+
 EXAMPLE_WORKFLOW = """workflow:
   id: example_workflow
   version: v1
@@ -667,8 +693,223 @@ def _build_input_state(
     return result
 
 
+def _run_setup_flow(
+    project_root: str,
+    *,
+    provider: Optional[str],
+    api_key_env: Optional[str],
+    api_key: Optional[str],
+    model: Optional[str],
+    base_url: Optional[str],
+    temperature: Optional[float],
+    max_tokens: Optional[int],
+    no_dotenv: bool,
+    no_default: bool,
+) -> Dict[str, Any]:
+    runtime_path = os.path.join(project_root, "runtime.yaml")
+    dotenv_path = os.path.join(project_root, ".env")
+
+    if not os.path.exists(runtime_path):
+        with open(runtime_path, "w", encoding="utf-8") as f:
+            f.write(RUNTIME_YAML_TEMPLATE)
+
+    chosen_provider = (provider or _prompt_value(
+        "Default LLM provider (openai/anthropic/gemini/local)",
+        default="openai",
+    )).strip().lower()
+    if chosen_provider not in ("openai", "anthropic", "gemini", "local"):
+        raise SystemExit(f"Unsupported provider: {chosen_provider}")
+
+    chosen_api_key_env = api_key_env or _DEFAULT_PROVIDER_ENV.get(chosen_provider, "")
+    if not chosen_api_key_env:
+        chosen_api_key_env = _prompt_value("API key env var name (e.g. OPENAI_API_KEY)")
+
+    chosen_api_key = api_key
+    if chosen_api_key is None:
+        chosen_api_key = _prompt_value(
+            f"Paste {chosen_api_key_env} (leave blank to skip)",
+            secret=True,
+        )
+
+    write_dotenv = not no_dotenv
+    if write_dotenv and chosen_api_key:
+        write_dotenv = _prompt_yes_no(f"Write {chosen_api_key_env} to .env", default=True)
+    if write_dotenv and chosen_api_key:
+        _update_dotenv(dotenv_path, {chosen_api_key_env: chosen_api_key})
+        print(f"Wrote {chosen_api_key_env} to {dotenv_path}")
+    elif chosen_api_key and not write_dotenv:
+        print(f"Skipped writing {chosen_api_key_env} to .env")
+
+    model_default = _DEFAULT_PROVIDER_MODEL.get(chosen_provider)
+    chosen_model = model or _prompt_value(
+        "Default model id", default=model_default or ""
+    )
+    chosen_temperature = temperature if temperature is not None else 0.2
+    chosen_max_tokens = max_tokens if max_tokens is not None else 4096
+
+    chosen_base_url = base_url
+    if chosen_provider == "local" and not chosen_base_url:
+        chosen_base_url = _prompt_value(
+            "Base URL for local provider",
+            default=_DEFAULT_PROVIDER_BASE_URL.get("local", ""),
+        )
+
+    # Update runtime.yaml
+    try:
+        with open(runtime_path, "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+    except Exception:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+
+    if not no_default:
+        raw["default_llm_provider"] = chosen_provider
+
+    llm_block = raw.get("llm")
+    if not isinstance(llm_block, dict):
+        llm_block = {}
+    providers_block = llm_block.get("providers")
+    if not isinstance(providers_block, dict):
+        providers_block = {}
+    provider_block = providers_block.get(chosen_provider)
+    if not isinstance(provider_block, dict):
+        provider_block = {}
+
+    provider_block["api_key_env"] = chosen_api_key_env
+    if chosen_base_url:
+        provider_block["base_url"] = chosen_base_url
+
+    models_block = provider_block.get("models")
+    if not isinstance(models_block, dict):
+        models_block = {}
+    if chosen_model:
+        model_block = models_block.get(chosen_model)
+        if not isinstance(model_block, dict):
+            model_block = {}
+        model_block["temperature"] = chosen_temperature
+        model_block["max_tokens"] = chosen_max_tokens
+        models_block[chosen_model] = model_block
+    provider_block["models"] = models_block
+
+    providers_block[chosen_provider] = provider_block
+    llm_block["providers"] = providers_block
+    if not no_default:
+        llm_block["default_provider"] = chosen_provider
+    raw["llm"] = llm_block
+
+    with open(runtime_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(raw, f, sort_keys=False)
+
+    print(f"Updated {runtime_path}")
+    if chosen_api_key and not write_dotenv:
+        print(f"Remember to export {chosen_api_key_env} before running.")
+
+    return {
+        "provider": chosen_provider,
+        "model": chosen_model,
+        "api_key_env": chosen_api_key_env,
+        "wrote_dotenv": bool(write_dotenv and chosen_api_key),
+    }
+
+
+def _run_onboard_flow(project_root: str) -> int:
+    print("\nWelcome to agentic-runtime.")
+    print("This wizard sets up a project and your first LLM provider.\n")
+
+    if not os.path.isdir(project_root):
+        raise SystemExit(f"Project path does not exist: {project_root}")
+
+    runtime_path = os.path.join(project_root, "runtime.yaml")
+    needs_init = not os.path.exists(runtime_path)
+    if needs_init:
+        do_init = _prompt_yes_no("Initialize project structure here?", default=True)
+        if do_init:
+            _init_project(project_root)
+            print(f"Initialized project at {project_root}")
+
+    _load_dotenv(os.path.join(project_root, ".env"))
+
+    setup_info = _run_setup_flow(
+        project_root,
+        provider=None,
+        api_key_env=None,
+        api_key=None,
+        model=None,
+        base_url=None,
+        temperature=None,
+        max_tokens=None,
+        no_dotenv=False,
+        no_default=False,
+    )
+
+    provider = setup_info["provider"]
+    sample_path = None
+    if provider == "gemini":
+        sample_path = os.path.join(project_root, "workflows", "samples", "06_gemini_call.yaml")
+    elif provider == "openai":
+        sample_path = os.path.join(project_root, "workflows", "samples", "05_llm_call.yaml")
+
+    if sample_path and os.path.exists(sample_path):
+        do_run = _prompt_yes_no("Run a sample workflow now?", default=True)
+        if do_run:
+            print(f"\nRunning sample: {sample_path}\n")
+            return run_cli(["run", sample_path])
+
+    print("\nNext steps:")
+    if sample_path:
+        print(f"  - Run a sample: ai run {sample_path} -i issue=\"Login fails with 401\"")
+    else:
+        print("  - Configure a sample workflow for your provider and run it with `ai run`.")
+    print("  - Inspect a run: ai inspect <run_id> --steps")
+    print("  - Visualize: ai visualize <run_id> --html")
+    return 0
+
+
+def _run_home_screen(project_root: str) -> int:
+    print("\nagentic-runtime")
+    print("Choose an action:\n")
+    print("  1) Guided setup (recommended)")
+    print("  2) Run a sample workflow")
+    print("  3) Inspect a run")
+    print("  4) Visualize a run")
+    print("  5) Exit")
+    choice = _prompt_int("Select", 1, 5, 1)
+
+    if choice == 1:
+        return _run_onboard_flow(project_root)
+    if choice == 2:
+        provider = _prompt_choice(
+            "Which provider sample?",
+            ["openai", "gemini", "anthropic", "custom"],
+            "openai",
+        ).lower()
+        if provider == "custom":
+            path = _prompt_value("Path to workflow YAML")
+        else:
+            filename = "05_llm_call.yaml" if provider == "openai" else "06_gemini_call.yaml"
+            path = os.path.join(project_root, "workflows", "samples", filename)
+        if not os.path.exists(path):
+            print(f"Workflow not found: {path}")
+            return 1
+        return run_cli(["run", path])
+    if choice == 3:
+        run_id = _prompt_value("Run id")
+        return run_cli(["inspect", run_id, "--steps"])
+    if choice == 4:
+        run_id = _prompt_value("Run id")
+        return run_cli(["visualize", run_id, "--html"])
+    return 0
+
+
 def run_cli(argv: Optional[List[str]] = None) -> int:
     """Execute CLI command dispatch and return process exit code."""
+    if argv is None and len(sys.argv) == 1:
+        if sys.stdin.isatty():
+            return _run_home_screen(os.path.abspath("."))
+        print("No command provided. Run `ai --help` for usage.")
+        return 2
+
     parser = argparse.ArgumentParser(prog="ai")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -687,6 +928,13 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     setup_parser.add_argument("--no-dotenv", action="store_true", help="Do not write .env")
     setup_parser.add_argument("--no-default", action="store_true", help="Do not set default provider")
     setup_parser.add_argument("--check", action="store_true", help="Verify configured providers and API keys")
+
+    onboard_parser = subparsers.add_parser(
+        "onboard",
+        aliases=["start"],
+        help="Guided setup for a new project",
+    )
+    onboard_parser.add_argument("--path", default=".", help="Project root (contains runtime.yaml)")
 
     run_parser = subparsers.add_parser("run", help="Run a workflow")
     run_parser.add_argument("workflow", help="Workflow path or workflow_id[@version]")
@@ -724,6 +972,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     visualize_parser.add_argument("--ascii", action="store_true", help="Render ASCII visualization")
     visualize_parser.add_argument("--html", action="store_true", help="Render HTML visualization")
     visualize_parser.add_argument("--timeline", action="store_true", help="Render timeline-focused text view")
+    visualize_parser.add_argument("--no-open", action="store_true", help="Do not auto-open HTML in browser")
 
     validate_parser = subparsers.add_parser("validate", help="Validate an agent manifest")
     validate_parser.add_argument("manifest", help="Path to agent.yaml manifest")
@@ -748,14 +997,13 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "setup":
         project_root = os.path.abspath(args.path)
-        runtime_path = os.path.join(project_root, "runtime.yaml")
-        dotenv_path = os.path.join(project_root, ".env")
 
         if not os.path.isdir(project_root):
             raise SystemExit(f"Project path does not exist: {project_root}")
 
         if args.check:
-            _load_dotenv(dotenv_path)
+            runtime_path = os.path.join(project_root, "runtime.yaml")
+            _load_dotenv(os.path.join(project_root, ".env"))
             if not os.path.exists(runtime_path):
                 print(f"No runtime.yaml found at {runtime_path}")
                 return 1
@@ -783,103 +1031,24 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                     print("    models: (none)")
             return 0 if all_ok else 1
 
-        if not os.path.exists(runtime_path):
-            with open(runtime_path, "w", encoding="utf-8") as f:
-                f.write(RUNTIME_YAML_TEMPLATE)
-
-        provider = (args.provider or _prompt_value(
-            "Default LLM provider (openai/anthropic/gemini/local)",
-            default="openai",
-        )).strip().lower()
-        if provider not in ("openai", "anthropic", "gemini", "local"):
-            raise SystemExit(f"Unsupported provider: {provider}")
-
-        api_key_env = args.api_key_env or _DEFAULT_PROVIDER_ENV.get(provider, "")
-        if not api_key_env:
-            api_key_env = _prompt_value("API key env var name (e.g. OPENAI_API_KEY)")
-
-        api_key = args.api_key
-        if api_key is None:
-            api_key = _prompt_value(
-                f"Paste {api_key_env} (leave blank to skip)",
-                secret=True,
-            )
-
-        write_dotenv = not args.no_dotenv
-        if write_dotenv and api_key:
-            write_dotenv = _prompt_yes_no(f"Write {api_key_env} to .env", default=True)
-        if write_dotenv and api_key:
-            _update_dotenv(dotenv_path, {api_key_env: api_key})
-            print(f"Wrote {api_key_env} to {dotenv_path}")
-        elif api_key and not write_dotenv:
-            print(f"Skipped writing {api_key_env} to .env")
-
-        model_default = _DEFAULT_PROVIDER_MODEL.get(provider)
-        model_id = args.model or _prompt_value(
-            "Default model id", default=model_default or ""
+        _run_setup_flow(
+            project_root,
+            provider=args.provider,
+            api_key_env=args.api_key_env,
+            api_key=args.api_key,
+            model=args.model,
+            base_url=args.base_url,
+            temperature=args.temperature,
+            max_tokens=args.max_tokens,
+            no_dotenv=args.no_dotenv,
+            no_default=args.no_default,
         )
-        temperature = args.temperature if args.temperature is not None else 0.2
-        max_tokens = args.max_tokens if args.max_tokens is not None else 4096
-
-        base_url = args.base_url
-        if provider == "local" and not base_url:
-            base_url = _prompt_value(
-                "Base URL for local provider",
-                default=_DEFAULT_PROVIDER_BASE_URL.get("local", ""),
-            )
-
-        # Update runtime.yaml
-        try:
-            with open(runtime_path, "r", encoding="utf-8") as f:
-                raw = yaml.safe_load(f) or {}
-        except Exception:
-            raw = {}
-        if not isinstance(raw, dict):
-            raw = {}
-
-        if not args.no_default:
-            raw["default_llm_provider"] = provider
-
-        llm_block = raw.get("llm")
-        if not isinstance(llm_block, dict):
-            llm_block = {}
-        providers_block = llm_block.get("providers")
-        if not isinstance(providers_block, dict):
-            providers_block = {}
-        provider_block = providers_block.get(provider)
-        if not isinstance(provider_block, dict):
-            provider_block = {}
-
-        provider_block["api_key_env"] = api_key_env
-        if base_url:
-            provider_block["base_url"] = base_url
-
-        models_block = provider_block.get("models")
-        if not isinstance(models_block, dict):
-            models_block = {}
-        if model_id:
-            model_block = models_block.get(model_id)
-            if not isinstance(model_block, dict):
-                model_block = {}
-            model_block["temperature"] = temperature
-            model_block["max_tokens"] = max_tokens
-            models_block[model_id] = model_block
-        provider_block["models"] = models_block
-
-        providers_block[provider] = provider_block
-        llm_block["providers"] = providers_block
-        if not args.no_default:
-            llm_block["default_provider"] = provider
-        raw["llm"] = llm_block
-
-        with open(runtime_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(raw, f, sort_keys=False)
-
-        print(f"Updated {runtime_path}")
         print("Setup complete. You can now run `ai run ...`.")
-        if api_key and not write_dotenv:
-            print(f"Remember to export {api_key_env} before running.")
         return 0
+
+    if args.command == "onboard":
+        project_root = os.path.abspath(args.path)
+        return _run_onboard_flow(project_root)
 
     _load_dotenv()
 
@@ -1001,8 +1170,13 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             step_id = payload.get("step_id", "")
             step_type = payload.get("step_type", "")
             if event == "STEP_COMPLETE":
-                duration = payload.get("duration_ms", "?")
-                print(f"  \u2713 {step_id} ({step_type}) \u2014 {duration}ms")
+                duration = payload.get("duration_ms")
+                duration_str = f"{duration}ms" if isinstance(duration, int) else "n/a"
+                call_duration = payload.get("tool_duration_ms")
+                if call_duration is None:
+                    call_duration = payload.get("handler_duration_ms")
+                call_str = f", call {call_duration}ms" if isinstance(call_duration, int) else ""
+                print(f"  \u2713 {step_id} ({step_type}) \u2014 {duration_str}{call_str}")
             elif event == "STEP_ERROR":
                 error = payload.get("error", "unknown error")
                 print(f"  \u2717 {step_id} ({step_type}) \u2014 {error}")
@@ -1196,7 +1370,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         output_path = os.path.join(".runs", args.run_id, "visualization.html")
         html_path = render_html(args.run_id, graph, timeline, output_path)
         print(f"Visualization generated: {html_path}")
-        if not args.html:
+        if not args.no_open:
             try:
                 webbrowser.open(f"file://{os.path.abspath(html_path)}")
             except Exception:
@@ -1262,6 +1436,8 @@ def _print_state_history(steps, latest_state) -> None:
 def _render_timeline_text(run_id: str, timeline) -> str:
     """Render timeline view to plain text for `visualize --timeline`."""
     lines = [f"Run: {run_id}", "", "State Timeline", "Initial State:", str(timeline.initial_state)]
+    if timeline.run_duration_ms is not None:
+        lines.insert(1, f"Run Duration: {timeline.run_duration_ms}ms")
     for item in timeline.steps:
         lines.append("\n----------------------------------------")
         lines.append(f"Step: {item.step_id}")
@@ -1269,6 +1445,9 @@ def _render_timeline_text(run_id: str, timeline) -> str:
         lines.append(f"Attempts: {item.attempts}")
         duration = f"{item.duration_ms}ms" if item.duration_ms is not None else "n/a"
         lines.append(f"Duration: {duration}")
+        call_duration = item.tool_duration_ms if item.tool_duration_ms is not None else item.handler_duration_ms
+        if call_duration is not None:
+            lines.append(f"Call Duration: {call_duration}ms")
         if item.error:
             lines.append(f"Error: {item.error}")
         elif item.last_error:

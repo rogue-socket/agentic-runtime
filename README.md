@@ -547,8 +547,10 @@ PYTHONPATH=src pytest tests/ -v
 | `docs/ARCHITECTURE.md` | Full architectural specification (20 sections) |
 | `docs/EXECUTION_WALKTHROUGH.md` | Step-by-step execution trace walkthrough |
 | `docs/USAGE.md` | Detailed usage guide |
+| `docs/CHANGELOG_2026-03-18.md` | Latest changelog |
 | `docs/GAPS_2026-03-17.md` | Known gaps and roadmap priorities |
 | `docs/STATUS_2026-03-17.md` | Current status of every subsystem |
+| `docs/ONBOARDING_WALKTHROUGH.md` | Guided onboarding path + script |
 
 ---
 
@@ -574,14 +576,34 @@ PYTHONPATH=src python -m agent_runtime.cli init --path my-agents
 cd my-agents
 ```
 
+### Guided onboarding (recommended)
+
+```bash
+ai
+```
+
+or:
+
+```bash
+ai onboard --path my-agents
+```
+
+When run with no args, `ai` opens a home screen with common actions
+(setup, run sample, inspect, visualize).
+
 ### Configure LLM providers
 
 Use `ai setup` to configure providers, or edit `runtime.yaml` and set environment variables:
 
 ```bash
 ai setup --provider gemini
+ai setup --check
 
 export OPENAI_API_KEY="sk-..."
 export ANTHROPIC_API_KEY="sk-ant-..."
 export GEMINI_API_KEY="..."
 ```
+
+Notes:
+- `ai setup` can write a local `.env` file and the CLI auto-loads it.
+- `ai setup --check` validates which provider keys are available.

@@ -36,6 +36,8 @@ class StepTimelineItem:
     status: str
     attempts: int
     duration_ms: Optional[int]
+    handler_duration_ms: Optional[int]
+    tool_duration_ms: Optional[int]
     started_at: Optional[str]
     finished_at: Optional[str]
     input_data: Optional[Dict[str, Any]]
@@ -53,6 +55,9 @@ class TimelineView:
     initial_state: Dict[str, Any]
     steps: List[StepTimelineItem]
     latest_state: Dict[str, Any]
+    run_started_at: Optional[str]
+    run_completed_at: Optional[str]
+    run_duration_ms: Optional[int]
 
 
 class TimelineBuilder:
@@ -79,6 +84,8 @@ class TimelineBuilder:
                     status=step.status,
                     attempts=step.attempt_count or 1,
                     duration_ms=step.duration_ms,
+                    handler_duration_ms=step.handler_duration_ms,
+                    tool_duration_ms=step.tool_duration_ms,
                     started_at=step.started_at,
                     finished_at=step.finished_at,
                     input_data=step.input,
@@ -90,4 +97,23 @@ class TimelineBuilder:
                 )
             )
 
-        return TimelineView(initial_state=data.initial_state, steps=items, latest_state=data.latest_state)
+        run_started_at = data.run.started_at
+        run_completed_at = data.run.completed_at
+        run_duration_ms: Optional[int] = None
+        if run_started_at and run_completed_at:
+            try:
+                from datetime import datetime
+                start = datetime.fromisoformat(run_started_at)
+                end = datetime.fromisoformat(run_completed_at)
+                run_duration_ms = int((end - start).total_seconds() * 1000)
+            except ValueError:
+                run_duration_ms = None
+
+        return TimelineView(
+            initial_state=data.initial_state,
+            steps=items,
+            latest_state=data.latest_state,
+            run_started_at=run_started_at,
+            run_completed_at=run_completed_at,
+            run_duration_ms=run_duration_ms,
+        )

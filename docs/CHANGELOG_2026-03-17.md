@@ -59,3 +59,15 @@ Across 14 source files, tagged with categories:
 - **`tests/test_builtin_tools.py`** — `TestValidateInput` (8 tests): missing required field, multiple required fields, present passes, None value passes, no required array, empty schema, HttpTool schema enforcement, FileTool schema enforcement.
 
 - **`tests/test_storage_roundtrip.py`** — `TestAppendStepEmptyDict` (6 tests): empty input/output/state_before/state_after roundtrip, None stays None, populated dict roundtrip.
+
+## Features
+
+- **Gemini provider support** (`llm/adapters.py`, `llm/client.py`, `llm/__init__.py`):
+  Added a Gemini adapter, request/response normalization, and client wiring.
+  Sample workflow: `workflows/samples/06_gemini_call.yaml`.
+
+- **Onboarding wizard** (`cli.py`, `docs/ONBOARDING_WALKTHROUGH.md`, `scripts/onboard.sh`):
+  Added `ai` (no args) and `ai onboard` guided setup, plus a reusable onboarding script.
+
+- **Setup enhancements** (`cli.py`):
+  Added `ai setup --check` for provider/key verification and `.env` auto-loading.

@@ -33,6 +33,7 @@ dist/
 runtime.db
 *.sqlite
 *.sqlite3
+.runs/
 
 # Logs
 *.log
