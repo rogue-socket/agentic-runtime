@@ -12,7 +12,7 @@ Key Components:
 - `agent_runtime.cli.main`
 
 Dependencies:
-- Python interpreter with `PYTHONPATH=src`
+- Python interpreter with `agent_runtime` on the import path (for example via `pip install -e .`)
 
 Inputs/Outputs:
 - Input: CLI arguments from shell

@@ -6,6 +6,13 @@ quickstart wizard with optional manual steps for folks who prefer scripts.
 
 ## Quickstart (Interactive)
 
+If you do not have a project folder yet, create one first:
+
+```bash
+mkdir my-agent
+cd my-agent
+```
+
 Run either of the following in your project root:
 
 ```bash

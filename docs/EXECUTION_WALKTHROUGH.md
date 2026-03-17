@@ -14,9 +14,9 @@ This walkthrough is a textbook-style trace of what happens at runtime for a typi
 Primary command used:
 
 ```bash
-PYTHONPATH=src ./ai run workflows/example.yaml -i issue="Login API fails for invalid token"
-PYTHONPATH=src ./ai run example_workflow -i issue="Login API fails for invalid token"
-PYTHONPATH=src ./ai run code_review_agent@v2 -i issue="Login API fails for invalid token"
+ai run workflows/example.yaml -i issue="Login API fails for invalid token"
+ai run example_workflow -i issue="Login API fails for invalid token"
+ai run code_review_agent@v2 -i issue="Login API fails for invalid token"
 ```
 
 ## 1. Runtime bootstrapping
@@ -107,7 +107,7 @@ After final step:
 Summary view:
 
 ```bash
-PYTHONPATH=src ./ai inspect <run_id>
+ai inspect <run_id>
 ```
 
 Shows:
@@ -119,7 +119,7 @@ Shows:
 Step-centric view:
 
 ```bash
-PYTHONPATH=src ./ai inspect <run_id> --steps
+ai inspect <run_id> --steps
 ```
 
 Shows per step:
@@ -131,7 +131,7 @@ Shows per step:
 State timeline view:
 
 ```bash
-PYTHONPATH=src ./ai inspect <run_id> --state-history
+ai inspect <run_id> --state-history
 ```
 
 Shows:
@@ -144,7 +144,7 @@ Shows:
 Trigger a failing workflow:
 
 ```bash
-PYTHONPATH=src ./ai run workflows/samples/04_fail_and_resume.yaml -i issue="Login API fails"
+ai run workflows/samples/04_fail_and_resume.yaml -i issue="Login API fails"
 ```
 
 Expected behavior:
@@ -155,7 +155,7 @@ Expected behavior:
 Resume:
 
 ```bash
-PYTHONPATH=src ./ai resume <run_id>
+ai resume <run_id>
 ```
 
 Resume flow:
@@ -170,7 +170,7 @@ Resume flow:
 Replay command:
 
 ```bash
-PYTHONPATH=src ./ai replay <run_id>
+ai replay <run_id>
 ```
 
 Replay flow:
@@ -188,7 +188,7 @@ Important:
 Verification mode:
 
 ```bash
-PYTHONPATH=src ./ai replay <run_id> --verify-state
+ai replay <run_id> --verify-state
 ```
 
 This checks reconstructed state matches recorded `state_before` at each step.
@@ -223,7 +223,7 @@ This cycle is the intended developer loop of the runtime.
 Generate a graph/timeline report for the same run:
 
 ```bash
-PYTHONPATH=src ./ai visualize <run_id>
+ai visualize <run_id>
 ```
 
 This creates:
@@ -239,6 +239,6 @@ And includes:
 For terminal-only debugging:
 
 ```bash
-PYTHONPATH=src ./ai visualize <run_id> --ascii
-PYTHONPATH=src ./ai visualize <run_id> --timeline
+ai visualize <run_id> --ascii
+ai visualize <run_id> --timeline
 ```

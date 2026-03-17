@@ -13,33 +13,38 @@ This guide is command-first and scenario-oriented.
 
 ## 1. Prerequisites
 
-- Use conda env: `agent_runtime`
-- Install dependencies:
+Use the shared conda environment and install the CLI in editable mode so `ai` is on your PATH:
 
 ```bash
+conda activate agent_runtime
 pip install -r requirements.txt
+pip install -e .
 ```
 
-## 2. Initialize project scaffold
+## 2. Create a new agent project
+
+Pick a folder for your agent. The runtime uses the current directory as the project root.
 
 ```bash
-PYTHONPATH=src ./ai init
-```
-
-Or use the guided onboarding wizard:
-
-```bash
+mkdir my-agent
+cd my-agent
 ai
-```
-
-or:
-
-```bash
-ai onboard --path my-project
 ```
 
 The wizard initializes the project (if needed), configures an LLM provider,
 writes `.env`, and optionally runs a sample workflow.
+
+Prefer non-interactive setup?
+
+```bash
+ai init
+```
+
+Run the wizard from another directory:
+
+```bash
+ai onboard --path my-project
+```
 
 When run with no args, `ai` opens a home screen with common actions
 (setup, run sample, inspect, visualize).
@@ -89,13 +94,13 @@ available inputs from step references (backward compatible).
 ## Run default example
 
 ```bash
-PYTHONPATH=src ./ai run workflows/example.yaml
+ai run workflows/example.yaml
 ```
 
 ## Run latest workflow version by id
 
 ```bash
-PYTHONPATH=src ./ai run example_workflow
+ai run example_workflow
 ```
 
 Resolution rule:
@@ -105,7 +110,7 @@ Resolution rule:
 ## Run a specific workflow version
 
 ```bash
-PYTHONPATH=src ./ai run code_review_agent@v2
+ai run code_review_agent@v2
 ```
 
 ## Run with custom inputs
@@ -113,14 +118,14 @@ PYTHONPATH=src ./ai run code_review_agent@v2
 Pass inputs with the `-i` / `--input` flag (repeatable):
 
 ```bash
-PYTHONPATH=src ./ai run workflows/example.yaml -i issue="Login API fails for invalid token"
-PYTHONPATH=src ./ai run code_review_agent@v1 -i issue="Login API fails for invalid token"
+ai run workflows/example.yaml -i issue="Login API fails for invalid token"
+ai run code_review_agent@v1 -i issue="Login API fails for invalid token"
 ```
 
 Multiple inputs:
 
 ```bash
-PYTHONPATH=src ./ai run my_workflow.yaml -i issue="bug report" -i priority="high"
+ai run my_workflow.yaml -i issue="bug report" -i priority="high"
 ```
 
 If the workflow declares defaults, you can omit inputs that have them.
@@ -128,7 +133,7 @@ If the workflow declares defaults, you can omit inputs that have them.
 ## Use a custom SQLite path
 
 ```bash
-PYTHONPATH=src ./ai run workflows/example.yaml --db-path runtime.db
+ai run workflows/example.yaml --db-path runtime.db
 ```
 
 ## 4. Inspect runs
@@ -136,7 +141,7 @@ PYTHONPATH=src ./ai run workflows/example.yaml --db-path runtime.db
 ## Summary mode
 
 ```bash
-PYTHONPATH=src ./ai inspect <run_id>
+ai inspect <run_id>
 ```
 
 Use when you want:
@@ -147,7 +152,7 @@ Use when you want:
 ## Step-centric mode
 
 ```bash
-PYTHONPATH=src ./ai inspect <run_id> --steps
+ai inspect <run_id> --steps
 ```
 
 Use when you want:
@@ -158,7 +163,7 @@ Use when you want:
 ## State evolution mode
 
 ```bash
-PYTHONPATH=src ./ai inspect <run_id> --state-history
+ai inspect <run_id> --state-history
 ```
 
 Use when you want:
@@ -169,7 +174,7 @@ Use when you want:
 ## 5. Resume failed runs
 
 ```bash
-PYTHONPATH=src ./ai resume <run_id>
+ai resume <run_id>
 ```
 
 Use when:
@@ -186,25 +191,25 @@ Behavior:
 ## Replay full run
 
 ```bash
-PYTHONPATH=src ./ai replay <run_id>
+ai replay <run_id>
 ```
 
 ## Replay with consistency verification
 
 ```bash
-PYTHONPATH=src ./ai replay <run_id> --verify-state
+ai replay <run_id> --verify-state
 ```
 
 ## Replay until a specific step
 
 ```bash
-PYTHONPATH=src ./ai replay <run_id> --until summarize
+ai replay <run_id> --until summarize
 ```
 
 ## Replay interactively (step-by-step)
 
 ```bash
-PYTHONPATH=src ./ai replay <run_id> --step-by-step
+ai replay <run_id> --step-by-step
 ```
 
 Replay guarantees:
@@ -217,12 +222,12 @@ Replay guarantees:
 Run all curated samples:
 
 ```bash
-PYTHONPATH=src ./ai run workflows/samples/01_linear_issue_summary.yaml
-PYTHONPATH=src ./ai run workflows/samples/02_retry_and_backoff.yaml
-PYTHONPATH=src ./ai run workflows/samples/03_branching_triage.yaml -i issue="bug"
-PYTHONPATH=src ./ai run workflows/samples/04_fail_and_resume.yaml -i issue="Login API fails"
-PYTHONPATH=src ./ai run workflows/samples/versioning/code_review_agent_v1.yaml
-PYTHONPATH=src ./ai run workflows/samples/versioning/code_review_agent_v2.yaml
+ai run workflows/samples/01_linear_issue_summary.yaml
+ai run workflows/samples/02_retry_and_backoff.yaml
+ai run workflows/samples/03_branching_triage.yaml -i issue="bug"
+ai run workflows/samples/04_fail_and_resume.yaml -i issue="Login API fails"
+ai run workflows/samples/versioning/code_review_agent_v1.yaml
+ai run workflows/samples/versioning/code_review_agent_v2.yaml
 ```
 
 What each sample demonstrates:
@@ -371,34 +376,34 @@ Behavior:
 3. Inspect state history.
 
 ```bash
-PYTHONPATH=src ./ai run workflows/samples/04_fail_and_resume.yaml -i issue="Login API fails"
-PYTHONPATH=src ./ai inspect <run_id> --steps
-PYTHONPATH=src ./ai inspect <run_id> --state-history
+ai run workflows/samples/04_fail_and_resume.yaml -i issue="Login API fails"
+ai inspect <run_id> --steps
+ai inspect <run_id> --state-history
 ```
 
 ## B) Recover after fixing an adapter/config
 
 ```bash
-PYTHONPATH=src ./ai resume <run_id>
+ai resume <run_id>
 ```
 
 ## C) Reproduce exactly for postmortem
 
 ```bash
-PYTHONPATH=src ./ai replay <run_id> --verify-state --step-by-step
+ai replay <run_id> --verify-state --step-by-step
 ```
 
 ## 10. Test suite
 
 ```bash
-PYTHONPATH=src pytest -q
+pytest -q
 ```
 
 For targeted checks:
 
 ```bash
-PYTHONPATH=src pytest -q tests/test_replay.py
-PYTHONPATH=src pytest -q tests/test_state_manager.py
+pytest -q tests/test_replay.py
+pytest -q tests/test_state_manager.py
 ```
 
 ## 11. Runtime configuration
@@ -470,13 +475,13 @@ pip install -r requirements.txt
 Show state changes across all recorded steps:
 
 ```bash
-PYTHONPATH=src ./ai state-diff <run_id>
+ai state-diff <run_id>
 ```
 
 Show state changes for one step id:
 
 ```bash
-PYTHONPATH=src ./ai state-diff <run_id> --step plan
+ai state-diff <run_id> --step plan
 ```
 
 Output markers:
@@ -489,31 +494,31 @@ Output markers:
 ASCII graph + timeline:
 
 ```bash
-PYTHONPATH=src ./ai visualize <run_id> --ascii
+ai visualize <run_id> --ascii
 ```
 
 Timeline-focused text:
 
 ```bash
-PYTHONPATH=src ./ai visualize <run_id> --timeline
+ai visualize <run_id> --timeline
 ```
 
 HTML visualization (default mode, auto-opens browser):
 
 ```bash
-PYTHONPATH=src ./ai visualize <run_id>
+ai visualize <run_id>
 ```
 
 HTML visualization with explicit HTML mode (also auto-opens browser):
 
 ```bash
-PYTHONPATH=src ./ai visualize <run_id> --html
+ai visualize <run_id> --html
 ```
 
 HTML visualization without auto-opening browser:
 
 ```bash
-PYTHONPATH=src ./ai visualize <run_id> --html --no-open
+ai visualize <run_id> --html --no-open
 ```
 
 Output:
