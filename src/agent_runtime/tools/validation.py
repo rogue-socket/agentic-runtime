@@ -29,6 +29,8 @@ def validate_input(payload: Dict[str, Any], schema: Dict[str, Any]) -> None:
             continue
         expected = rule.get("type")
         value = payload[key]
+        if value is None:
+            continue
         if expected == "string" and not isinstance(value, str):
             raise ValueError(f"Field '{key}' must be string")
         if expected == "number" and not isinstance(value, (int, float)):

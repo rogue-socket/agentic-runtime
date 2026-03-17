@@ -92,6 +92,10 @@ class RunState:
         """Mark state read-only for external mutation attempts."""
         self._frozen = True
 
+    def unfreeze(self) -> None:
+        """Allow mutation again (used by resume)."""
+        self._frozen = False
+
     def runtime(self) -> RuntimeState:
         """Expose underlying runtime-state helper."""
         return self._runtime_state
@@ -203,6 +207,11 @@ class Run:
         """Freeze run and state to prevent further mutation."""
         self._frozen = True
         self.state.freeze()
+
+    def unfreeze(self) -> None:
+        """Unfreeze run to allow mutation (used by resume)."""
+        self._frozen = False
+        self.state.unfreeze()
 
 
 class Executor:
@@ -357,6 +366,7 @@ class Executor:
                 f"Original hash: {run.workflow_hash}, current hash: {workflow_hash}. "
                 f"Cannot safely resume — the workflow YAML must match the original run."
             )
+        run.unfreeze()
         run.state = RunState(
             _data=copy.deepcopy(resume_state),
             _overwrite_policy=self.overwrite_policy,
@@ -426,6 +436,7 @@ class Executor:
                 last_error: Optional[Exception] = None
                 for attempt in range(1, max_attempts + 1):
                     snapshot = run.state.snapshot()
+                    execution.state_before = copy.deepcopy(snapshot)
                     self.memory_manager.hydrate_state(snapshot)
                     if step_def.input_spec is not None:
                         step_input = build_step_input(step_def.input_spec, snapshot)
@@ -443,7 +454,6 @@ class Executor:
                         }
                     step_input_state = RuntimeState(step_input, enforce_structure=False)
                     execution.input = copy.deepcopy(step_input_state.to_dict())
-                    execution.state_before = copy.deepcopy(snapshot)
                     execution.attempt_count = attempt
 
                     try:

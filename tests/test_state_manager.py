@@ -93,4 +93,4 @@ def test_overwrite_warning(capsys) -> None:
     state.set("runtime.flag", True, step_name="s1")
     state.set("runtime.flag", False, step_name="s2")
     captured = capsys.readouterr()
-    assert "STATE WARNING" in captured.out
+    assert "STATE_OVERWRITE" in captured.out

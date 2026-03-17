@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import tempfile
 
-from agent_runtime.core import StepExecution, StepStatus
+from agent_runtime.core import Run, StepExecution, StepStatus
+from agent_runtime.state import RunState
 from agent_runtime.storage.sqlite import SQLiteStorage
 
 
@@ -16,6 +17,22 @@ def _storage() -> SQLiteStorage:
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
     tmp.close()
     return SQLiteStorage(tmp.name)
+
+
+def _ensure_run(storage: SQLiteStorage, run_id: str = "run1") -> None:
+    """Create a minimal run record so FK constraints are satisfied."""
+    run = Run(
+        run_id=run_id,
+        workflow_id="wf",
+        workflow_version=None,
+        workflow_hash=None,
+        workflow_yaml=None,
+        workflow_steps=None,
+        input_hash=None,
+        status=StepStatus.RUNNING,
+        created_at="2026-01-01T00:00:00Z",
+    )
+    storage.create_run(run)
 
 
 def _make_step(**overrides) -> StepExecution:
@@ -44,6 +61,7 @@ class TestAppendStepEmptyDict:
 
     def test_empty_input_roundtrips(self) -> None:
         storage = _storage()
+        _ensure_run(storage)
         step = _make_step(input={})
         storage.append_step("run1", step)
 
@@ -53,6 +71,7 @@ class TestAppendStepEmptyDict:
 
     def test_empty_output_roundtrips(self) -> None:
         storage = _storage()
+        _ensure_run(storage)
         step = _make_step(output={})
         storage.append_step("run1", step)
 
@@ -61,6 +80,7 @@ class TestAppendStepEmptyDict:
 
     def test_empty_state_before_roundtrips(self) -> None:
         storage = _storage()
+        _ensure_run(storage)
         step = _make_step(state_before={})
         storage.append_step("run1", step)
 
@@ -69,6 +89,7 @@ class TestAppendStepEmptyDict:
 
     def test_empty_state_after_roundtrips(self) -> None:
         storage = _storage()
+        _ensure_run(storage)
         step = _make_step(state_after={})
         storage.append_step("run1", step)
 
@@ -77,6 +98,7 @@ class TestAppendStepEmptyDict:
 
     def test_none_stays_none(self) -> None:
         storage = _storage()
+        _ensure_run(storage)
         step = _make_step(input=None, output=None, state_before=None, state_after=None)
         storage.append_step("run1", step)
 
@@ -88,6 +110,7 @@ class TestAppendStepEmptyDict:
 
     def test_populated_dict_roundtrips(self) -> None:
         storage = _storage()
+        _ensure_run(storage)
         step = _make_step(
             input={"issue": "test"},
             output={"summary": "done"},

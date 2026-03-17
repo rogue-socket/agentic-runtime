@@ -279,7 +279,7 @@ class _SafeExprValidator(ast.NodeVisitor):
         """
         if node.id not in self.allowed_names:
             raise ValueError("Unsupported name")
-        return super().visit_Name(node)
+        return self.generic_visit(node)
 
 
 def safe_eval(expr: str, state: Dict[str, Any]) -> bool:
