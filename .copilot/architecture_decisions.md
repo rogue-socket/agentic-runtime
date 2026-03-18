@@ -318,6 +318,32 @@ This is where the architecture's investment in deterministic state persistence, 
 - Initial implementation can use heuristics over run history; later versions can use embeddings.
 - Must respect run isolation — procedural memory informs but never mutates another run's state.
 - Privacy/safety: learned procedures must be auditable and purgeable.
+
+---
+
+## ADR-011: End-to-End Timing Telemetry
+
+**Date:** 2026-03-18
+**Status:** Accepted
+
+### Decision
+Capture per-step call duration (`handler_duration_ms` / `tool_duration_ms`) separately from total step duration, and surface both in step execution records, lifecycle events, CLI output, and visualizations.
+
+### Context
+Step duration includes overhead (state snapshots, persistence, validation). For LLM and tool calls that can take seconds, users need to distinguish between call latency and runtime overhead to identify bottlenecks.
+
+### Reasoning
+Separating call timing from step timing provides actionable data. A step taking 5s with a 4.8s LLM call tells a different story than a step taking 5s with a 0.1s handler call and 4.9s of persistence overhead.
+
+### Alternatives Considered
+- **Step duration only:** Simpler but obscures where time is spent.
+- **Full tracing (OpenTelemetry):** More granular but heavy dependency — deferred to roadmap.
+
+### Implications
+- `StepExecution` records include optional `handler_duration_ms` and `tool_duration_ms` fields.
+- Visualization renderers (HTML, ASCII) display call timing alongside step timing.
+- CLI progress callback shows call duration per step.
+- Lifecycle event payloads (`STEP_COMPLETE`) include timing data.
 - Opens the door to "meta-agents" that optimize workflow definitions based on historical performance.
 
 ---

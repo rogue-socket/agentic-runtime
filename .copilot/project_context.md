@@ -11,7 +11,7 @@ agentic-runtime — a deterministic, local-first execution runtime for LLM-power
 - **CLI:** argparse
 - **Dependencies:** PyYAML, typing-extensions (minimal footprint)
 - **Testing:** pytest
-- **No packaging yet** — no pyproject.toml (TODO)
+- **Packaging:** pyproject.toml (setuptools backend, `ai` CLI entry point, v0.1.0 alpha)
 
 ## Architecture Overview
 ```
@@ -23,7 +23,8 @@ CLI (cli.py)
       → LLM Client (llm/) — llm-type steps via provider adapters
       → Tools (tools/) — tool-type steps via Tool protocol
       → Memory (memory/) — 4-tier hydrate/persist around execution
-  → Storage (storage/sqlite.py) — runs, steps, state_versions tables
+      → Lifecycle hooks (EventCallback) — RUN_START/STEP_START/STEP_COMPLETE/STEP_ERROR/RUN_COMPLETE
+  → Storage (storage/sqlite.py) — runs, steps, state_versions tables (persistent connection, explicit transactions)
 ```
 
 State is namespaced: `{ inputs: {}, steps: {}, runtime: {} }` with deep-copy snapshots at every step boundary.
@@ -40,8 +41,8 @@ State is namespaced: `{ inputs: {}, steps: {}, runtime: {} }` with deep-copy sna
 | `src/agent_runtime/errors.py` | 10-type exception hierarchy under RuntimeErrorBase |
 | `src/agent_runtime/utils.py` | safe_eval, template rendering, hashing, path resolution |
 | `src/agent_runtime/llm/` | LLM registry, OpenAI/Anthropic adapters, client facade, llm handler |
-| `src/agent_runtime/tools/` | Tool protocol, registry, discovery, validation, 4 built-in tools |
-| `src/agent_runtime/memory/` | MemoryTier protocol, MemoryManager, 4 tiers (episodic implemented) |
+| `src/agent_runtime/tools/` | Tool protocol, registry, discovery, validation, 4 built-in tools (echo, http, file, shell) |
+| `src/agent_runtime/memory/` | MemoryTier protocol, MemoryManager, 4 tiers (working, episodic, semantic implemented; procedural stub) |
 | `src/agent_runtime/storage/` | Storage ABC + SQLiteStorage |
 | `src/agent_runtime/agent/` | AgentManifest, export/import as .tar.gz archives |
 | `src/agent_runtime/visualization/` | Graph/timeline builders, ASCII + HTML renderers |
@@ -83,18 +84,24 @@ python -m agent_runtime.cli resume <id>   # resume failed run
 python -m agent_runtime.cli replay <id>   # deterministic replay
 ```
 
-## Subsystem Status (as of 2026-03-17)
+## Subsystem Status (as of 2026-03-18)
 | Subsystem | Status |
 |-----------|--------|
-| Core executor | Implemented |
+| Core executor | Implemented (with lifecycle hooks, timing telemetry) |
 | Workflow parser | Implemented |
-| State manager | Implemented |
-| Storage (SQLite) | Implemented |
-| CLI | Implemented |
+| State manager | Implemented (configurable overwrite policy: warn/strict/allow) |
+| Storage (SQLite) | Implemented (persistent connection, explicit transactions, WAL) |
+| CLI | Implemented (14 commands, interactive onboarding, input coercion) |
 | Resume / Replay | Implemented |
-| Visualization | Implemented |
-| Agent manifest & packaging | Implemented |
-| LLM registry + adapters + handler | Implemented |
-| Tools (echo, http, file, shell) | Implemented |
+| Visualization | Implemented (ASCII + HTML with run/step timing, tool latency) |
+| Agent manifest & packaging | Implemented (symlink/hardlink rejection, path traversal protection) |
+| LLM registry + adapters + handler | Implemented (OpenAI, Anthropic, Gemini; default_provider) |
+| Tools (echo, http, file, shell) | Implemented (shell: allowlist/denylist, file: safe path traversal) |
 | Episodic memory | Implemented (SQLite-backed) |
-| Working / Semantic / Procedural memory | Scaffolding only |
+| Working memory | Implemented (scratch store, sliding window, active task, byte budget) |
+| Semantic memory | Implemented (SQLite + FTS5, full-text search, tag retrieval) |
+| Procedural memory | Stub (roadmap documented) |
+| SDK surface | Implemented (run_workflow / run_workflow_async) |
+| Lifecycle hooks | Implemented (EventCallback at 5 lifecycle points) |
+| Timing telemetry | Implemented (per-step + run-level duration) |
+| pyproject.toml | Complete (v0.1.0 alpha, `ai` entry point) |

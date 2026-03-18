@@ -54,7 +54,7 @@ flowchart TD
 If you prefer a bash script (for pair programming or workshops), use:
 
 ```bash
-bash /Users/yashagrawal/Documents/agentic-runtime/scripts/onboard.sh
+bash scripts/onboard.sh
 ```
 
 That script mirrors the wizard flow and prints the exact commands it runs.

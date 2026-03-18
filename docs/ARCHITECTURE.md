@@ -287,20 +287,32 @@ The runtime manages four memory tiers through `MemoryManager`:
 
 | Tier | Class | Status | Purpose |
 |------|-------|--------|--------|
-| Working | `WorkingMemory` | Scaffolding | Active context for current execution |
+| Working | `WorkingMemory` | **Implemented** | Active context for current execution (scratch store, sliding window, active task) |
 | Episodic | `EpisodicMemory` | **Implemented** | Historical run/interaction log (SQLite-backed) |
-| Semantic | `SemanticMemory` | Scaffolding | Long-term knowledge store |
-| Procedural | `ProceduralMemory` | Scaffolding | Learned workflows and playbooks |
+| Semantic | `SemanticMemory` | **Implemented** | Long-term knowledge store (SQLite + FTS5 full-text search) |
+| Procedural | `ProceduralMemory` | Stub | Learned workflows and playbooks (roadmap documented) |
 
 All tiers implement the `MemoryTier` protocol:
 - `read(context) -> Dict[str, Any]`
 - `write(payload) -> None`
 
 `MemoryManager` orchestrates all tiers:
-- `hydrate_state(state)` — reads from all tiers into state before execution
+- `hydrate_state(state)` — reads from all tiers into `runtime.memory.<tier>` namespace using deep-merge
 - `persist_state(state)` — writes state to all tiers after execution
+- `_tiers()` — yields `(name, tier)` pairs for iteration
+- `_deep_merge()` — recursive dict merge utility
 
 Memory hooks are invoked at run start (hydrate) and run end (persist).
+
+### Working memory
+
+`WorkingMemory` is an in-memory ephemeral store for the current execution:
+- **Scratch** — key-value store with byte budget enforcement (`put/get/remove/clear_scratch`)
+- **Entries** — deque-based sliding window with `max_entries`, auto-eviction
+- **Active task** — single current objective dict
+- `write()` auto-captures latest step output as a context entry
+- `reset()` clears all state at run end
+- Configurable limits: `working_memory_max_entries`, `working_memory_max_scratch_bytes` in `RuntimeConfig`
 
 ### Episodic memory (SQLite)
 
@@ -314,11 +326,31 @@ Query API:
 - `recall(workflow_id, limit)` — most recent episodes for a workflow
 - `recall_all(limit)` — most recent across all workflows
 
-`read()` hydrates `runtime.episodes` with past episodes for the current workflow,
+`read()` hydrates `runtime.memory.episodic` with past episodes for the current workflow,
 giving handlers context about prior runs.
 
 When no `db_path` is provided, `EpisodicMemory` operates as an in-memory stub
 (backward compatible with tests and default CLI).
+
+### Semantic memory (SQLite + FTS5)
+
+`SemanticMemory` stores long-term knowledge facts with full-text search:
+- `store(key, content, tags, metadata)` — insert/update with FTS5 index sync
+- `get(key)` — exact key lookup
+- `delete(key)` — removes fact + FTS index entry
+- `search(query, limit)` — FTS5 MATCH with BM25 ranking, prefix tokenization (`tokenize='porter unicode61'`)
+- `search_by_tags(tags, match_all)` — tag-based query with match_all/match_any modes
+- `count()` — total fact count
+
+Protocol-driven: `read()` looks for `runtime.memory.semantic.query` in state; `write()` persists facts from `runtime.memory.semantic.store` list.
+
+Falls back to in-memory dict when no `db_path` is provided.
+
+**Not yet implemented:** vector-similarity retrieval (embeddings + cosine distance) — roadmap item.
+
+### Procedural memory (stub)
+
+`ProceduralMemory` is currently a stub. Roadmap: mine episodic history for patterns, store rules in SQLite, confidence scoring, LLM-assisted extraction.
 
 Modules:
 - `memory/base.py` — `MemoryTier` protocol and `MemoryManager`
@@ -464,10 +496,46 @@ Config fields:
 - `tools_dir` — tool discovery directory (default: `tools`)
 - `model` — model backend settings (placeholder for LLM integration)
 - `logging.level` / `logging.format` — log configuration
+- `overwrite_policy` — state overwrite behavior: `warn` (default), `strict`, `allow`
+- `working_memory_max_entries` — max sliding window entries (default: 50)
+- `working_memory_max_scratch_bytes` — max scratch store size (default: 256KB)
+- `shell_allowlist` / `shell_denylist` — regex patterns for ShellTool command filtering
+- `default_llm_provider` — fallback provider for ambiguous model references
+- `llm:` — provider configuration block (providers, models, API key env vars)
 
 Module: `config.py` — `RuntimeConfig`, `load_config()`, `apply_cli_overrides()`
 
-## 17. Extension points
+## 17. Lifecycle hooks
+
+The Executor emits structured events at five lifecycle points via an optional `EventCallback`:
+
+```python
+EventCallback = Callable[[str, Dict[str, Any]], None]
+```
+
+Events:
+| Event | When | Payload includes |
+|-------|------|------------------|
+| `RUN_START` | Run begins | `run_id`, `workflow_id` |
+| `STEP_START` | Step begins | `run_id`, `step_id`, `step_type` |
+| `STEP_COMPLETE` | Step succeeds | `run_id`, `step_id`, `duration_ms`, `handler_duration_ms`/`tool_duration_ms` |
+| `STEP_ERROR` | Step fails (after retries) | `run_id`, `step_id`, `error` |
+| `RUN_COMPLETE` | Run finishes | `run_id`, `status`, `total_duration_ms` |
+
+Usage: pass `on_event` to `Executor.__init__()` or to `run_workflow()`.
+
+## 18. Timing telemetry
+
+Per-step timing captures both total step duration and call-specific latency:
+- `duration_ms` — total time from state_before snapshot to state_after persistence
+- `handler_duration_ms` — time spent inside the handler callable (model steps)
+- `tool_duration_ms` — time spent inside the tool's `execute()` method (tool steps)
+
+Run-level duration is derived from `started_at` / `completed_at` timestamps.
+
+Visualization renderers (HTML, ASCII) and CLI progress output surface these metrics.
+
+## 19. Extension points
 
 Designed for future expansion:
 - stronger expression engine for branching
@@ -475,8 +543,12 @@ Designed for future expansion:
 - typed state schemas
 - tool permissions and sandbox policies
 - state redaction and compression for large payloads
+- LLM streaming / token-level events
+- multi-agent composition (sub-workflow invocation)
+- PostgreSQL storage backend
+- OpenTelemetry / Prometheus observability
 
-## 18. LLM registry
+## 20. LLM registry
 
 The runtime includes a provider registry for managing LLM backends.
 

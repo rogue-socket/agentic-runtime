@@ -24,3 +24,19 @@
 
 - **Ignore generated run artifacts**:
   Added `.runs/` to `.gitignore`.
+
+## Documentation
+
+- **Full documentation refresh** (all files updated to reflect 2026-03-18 codebase state):
+  - `.copilot/instructions.md` — added pyproject.toml, security-sensitive areas (shell allowlist, symlink rejection), memory namespacing, lifecycle hooks, overwrite policy notes
+  - `.copilot/project_context.md` — updated subsystem status table (17 → 18 entries), corrected packaging status, memory tier status (working + semantic now "Implemented")
+  - `.copilot/session_state.md` — full rewrite for 2026-03-18 session with prior session summary
+  - `.copilot/working_set.md` — updated focus area, file list, core files, test inventory (21 tests)
+  - `.copilot/resume_prompt.md` — updated with 2026-03-18 state, 14 CLI commands, timing telemetry
+  - `.copilot/architecture_decisions.md` — added ADR-011 (timing telemetry)
+  - `.github/prompts/start-session.prompt.md` — updated doc references, added architecture rules
+  - `docs/ARCHITECTURE.md` — updated memory subsystem (§8: working, semantic, episodic detail), config fields (§16: overwrite policy, memory limits, shell, LLM), added lifecycle hooks (§17) and timing telemetry (§18) sections, renumbered extensions/LLM to §19/§20
+  - `docs/ONBOARDING_WALKTHROUGH.md` — fixed hardcoded absolute macOS path to relative `scripts/onboard.sh`
+  - `docs/GAPS_2026-03-17.md` — marked gaps 3 (memory), 5 (input coercion), 6 (security) as RESOLVED; gap 2 (streaming) as partially resolved
+  - `docs/STATUS_2026-03-17.md` — updated memory subsystem table, added 2026-03-18 visualization note
+  - `docs/CHANGELOG_2026-03-18.md` — this file (expanded with documentation section)
