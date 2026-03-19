@@ -51,10 +51,4 @@ flowchart TD
 
 ## Scripted Walkthrough
 
-If you prefer a bash script (for pair programming or workshops), use:
-
-```bash
-bash scripts/onboard.sh
-```
-
-That script mirrors the wizard flow and prints the exact commands it runs.
+Removed — use `ai onboard` for the guided flow.

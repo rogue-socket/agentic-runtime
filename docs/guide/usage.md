@@ -1,5 +1,5 @@
 <!--
-File: docs/USAGE.md
+File: docs/guide/usage.md
 Purpose: Command-focused usage reference for daily runtime operations.
 Description: Covers setup, running workflows, inspect/resume/replay flows, and common debugging patterns.
 Dependencies: `ai` CLI and sample workflows.
@@ -9,7 +9,7 @@ Side Effects: None.
 
 # Usage
 
-This guide is command-first and scenario-oriented.
+This guide is command-first and scenario-oriented. If you are brand new, start with `docs/guide/getting-started.md` and then return here.
 
 ## 1. Prerequisites
 
@@ -28,11 +28,11 @@ Pick a folder for your agent. The runtime uses the current directory as the proj
 ```bash
 mkdir my-agent
 cd my-agent
-ai
+ai quickstart
 ```
 
-The wizard initializes the project (if needed), configures an LLM provider,
-writes `.env`, and optionally runs a sample workflow.
+`ai quickstart` initializes the project (if needed), configures an LLM provider,
+writes `.env`, and runs a starter workflow.
 
 Prefer non-interactive setup?
 

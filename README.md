@@ -28,19 +28,24 @@ pip install -e .
 mkdir my-agent
 cd my-agent
 
-ai
-ai run my_agent@v1
+ai quickstart
 ```
 
 Your agent project can live anywhere; the CLI treats the current directory as the project root.
 
 ## Docs
 
-- `docs/USAGE.md` — CLI reference, workflows, inspect/resume/replay
-- `docs/ONBOARDING_WALKTHROUGH.md` — guided setup flow and scripted walkthrough
-- `docs/ARCHITECTURE.md` — system design
-- `docs/EXECUTION_WALKTHROUGH.md` — run/resume/replay trace
-- `docs/CHANGELOG_2026-03-18.md` — recent changes
+- `docs/guide/getting-started.md` — zero-to-first-run quickstart
+- `docs/guide/manual.md` — beginner-friendly full manual
+- `docs/guide/usage.md` — CLI reference, workflows, inspect/resume/replay
+- `docs/guide/onboarding-walkthrough.md` — guided setup flow and scripted walkthrough
+- `docs/guide/execution-walkthrough.md` — run/resume/replay trace
+- `docs/guide/workflows.md` — writing workflows
+- `docs/guide/handlers.md` — what handlers are and how to build them
+- `docs/guide/tools.md` — what tools are and how to build them
+- `docs/about/architecture.md` — system design
+- `docs/changelog/CHANGELOG_2026-03-19.md` — recent changes
+- `docs/site/index.html` — lightweight docs UI for browsing locally
 
 ## CLI at a glance
 

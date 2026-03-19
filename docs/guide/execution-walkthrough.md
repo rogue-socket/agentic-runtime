@@ -1,5 +1,5 @@
 <!--
-File: docs/EXECUTION_WALKTHROUGH.md
+File: docs/guide/execution-walkthrough.md
 Purpose: Step-by-step execution narrative for run, resume, replay, and visualization flows.
 Description: Shows runtime bootstrapping, state transitions, persistence checkpoints, and debug loops.
 Dependencies: CLI and runtime internals under src/agent_runtime.

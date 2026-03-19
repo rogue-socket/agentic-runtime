@@ -1,0 +1,266 @@
+:root {
+  color-scheme: light;
+  --bg: #f4f0ea;
+  --bg-accent: #f9f6f1;
+  --ink: #1e1c19;
+  --muted: #6a6155;
+  --border: #d7cfc4;
+  --accent: #2f6f5e;
+  --accent-2: #b14a2a;
+  --highlight: #fef3c7;
+  --shadow: 0 12px 30px rgba(30, 28, 25, 0.12);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --font-sans: "Avenir Next", "Futura", "Gill Sans", "Trebuchet MS", sans-serif;
+  --font-mono: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background: radial-gradient(circle at top left, #fdfaf5 0%, #f1e7dc 40%, #f7efe6 100%);
+}
+
+.app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+}
+
+.sidebar {
+  padding: 28px 20px;
+  background: var(--bg-accent);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.brand {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.brand-mark {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(140deg, #2f6f5e, #1d3a33);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.brand-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.brand-subtitle {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.search {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.search input {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+}
+
+.search button {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.nav {
+  display: grid;
+  gap: 18px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.nav-section {
+  display: grid;
+  gap: 8px;
+}
+
+.nav-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--muted);
+}
+
+.nav-item {
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
+.nav-item:hover,
+.nav-item.active {
+  background: #fff;
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+
+.main {
+  padding: 36px 40px 60px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 20px;
+}
+
+.eyebrow {
+  font-size: 0.85rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+h1 {
+  margin: 6px 0 0;
+  font-size: 2.2rem;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.button {
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--ink);
+  background: #fff;
+  font-weight: 600;
+}
+
+.content {
+  margin-top: 24px;
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 28px 32px;
+  box-shadow: var(--shadow);
+}
+
+.doc {
+  animation: fadeIn 0.35s ease;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.doc h1,
+.doc h2,
+.doc h3 {
+  margin-top: 1.6em;
+}
+
+.doc h1 {
+  font-size: 1.8rem;
+}
+
+.doc h2 {
+  font-size: 1.4rem;
+}
+
+.doc h3 {
+  font-size: 1.15rem;
+}
+
+.doc p {
+  margin: 0 0 1em;
+}
+
+.doc code {
+  font-family: var(--font-mono);
+  background: #f4efe9;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.doc pre {
+  background: #15130f;
+  color: #f8f4ef;
+  padding: 16px 18px;
+  border-radius: 12px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+
+.doc pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.doc ul,
+.doc ol {
+  padding-left: 1.4em;
+  margin: 0 0 1em;
+}
+
+.doc blockquote {
+  margin: 0 0 1em;
+  padding: 12px 16px;
+  border-left: 4px solid var(--accent);
+  background: var(--highlight);
+}
+
+.doc a {
+  color: var(--accent-2);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 960px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .main {
+    padding: 24px 18px 40px;
+  }
+}

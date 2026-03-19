@@ -866,6 +866,51 @@ def _run_onboard_flow(project_root: str) -> int:
     return 0
 
 
+def _run_quickstart(project_root: str) -> int:
+    print("\nQuickstart: set up and run a starter workflow.\n")
+
+    if not os.path.isdir(project_root):
+        raise SystemExit(f"Project path does not exist: {project_root}")
+
+    runtime_path = os.path.join(project_root, "runtime.yaml")
+    example_workflow = os.path.join(project_root, "workflows", "example.yaml")
+    needs_init = (not os.path.exists(runtime_path)) or (not os.path.exists(example_workflow))
+    if needs_init:
+        _init_project(project_root)
+        print(f"Initialized project at {project_root}")
+
+    _load_dotenv(os.path.join(project_root, ".env"))
+
+    _run_setup_flow(
+        project_root,
+        provider=None,
+        api_key_env=None,
+        api_key=None,
+        model=None,
+        base_url=None,
+        temperature=None,
+        max_tokens=None,
+        no_dotenv=False,
+        no_default=False,
+    )
+
+    if not os.path.exists(example_workflow):
+        fallback = os.path.join(project_root, "workflows", "samples", "01_linear_issue_summary.yaml")
+        if os.path.exists(fallback):
+            example_workflow = fallback
+        else:
+            print("No starter workflow found to run.")
+            return 1
+
+    print(f"\nRunning starter workflow: {example_workflow}\n")
+    cwd = os.getcwd()
+    try:
+        os.chdir(project_root)
+        return run_cli(["run", example_workflow])
+    finally:
+        os.chdir(cwd)
+
+
 def _run_home_screen(project_root: str) -> int:
     print("\nagentic-runtime")
     print("Choose an action:\n")
@@ -915,6 +960,12 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
     init_parser = subparsers.add_parser("init", help="Initialize a new workflow project")
     init_parser.add_argument("--path", default=".", help="Target directory")
+
+    quickstart_parser = subparsers.add_parser(
+        "quickstart",
+        help="Initialize, configure, and run a starter workflow",
+    )
+    quickstart_parser.add_argument("--path", default=".", help="Project root")
 
     setup_parser = subparsers.add_parser("setup", help="Configure API keys and runtime settings")
     setup_parser.add_argument("--path", default=".", help="Project root (contains runtime.yaml)")
@@ -994,6 +1045,10 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         _init_project(args.path)
         print(f"Initialized workflow project at {os.path.abspath(args.path)}")
         return 0
+
+    if args.command == "quickstart":
+        project_root = os.path.abspath(args.path)
+        return _run_quickstart(project_root)
 
     if args.command == "setup":
         project_root = os.path.abspath(args.path)

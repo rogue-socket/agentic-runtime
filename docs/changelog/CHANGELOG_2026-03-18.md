@@ -35,8 +35,8 @@
   - `.copilot/resume_prompt.md` — updated with 2026-03-18 state, 14 CLI commands, timing telemetry
   - `.copilot/architecture_decisions.md` — added ADR-011 (timing telemetry)
   - `.github/prompts/start-session.prompt.md` — updated doc references, added architecture rules
-  - `docs/ARCHITECTURE.md` — updated memory subsystem (§8: working, semantic, episodic detail), config fields (§16: overwrite policy, memory limits, shell, LLM), added lifecycle hooks (§17) and timing telemetry (§18) sections, renumbered extensions/LLM to §19/§20
-  - `docs/ONBOARDING_WALKTHROUGH.md` — fixed hardcoded absolute macOS path to relative `scripts/onboard.sh`
-  - `docs/GAPS_2026-03-17.md` — marked gaps 3 (memory), 5 (input coercion), 6 (security) as RESOLVED; gap 2 (streaming) as partially resolved
-  - `docs/STATUS_2026-03-17.md` — updated memory subsystem table, added 2026-03-18 visualization note
-  - `docs/CHANGELOG_2026-03-18.md` — this file (expanded with documentation section)
+  - `docs/about/architecture.md` — updated memory subsystem (§8: working, semantic, episodic detail), config fields (§16: overwrite policy, memory limits, shell, LLM), added lifecycle hooks (§17) and timing telemetry (§18) sections, renumbered extensions/LLM to §19/§20
+  - `docs/guide/onboarding-walkthrough.md` — fixed hardcoded absolute macOS path to relative `scripts/onboard.sh`
+  - `docs/about/gaps_2026-03-17.md` — marked gaps 3 (memory), 5 (input coercion), 6 (security) as RESOLVED; gap 2 (streaming) as partially resolved
+  - `docs/about/status_2026-03-17.md` — updated memory subsystem table, added 2026-03-18 visualization note
+  - `docs/changelog/CHANGELOG_2026-03-18.md` — this file (expanded with documentation section)

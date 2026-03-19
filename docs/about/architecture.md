@@ -1,5 +1,5 @@
 <!--
-File: docs/ARCHITECTURE.md
+File: docs/about/architecture.md
 Purpose: Defines the runtime's architectural model and execution contracts.
 Description: Documents entities, control flow, state model, persistence, replay, and extension points.
 Dependencies: Mirrors behavior implemented in src/agent_runtime.
