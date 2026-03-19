@@ -1,15 +1,6 @@
 **Docs UI**
 
-Open `docs/site/index.html` in a browser to browse the documentation with search and in-page rendering.
-
-If you prefer a local server (optional):
-
-```bash
-cd /Users/yashagrawal/Documents/agentic-runtime/docs/site
-python -m http.server
-```
-
-Then open `http://localhost:8000` in your browser.
+Open [`docs/site/index.html`](index.html) in a browser to browse the documentation with search and in-page rendering.
 
 **Updating the Index**
 

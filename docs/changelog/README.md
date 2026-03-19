@@ -12,7 +12,7 @@ Each entry should include:
 
 **Entries**
 
-- `docs/changelog/CHANGELOG_2026-03-19.md`
-- `docs/changelog/CHANGELOG_2026-03-18.md`
-- `docs/changelog/CHANGELOG_2026-03-17.md`
-- `docs/changelog/CHANGELOG_2026-03-16.md`
+- [CHANGELOG 2026-03-19](CHANGELOG_2026-03-19.md)
+- [CHANGELOG 2026-03-18](CHANGELOG_2026-03-18.md)
+- [CHANGELOG 2026-03-17](CHANGELOG_2026-03-17.md)
+- [CHANGELOG 2026-03-16](CHANGELOG_2026-03-16.md)

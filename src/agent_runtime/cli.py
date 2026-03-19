@@ -72,6 +72,7 @@ _SECRET_KEY_RE = re.compile(
     r"(api[_-]?key|secret|token|password|credential|auth|bearer)",
     re.IGNORECASE,
 )
+_MODEL_LINE_RE = re.compile(r"^(\s*model:\s*)([^#\s]+)(\s*(#.*)?)$")
 
 _DEFAULT_PROVIDER_ENV = {
     "openai": "OPENAI_API_KEY",
@@ -220,29 +221,75 @@ def _prompt_int(prompt: str, min_value: int, max_value: int, default: int) -> in
         return value
 
 
-EXAMPLE_WORKFLOW = """workflow:
-  id: example_workflow
-  version: v1
-inputs:
+EXAMPLE_WORKFLOW = """workflow:                     # workflow metadata
+  id: example_workflow         # unique workflow id
+  version: v1                  # version tag
+inputs:                        # declared inputs
   issue:
     description: The issue text to analyze
     default: "Login API fails for invalid token"
-on_error: fail_fast
-steps:
-  - id: generate_summary
-    type: model
-    handler: generate_summary
+on_error: fail_fast            # stop on first error
+steps:                         # ordered steps (a list)
+  - id: summarize
+    type: model                # model step uses the LLM handler
+    handler: llm               # built-in LLM handler
+    model: gpt-4o              # default model (quickstart overwrites if needed)
+    system: "You are a senior support engineer. Be concise and actionable."
+    prompt: |
+      Summarize the issue in 2-3 sentences and call out likely root causes.
+
+      Issue: {{ inputs.issue }}
+    temperature: 0.3
+    max_tokens: 240
+    response_key: summary
+    inputs:
+      issue: inputs.issue      # read from inputs
+  - id: priority
+    type: tool                 # tool step uses a tool class
+    tool: tools.priority_heuristic  # quick heuristic tool
     inputs:
       issue: inputs.issue
-    retry:
-      attempts: 3
-      backoff: exponential
-      initial_delay: 1
-  - id: echo_tool
+  - id: next_steps
+    type: model                # model step uses the LLM handler
+    handler: llm
+    model: gpt-4o              # default model (quickstart overwrites if needed)
+    system: "Propose concrete, step-by-step fixes. Avoid vague advice."
+    prompt: |
+      Given the issue and summary, propose the next 3 steps to fix it.
+
+      Issue: {{ inputs.issue }}
+      Summary: {{ steps.summarize.summary }}
+      Priority: {{ steps.priority.priority }}
+    temperature: 0.5
+    max_tokens: 320
+    response_key: next_steps
+    inputs:
+      issue: inputs.issue
+      summary: steps.summarize.summary
+      priority: steps.priority.priority
+  - id: build_report
+    type: tool                 # tool step uses a tool class
+    tool: tools.report_builder # build a markdown report
+    inputs:
+      title: "Quickstart Report"
+      summary: steps.summarize.summary
+      priority: steps.priority.priority
+      next_steps: steps.next_steps.next_steps
+  - id: echo_summary
+    type: tool                 # tool step uses a tool class
+    tool: tools.echo           # built-in echo tool
+    inputs:
+      message: steps.summarize.summary  # read prior step output
+  - id: echo_report
     type: tool
     tool: tools.echo
     inputs:
-      message: steps.generate_summary.summary
+      message: steps.build_report.report
+  - id: echo_next_steps
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.next_steps.next_steps
 """
 
 EXAMPLE_HANDLER = '''"""Example handler module.
@@ -300,14 +347,6 @@ The runtime auto-discovers tools from the tools/ directory.
 Discovery convention: every class that implements the Tool protocol (has
 ``name``, ``description``, ``input_schema``, and ``execute``) and whose
 class name does not start with ``_`` is instantiated and registered.
-
-Tool protocol requirements:
-  - name: str           (e.g. "tools.example")
-  - description: str
-  - input_schema: dict  (JSON Schema for input validation)
-  - timeout: Optional[float]
-  - retries: Optional[int]
-  - async execute(input, context) -> ToolResult
 """
 
 from __future__ import annotations
@@ -317,24 +356,31 @@ from typing import Any, Dict, Optional
 from agent_runtime.tools.base import RuntimeContext, ToolResult
 
 
-class ExampleTool:
-    """Example tool that uppercases a message.
+class ReportBuilderTool:
+    """Builds a markdown report from LLM outputs.
 
     Usage in workflow YAML:
-        - id: my_step
+        - id: build_report
           type: tool
-          tool: tools.example
+          tool: tools.report_builder
           inputs:
-            text: inputs.text
+            title: "Incident Report"
+            summary: steps.summarize.summary
+            priority: steps.priority.priority
+            next_steps: steps.next_steps.next_steps
     """
 
-    name = "tools.example"
-    description = "Uppercases the provided text"
+    name = "tools.report_builder"
+    description = "Builds a markdown report from summary and next steps"
     input_schema = {
         "type": "object",
         "properties": {
-            "text": {"type": "string"},
+            "title": {"type": "string"},
+            "summary": {"type": "string"},
+            "priority": {"type": "string"},
+            "next_steps": {"type": "string"},
         },
+        "required": ["summary", "next_steps"],
     }
     timeout: Optional[float] = None
     retries: Optional[int] = None
@@ -342,11 +388,61 @@ class ExampleTool:
     async def execute(
         self, input: Dict[str, Any], context: RuntimeContext
     ) -> ToolResult:
-        # TODO: Replace with real tool logic (e.g. API call).
-        text = input.get("text", "")
+        title = input.get("title", "Quickstart Report")
+        summary = input.get("summary", "")
+        priority = input.get("priority", "")
+        next_steps = input.get("next_steps", "")
+        priority_block = f"\\n\\n## Priority\\n{priority}" if priority else ""
+        report = (
+            f"# {title}\\n\\n"
+            f"## Summary\\n{summary}"
+            f"{priority_block}\\n\\n"
+            f"## Next Steps\\n{next_steps}\\n"
+        )
         return ToolResult(
             success=True,
-            output={"text": text.upper()},
+            output={"report": report},
+            error=None,
+            metadata=None,
+        )
+
+
+class PriorityHeuristicTool:
+    """Assigns a rough priority based on keywords.
+
+    Usage in workflow YAML:
+        - id: priority
+          type: tool
+          tool: tools.priority_heuristic
+          inputs:
+            issue: inputs.issue
+    """
+
+    name = "tools.priority_heuristic"
+    description = "Assigns a simple priority label from issue text"
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "issue": {"type": "string"},
+        },
+        "required": ["issue"],
+    }
+    timeout: Optional[float] = None
+    retries: Optional[int] = None
+
+    async def execute(
+        self, input: Dict[str, Any], context: RuntimeContext
+    ) -> ToolResult:
+        issue = (input.get("issue") or "").lower()
+        if any(token in issue for token in ("outage", "down", "500", "crash")):
+            priority = "P0 (critical)"
+        elif any(token in issue for token in ("latency", "slow", "timeout", "401")):
+            priority = "P1 (high)"
+        else:
+            priority = "P2 (medium)"
+        return ToolResult(
+            success=True,
+            output={"priority": priority},
             error=None,
             metadata=None,
         )
@@ -469,7 +565,7 @@ defaults:
 """
 
 
-def _init_project(target_dir: str) -> None:
+def _init_project(target_dir: str, *, model: Optional[str] = None) -> None:
     """Create workflow scaffold files in target directory."""
     workflows_dir = os.path.join(target_dir, "workflows")
     handlers_dir = os.path.join(target_dir, "handlers")
@@ -484,7 +580,10 @@ def _init_project(target_dir: str) -> None:
     example_workflow_path = os.path.join(workflows_dir, "example.yaml")
     if not os.path.exists(example_workflow_path):
         with open(example_workflow_path, "w", encoding="utf-8") as f:
-            f.write(EXAMPLE_WORKFLOW)
+            if model:
+                f.write(EXAMPLE_WORKFLOW.replace("model: gpt-4o", f"model: {model}"))
+            else:
+                f.write(EXAMPLE_WORKFLOW)
 
     example_handler_path = os.path.join(handlers_dir, "example_handler.py")
     if not os.path.exists(example_handler_path):
@@ -505,6 +604,32 @@ def _init_project(target_dir: str) -> None:
     if not os.path.exists(runtime_yaml_path):
         with open(runtime_yaml_path, "w", encoding="utf-8") as f:
             f.write(RUNTIME_YAML_TEMPLATE)
+
+
+def _update_workflow_model(path: str, model: Optional[str]) -> bool:
+    if not model or not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        return False
+    changed = False
+    for idx, line in enumerate(lines):
+        match = _MODEL_LINE_RE.match(line)
+        if not match:
+            continue
+        current = match.group(2)
+        if current == model:
+            continue
+        suffix = match.group(3) or ""
+        newline = "\n" if line.endswith("\n") else ""
+        lines[idx] = f"{match.group(1)}{model}{suffix}{newline}"
+        changed = True
+    if changed:
+        with open(path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+    return changed
 
 
 def _default_handler_registry(
@@ -875,13 +1000,10 @@ def _run_quickstart(project_root: str) -> int:
     runtime_path = os.path.join(project_root, "runtime.yaml")
     example_workflow = os.path.join(project_root, "workflows", "example.yaml")
     needs_init = (not os.path.exists(runtime_path)) or (not os.path.exists(example_workflow))
-    if needs_init:
-        _init_project(project_root)
-        print(f"Initialized project at {project_root}")
 
     _load_dotenv(os.path.join(project_root, ".env"))
 
-    _run_setup_flow(
+    setup_info = _run_setup_flow(
         project_root,
         provider=None,
         api_key_env=None,
@@ -893,6 +1015,14 @@ def _run_quickstart(project_root: str) -> int:
         no_dotenv=False,
         no_default=False,
     )
+
+    chosen_model = setup_info.get("model") if isinstance(setup_info, dict) else None
+
+    if needs_init:
+        _init_project(project_root, model=chosen_model)
+        print(f"Initialized project at {project_root}")
+    else:
+        _update_workflow_model(example_workflow, chosen_model)
 
     if not os.path.exists(example_workflow):
         fallback = os.path.join(project_root, "workflows", "samples", "01_linear_issue_summary.yaml")

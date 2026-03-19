@@ -1,19 +1,30 @@
-**Handlers**
+**Handlers (Explained Simply)**
 
-Handlers are the functions that power `model` steps. You can think of a handler as a small unit of logic that reads from the workflow state and returns a dictionary of new fields to merge back into state.
+Think of a handler as a small Python function the runtime calls when it reaches a `model` step. It reads the current state, does some logic, and returns new fields.
+
+If you are new to this, remember one sentence:
+**A handler is just a function that reads state and returns a dictionary.**
 
 **Where Handlers Live**
 
-Put your handler functions in the `handlers/` folder. The runtime auto-discovers them at run time.
+Put your handler functions in the `handlers/` folder. The runtime finds them automatically.
 
-**Handler Shape**
+**What A Handler Receives**
+
+The runtime passes a `state` object. You can treat it like a dictionary.
+
+**What A Handler Must Return**
+
+Return a plain dictionary. Those keys become the output of the step.
+
+**Minimal Example**
 
 ```python
 from agent_runtime.state import RuntimeState
 
 def summarize_issue(state: RuntimeState) -> dict:
-    issue = state.get("issue", "")
-    return {"summary": issue[:140]}
+    issue = state.get("issue", "")  # read input from state
+    return {"summary": issue[:140]}  # return step output fields
 ```
 
 **How The Workflow Uses It**
@@ -21,39 +32,42 @@ def summarize_issue(state: RuntimeState) -> dict:
 ```yaml
 steps:
   - id: summarize
-    type: model
-    handler: summarize_issue
+    type: model                 # model step
+    handler: summarize_issue    # function name
     inputs:
-      issue: inputs.issue
+      issue: inputs.issue       # pass workflow input into the handler
 ```
 
-**Return Values**
+**What Happens At Runtime**
 
-- Return a plain dictionary.
-- Keys become new fields in `steps.<step_id>`.
-- You can safely return nested objects; they are stored in JSON.
+1. The runtime reads the workflow.
+2. It finds the `summarize_issue` function in `handlers/`.
+3. It builds the input state for the step.
+4. It calls `summarize_issue(state)`.
+5. The returned dict is stored at `steps.summarize` in state.
 
-**Two Discovery Conventions**
+**Auto-Discovery Rules**
 
-1. Zero-config: every public function (not starting with `_`) is registered by name.
-2. Explicit: define a `__handlers__` dict to control exported names.
+- If a function is public (does not start with `_`), it is registered automatically.
+- If you want custom names, use a `__handlers__` dict.
 
-Example explicit registry:
+Example with custom names:
 
 ```python
 def _internal_helper():
-    return "ignored"
+    return "ignored"  # private helpers are not registered
 
 def run_analysis(state):
-    return {"result": "ok"}
+    return {"result": "ok"}  # exposed output
 
 __handlers__ = {
-    "analyze": run_analysis,
+    "analyze": run_analysis,  # workflow uses handler: analyze
 }
 ```
 
-**Common Tips**
+**Handlers vs Tools**
 
-- Keep handlers pure and deterministic when possible.
-- Use `state.get("key")` to read inputs and previous outputs.
-- Keep outputs small and structured so they are easy to inspect later.
+- Handlers are for *logic* inside your app (classification, parsing, summarizing).
+- Tools are for *external actions* (APIs, files, shell commands).
+
+If you are unsure, start with a handler. If it needs the outside world, make it a tool.

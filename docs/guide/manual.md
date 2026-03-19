@@ -16,6 +16,13 @@ A workflow is a recipe. Each step reads the current state, does some work, then 
 - Agent manifest: a portable bundle that references a workflow plus its handlers and tools.
 - Run: a persisted execution record stored in SQLite.
 
+**Workflow Definitions vs Agent Definitions**
+
+- Workflow definitions live in `workflows/` and describe inputs + steps.
+- Agent definitions live in `agents/` and point to a workflow plus the handlers/tools it needs.
+
+Use a workflow when you run `ai run workflows/my_workflow.yaml`. Use an agent definition when you run `ai run my_agent@v1`.
+
 **Quickstart**
 
 ```bash
@@ -43,19 +50,19 @@ my-agent/
 Minimum shape:
 
 ```yaml
-workflow:
-  id: my_workflow
-  version: v1
-inputs:
+workflow:                     # workflow metadata
+  id: my_workflow              # unique id
+  version: v1                  # version tag
+inputs:                        # declared inputs
   issue:
     description: The issue text
-    required: true
-steps:
+    required: true             # required input
+steps:                         # ordered steps
   - id: summarize
-    type: model
-    handler: generate_summary
+    type: model                # model step
+    handler: generate_summary  # handler function name
     inputs:
-      issue: inputs.issue
+      issue: inputs.issue      # input reference
 ```
 
 Referencing data:
@@ -68,14 +75,14 @@ Branching:
 ```yaml
 steps:
   - id: triage
-    type: model
-    handler: classify_severity
+    type: model                 # model step
+    handler: classify_severity  # handler function
     inputs:
-      issue: inputs.issue
+      issue: inputs.issue       # input reference
     branch:
       when:
-        - if: steps.triage.severity == "high"
-          goto: escalate
+        - if: steps.triage.severity == "high"  # branch condition
+          goto: escalate                        # jump target step id
         - if: steps.triage.severity == "low"
           goto: close
 ```
@@ -85,14 +92,14 @@ Retry policy:
 ```yaml
 steps:
   - id: unstable_call
-    type: tool
-    tool: tools.http
+    type: tool                 # tool step
+    tool: tools.http            # built-in HTTP tool
     inputs:
-      url: inputs.url
+      url: inputs.url           # input reference
     retry:
-      attempts: 3
-      backoff: exponential
-      initial_delay: 1
+      attempts: 3               # retry count
+      backoff: exponential      # backoff strategy
+      initial_delay: 1          # seconds
 ```
 
 Error handling:
@@ -109,14 +116,14 @@ ai run my_workflow@v2
 
 **Handlers (Model Steps)**
 
-Handler functions live in `handlers/` and are auto-discovered.
+Handler functions live in `handlers/` and are auto-discovered. They are invoked only when the runtime reaches a step with `type: model` and matches the `handler` name.
 
 ```python
 from agent_runtime.state import RuntimeState
 
 def summarize_issue(state: RuntimeState) -> dict:
-    issue = state.get("issue", "")
-    return {"summary": issue[:140]}
+    issue = state.get("issue", "")  # read input
+    return {"summary": issue[:140]}  # return output fields
 ```
 
 Workflow usage:
@@ -124,10 +131,10 @@ Workflow usage:
 ```yaml
 steps:
   - id: summarize
-    type: model
-    handler: summarize_issue
+    type: model                 # model step
+    handler: summarize_issue    # handler function
     inputs:
-      issue: inputs.issue
+      issue: inputs.issue       # input reference
 ```
 
 **Tools (Tool Steps)**
@@ -154,8 +161,13 @@ class ExampleTool:
     async def execute(
         self, input: Dict[str, Any], context: RuntimeContext
     ) -> ToolResult:
-        text = input.get("text", "")
-        return ToolResult(success=True, output={"text": text.upper()}, error=None, metadata=None)
+        text = input.get("text", "")  # read tool input
+        return ToolResult(             # return tool result
+            success=True,
+            output={"text": text.upper()},
+            error=None,
+            metadata=None,
+        )
 ```
 
 Workflow usage:
@@ -163,10 +175,10 @@ Workflow usage:
 ```yaml
 steps:
   - id: shout
-    type: tool
-    tool: tools.example
+    type: tool                 # tool step
+    tool: tools.example         # tool name
     inputs:
-      text: inputs.message
+      text: inputs.message      # input reference
 ```
 
 **Running Workflows**
@@ -202,4 +214,4 @@ ai replay <run_id> --verify-state
 - Keep API keys in `.env` or environment variables, not in code.
 - Use shell allowlists in `runtime.yaml` if you enable the shell tool.
 
-If you want deeper reference material, see `docs/guide/usage.md` and `docs/guide/workflows.md`.
+If you want deeper reference material, see [Usage](usage.md) and [Writing Workflows](workflows.md).

@@ -2,11 +2,13 @@
 
 Use these documents to get started quickly and operate the runtime day to day.
 
-- `docs/guide/getting-started.md`
-- `docs/guide/manual.md`
-- `docs/guide/usage.md`
-- `docs/guide/workflows.md`
-- `docs/guide/handlers.md`
-- `docs/guide/tools.md`
-- `docs/guide/onboarding-walkthrough.md`
-- `docs/guide/execution-walkthrough.md`
+- [Getting Started](getting-started.md)
+- [Knowledge Base](knowledge-base.md)
+- [Manual](manual.md)
+- [Usage](usage.md)
+- [Writing Workflows](workflows.md)
+- [Handlers](handlers.md)
+- [Tools](tools.md)
+- [Troubleshooting](troubleshooting.md)
+- [Onboarding Walkthrough](onboarding-walkthrough.md)
+- [Execution Walkthrough](execution-walkthrough.md)

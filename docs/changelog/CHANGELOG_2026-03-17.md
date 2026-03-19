@@ -66,7 +66,7 @@ Across 14 source files, tagged with categories:
   Added a Gemini adapter, request/response normalization, and client wiring.
   Sample workflow: `workflows/samples/06_gemini_call.yaml`.
 
-- **Onboarding wizard** (`cli.py`, `docs/guide/onboarding-walkthrough.md`, `scripts/onboard.sh`):
+- **Onboarding wizard** (`cli.py`, [Onboarding Walkthrough](../guide/onboarding-walkthrough.md), `scripts/onboard.sh`):
   Added `ai` (no args) and `ai onboard` guided setup, plus a reusable onboarding script.
 
 - **Setup enhancements** (`cli.py`):

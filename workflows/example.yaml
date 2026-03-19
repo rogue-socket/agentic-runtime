@@ -1,30 +1,77 @@
 # File: workflows/example.yaml
-# Purpose: Baseline runnable workflow used by CLI examples and smoke checks.
-# Description: Demonstrates a linear model->tool flow with retry behavior.
-# Dependencies: `generate_summary` handler and `tools.echo` tool registration.
-# Inputs/Outputs: Reads `inputs.issue`; writes `steps.generate_summary` and `steps.echo_tool`.
-# Side Effects: Tool execution emits structured events and persists run history/state.
+# Purpose: Quickstart workflow that uses the built-in LLM handler and tools.
+# Description: Summarizes an issue, estimates priority, proposes next steps,
+#   builds a report, and echoes results.
+# Dependencies: handler: llm, tools.echo, tools.report_builder, tools.priority_heuristic
+# Inputs/Outputs: Reads inputs.issue; produces summary, priority, next_steps, report.
+# Side Effects: Makes HTTP calls to the configured LLM provider API.
 
-workflow:
-  id: example_workflow
-  version: v1
-inputs:
+workflow:                     # workflow metadata
+  id: example_workflow         # unique workflow id
+  version: v1                  # version tag
+inputs:                        # declared inputs
   issue:
     description: The issue text to analyze
     default: "Login API fails for invalid token"
-on_error: fail_fast
-steps:
-  - id: generate_summary
-    type: model
-    handler: generate_summary
+on_error: fail_fast            # stop on first error
+steps:                         # ordered steps (a list)
+  - id: summarize
+    type: model                # model step uses the LLM handler
+    handler: llm               # built-in LLM handler
+    model: gpt-4o              # default model (quickstart overwrites if needed)
+    system: "You are a senior support engineer. Be concise and actionable."
+    prompt: |
+      Summarize the issue in 2-3 sentences and call out likely root causes.
+
+      Issue: {{ inputs.issue }}
+    temperature: 0.3
+    max_tokens: 240
+    response_key: summary
+    inputs:
+      issue: inputs.issue      # read from inputs
+  - id: priority
+    type: tool                 # tool step uses a tool class
+    tool: tools.priority_heuristic  # quick heuristic tool
     inputs:
       issue: inputs.issue
-    retry:
-      attempts: 3
-      backoff: exponential
-      initial_delay: 1
-  - id: echo_tool
+  - id: next_steps
+    type: model                # model step uses the LLM handler
+    handler: llm
+    model: gpt-4o              # default model (quickstart overwrites if needed)
+    system: "Propose concrete, step-by-step fixes. Avoid vague advice."
+    prompt: |
+      Given the issue and summary, propose the next 3 steps to fix it.
+
+      Issue: {{ inputs.issue }}
+      Summary: {{ steps.summarize.summary }}
+      Priority: {{ steps.priority.priority }}
+    temperature: 0.5
+    max_tokens: 320
+    response_key: next_steps
+    inputs:
+      issue: inputs.issue
+      summary: steps.summarize.summary
+      priority: steps.priority.priority
+  - id: build_report
+    type: tool                 # tool step uses a tool class
+    tool: tools.report_builder # build a markdown report
+    inputs:
+      title: "Quickstart Report"
+      summary: steps.summarize.summary
+      priority: steps.priority.priority
+      next_steps: steps.next_steps.next_steps
+  - id: echo_summary
+    type: tool                 # tool step uses a tool class
+    tool: tools.echo           # built-in echo tool
+    inputs:
+      message: steps.summarize.summary  # read prior step output
+  - id: echo_report
     type: tool
     tool: tools.echo
     inputs:
-      message: steps.generate_summary.summary
+      message: steps.build_report.report
+  - id: echo_next_steps
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.next_steps.next_steps

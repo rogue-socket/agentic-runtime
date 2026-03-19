@@ -2,10 +2,10 @@
 
 This folder explains how the runtime is structured and how it behaves under the hood.
 
-- `docs/about/architecture.md` — the execution model, data model, and extension points
-- `docs/about/status_2026-03-17.md` — implementation status snapshot
-- `docs/about/gaps_2026-03-17.md` — known gaps and planned work
-- `docs/about/git_runtime_date.md` — source control date reference
+- [Architecture](architecture.md) — the execution model, data model, and extension points
+- [Status 2026-03-17](status_2026-03-17.md) — implementation status snapshot
+- [Gaps 2026-03-17](gaps_2026-03-17.md) — known gaps and planned work
+- [Git Runtime Date](git_runtime_date.md) — source control date reference
 
 **Where The Code Lives**
 
@@ -16,4 +16,4 @@ This folder explains how the runtime is structured and how it behaves under the 
 - `src/agent_runtime/tools/` — built-in tool interfaces and discovery
 - `src/agent_runtime/llm/` — provider registry and adapters
 
-If you are new to the internals, start with `docs/about/architecture.md` and then skim the execution walkthrough in `docs/guide/execution-walkthrough.md`.
+If you are new to the internals, start with [Architecture](architecture.md) and then skim the [Execution Walkthrough](../guide/execution-walkthrough.md).

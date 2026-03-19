@@ -9,7 +9,7 @@ Side Effects: None.
 
 # Usage
 
-This guide is command-first and scenario-oriented. If you are brand new, start with `docs/guide/getting-started.md` and then return here.
+This guide is command-first and scenario-oriented. If you are brand new, start with [Getting Started](getting-started.md) and then return here.
 
 ## 1. Prerequisites
 
@@ -452,23 +452,7 @@ If `runtime.yaml` does not exist, all built-in defaults apply.
 
 ## 12. Troubleshooting
 
-## `Cannot replay RUNNING run`
-- Wait for run completion/failure, then replay.
-
-## `Workflow hash mismatch; cannot resume`
-- Workflow changed since original run.
-- Resume requires compatible workflow definition.
-
-## `Replay data missing`
-- Step/state persistence is incomplete for that run.
-- Re-run workflow with current runtime version.
-
-## `ModuleNotFoundError: yaml`
-- Install dependencies in the active environment:
-
-```bash
-pip install -r requirements.txt
-```
+Troubleshooting is now in [Troubleshooting](troubleshooting.md).
 
 ## 13. State diff debugging
 
