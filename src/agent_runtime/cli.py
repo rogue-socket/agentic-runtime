@@ -1483,6 +1483,16 @@ def _run_quickstart(project_root: str) -> int:
     else:
         _update_workflow_model(example_workflow, chosen_model)
 
+    # Update model in all agent YAMLs so they match the chosen provider/model.
+    if chosen_model:
+        agents_dir = os.path.join(project_root, "agents")
+        if os.path.isdir(agents_dir):
+            for fname in os.listdir(agents_dir):
+                if fname.endswith((".yaml", ".yml")):
+                    _update_workflow_model(
+                        os.path.join(agents_dir, fname), chosen_model,
+                    )
+
     if not os.path.exists(example_workflow):
         fallback = os.path.join(project_root, "workflows", "samples", "01_linear_issue_summary.yaml")
         if os.path.exists(fallback):
@@ -1529,6 +1539,16 @@ def _run_quickstart_sample(
         print(f"Initialized project at {project_root}")
     else:
         _scaffold_quickstart_samples(project_root, model=chosen_model)
+
+    # Update model in all agent YAMLs so they match the chosen provider/model.
+    if chosen_model:
+        agents_dir = os.path.join(project_root, "agents")
+        if os.path.isdir(agents_dir):
+            for fname in os.listdir(agents_dir):
+                if fname.endswith((".yaml", ".yml")):
+                    _update_workflow_model(
+                        os.path.join(agents_dir, fname), chosen_model,
+                    )
 
     workflow_path = os.path.join(project_root, "workflows", workflow_name)
     if not os.path.exists(workflow_path):
