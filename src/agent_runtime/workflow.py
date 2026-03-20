@@ -33,6 +33,13 @@ from .errors import WorkflowValidationError
 from .utils import sha256_text
 
 # Valid step types for workflow steps
+# [Pain Point Solved] #1 Spaghetti Orchestration: Declarative YAML separates workflow
+#   topology (what connects to what) from execution (how each step runs).
+# [Pain Point Solved] #6 Mixing Deterministic & Non-Deterministic Steps: Three distinct
+#   step types — agent (LLM), function (pure Python), tool (external I/O) — each with
+#   its own dispatch path, so you don't force everything through an LLM abstraction.
+# [Pain Point Solved] #9 Collaboration Impossible: The workflow is a readable YAML file,
+#   not imperative Python. A teammate can understand the pipeline in 10 seconds.
 VALID_STEP_TYPES = {"agent", "function", "tool"}
 
 

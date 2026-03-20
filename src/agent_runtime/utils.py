@@ -129,7 +129,11 @@ def render_path_template(text: str, state: Dict[str, Any]) -> str:
         >>> render_path_template("Issue: {{ inputs.issue }}", {"inputs": {"issue": "x"}})
         'Issue: x'
     """
-    # TODO: Add escaping and error context for large prompt templates.
+    # TODO(Pain Point #N4 — Template Injection): User-supplied state values are
+    #   interpolated directly into LLM prompts here without sanitization. This is
+    #   a prompt injection vector — adversarial input like "Ignore previous
+    #   instructions..." flows straight into the system prompt. Add input
+    #   sanitization, escaping, or content boundary markers before interpolation.
     def replace(match: re.Match[str]) -> str:
         path = match.group(1).strip()
         return str(resolve_path(path, state))

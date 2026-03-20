@@ -5,6 +5,9 @@ suitable for demos, development, and integration testing.
 
 Signature: (inputs: dict) -> dict
 """
+# [Pain Point Solved] #N10 Non-Deterministic Testing Paralysis: These stubs give
+#   you predictable, assertable outputs for every workflow step — so you can test
+#   the orchestration, state flow, and branching logic without LLM non-determinism.
 
 
 def generate_summary(inputs: dict) -> dict:

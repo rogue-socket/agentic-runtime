@@ -52,6 +52,9 @@ class LLMProvider:
     base_url: Optional[str] = None           # custom endpoint for local/proxy
     models: Dict[str, ModelConfig] = field(default_factory=dict)
 
+    # [Pain Point Solved] #N11 .env File in the Repo: API keys are resolved from
+    #   environment variables at call time — never stored in runtime.yaml or
+    #   persisted to disk. Only the env var *name* is configured.
     # ---- credential resolution -----
 
     def resolve_api_key(self) -> Optional[str]:

@@ -44,6 +44,9 @@ def _urlopen_with_retry(
     raise last_exc  # type: ignore[misc]  # unreachable in practice
 
 
+# [Pain Point Solved] #5 Framework Lock-in / Dependency Hell: Provider-agnostic
+#   Protocol — any backend implements call(). All adapters use stdlib urllib, so
+#   zero SDK dependencies. Swapping OpenAI for Gemini is a config change, not a refactor.
 class LLMAdapter(Protocol):
     """Protocol for provider-specific adapters."""
 

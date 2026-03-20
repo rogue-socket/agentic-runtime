@@ -105,6 +105,12 @@ class RunState:
         self._runtime_state.set_step_output(step_id, output, writer=step_id)
 
 
+# [Pain Point Solved] #8 Prompt-Data Coupling: input_contract and output_contract
+#   enforce explicit schema boundaries between steps. If a prompt changes its output
+#   format, the contract check catches the mismatch at runtime — not six steps later.
+# [Pain Point Solved] #N1 "Almost Correct" Output: output_contract validates both
+#   missing and extra keys, catching LLM responses that pass structural checks but
+#   silently drop or invent fields.
 @dataclass
 class StepDefinition:
     """Workflow step definition normalized for execution."""
@@ -133,6 +139,9 @@ class NextRule:
     is_default: bool = False
 
 
+# [Pain Point Solved] #7 Retries as Afterthought: First-class per-step retry with
+#   configurable attempts, backoff strategy, and initial delay — declared in YAML,
+#   not bolted on with try/except + sleep loops.
 @dataclass
 class RetryPolicy:
     """Retry/backoff configuration for one step."""
@@ -142,6 +151,11 @@ class RetryPolicy:
     initial_delay: float = 0.0
 
 
+# [Pain Point Solved] #2 State Management Nightmare: Every step captures state_before
+#   and state_after snapshots, persisted atomically to SQLite. If step 5 of 7 fails,
+#   you know exactly what the state was after step 4.
+# [Pain Point Solved] #4 Debugging is Blind: agent_trace, duration_ms, attempt_count,
+#   and last_error give per-step observability without adding print() statements.
 @dataclass
 class StepExecution:
     """Persisted execution record for one step attempt lifecycle."""
@@ -218,6 +232,9 @@ class Run:
         self.state.unfreeze()
 
 
+# [Pain Point Solved] #10 Rebuild Same Infra Every Project: The Executor handles
+#   orchestration, persistence, retries, branching, state management, and event
+#   callbacks — the 80% of infra work that's the same for every agent project.
 class Executor:
     """Execute workflow steps and persist deterministic run history."""
 
@@ -487,6 +504,10 @@ class Executor:
                     execution.attempt_count = attempt
 
                     try:
+                        # [Pain Point Solved] #6 Mixing Step Types: Three separate
+                        # dispatch paths — agent (LLM), function (deterministic),
+                        # tool (external I/O) — so a formatting function doesn't
+                        # need an LLM wrapper.
                         if step_def.step_type == "agent":
                             if not step_def.agent_id:
                                 raise StepExecutionError("Agent step missing agent_id.")
@@ -557,6 +578,11 @@ class Executor:
                         last_error = exc
                         execution.last_error = f"{type(exc).__name__}: {exc}"
                         if attempt < max_attempts:
+                            # TODO(Pain Point #N6 — Retry-Aware Observability): Emit a
+                            #   structured STEP_RETRY event here so logs distinguish
+                            #   transient failures (recovered by retry) from real
+                            #   failures. Without this, monitoring dashboards overcount
+                            #   errors — retries that succeed look like 75% error rates.
                             delay = _compute_backoff_delay(attempt, backoff, initial_delay)
                             if delay > 0:
                                 await asyncio.sleep(delay)
@@ -765,7 +791,10 @@ class Executor:
 
     def _resolve_next_step(self, step_def: StepDefinition, state: StateDict) -> Optional[str]:
         """Resolve next step via branch rules or sequential fallback."""
-        # TODO(PM-3, parallel-execution): Steps currently execute sequentially.
+        # TODO(Pain Point #N5 — Fan-Out/Fan-In): Steps currently execute sequentially.
+        #   "Run this agent on each item in the list, then aggregate the results"
+        #   sounds simple but needs: partial failure handling, retry of individual
+        #   items, atomic result merging, and gap-tolerant aggregation.
         #   To enable parallel execution:
         #   1. Extend StepDefinition with a `parallel_group` field so adjacent
         #      steps in the same group can run concurrently via asyncio.gather.

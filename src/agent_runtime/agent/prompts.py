@@ -26,6 +26,9 @@ class PromptEntry:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
+# [Pain Point Solved] #3 Prompt Versioning: No more prompt_v3_final_FINAL2.txt.
+#   Prompts are versioned YAML entries with id@version references. You can
+#   pin a specific version or auto-resolve to latest.
 class PromptRegistry:
     """Registry of reusable prompts loaded from YAML files.
 
