@@ -26,96 +26,6 @@ my-agent/
   .env               # API keys (not committed)
 ```
 
-**Writing A Workflow**
-
-Minimum shape:
-
-```yaml
-workflow:
-  id: my_workflow
-  version: v1
-inputs:
-  issue:
-    description: The issue text
-    required: true
-steps:
-  - id: summarize
-    type: agent
-    agent: summarizer
-    inputs:
-      issue: inputs.issue
-```
-
-Referencing data:
-
-- `inputs.<name>` reads workflow inputs.
-- `steps.<step_id>.<field>` reads prior step output.
-
-Branching:
-
-```yaml
-steps:
-  - id: classify
-    type: function
-    function: stubs.classify_severity
-    inputs:
-      issue: inputs.issue
-    next:
-      - when: state.inputs.issue == "bug"
-        goto: bug_path
-      - default: default_path
-```
-
-Retry policy:
-
-```yaml
-steps:
-  - id: unstable_call
-    type: tool
-    tool: tools.http
-    inputs:
-      url: inputs.url
-    retry:
-      attempts: 3
-      backoff: exponential
-      initial_delay: 1
-```
-
-Error handling:
-
-- `on_error: fail_fast` stops on the first error.
-- `on_error: continue` attempts the remaining steps.
-
-Versioning:
-
-```bash
-ai run my_workflow
-ai run my_workflow@v2
-```
-
-**Agent Definitions**
-
-Agent definitions live in `agents/` and are referenced from workflow steps via `type: agent`.
-
-```yaml
-# agents/summarizer.yaml
-agent:
-  id: summarizer
-  version: v1
-  model: gemini/gemini-2.5-flash
-  system: "You are a concise summarizer."
-  strategy: single
-  tools:
-    - tools.echo
-  temperature: 0.3
-  max_tokens: 256
-  pipeline:
-    - id: main
-      type: model
-      prompt: "Summarize this text: {{ inputs.text }}"
-```
-
-Strategies: `single` (one LLM call), `react` (observe→think→act loop), or custom (dotted import path).
 
 **Functions (Function Steps)**
 
@@ -207,18 +117,7 @@ ai resume <run_id>
 ai replay <run_id> --verify-state
 ```
 
-**Common Errors**
 
-- Unknown function: confirm the module and function name in `functions/`. Use `module.function_name` format.
-- Unknown agent: confirm the agent id matches a YAML file in `agents/`. Check `agent.id` in the YAML.
-- Unknown tool: confirm the tool class has a `name` attribute and is in `tools/`.
-- Missing inputs: add `-i key=value` or set defaults in the workflow.
-- YAML errors: run `ai validate <agent.yaml>` or fix indentation issues.
-- Workflow hash mismatch on resume: the workflow YAML changed since the original run. Resume requires the same workflow definition.
-- `BranchResolutionError`: no `when` condition matched and no `default` rule was provided.
-- `WorkflowValidationError`: step references a future step's output, duplicate output keys across steps, or invalid retry config.
-- `ReplayMismatchError`: reconstructed state diverges from recorded state during `--verify-state` replay.
-- `safe_eval` rejection: branch condition uses disallowed syntax (imports, dunder access, lambdas, comprehensions).
 
 **Memory System**
 
