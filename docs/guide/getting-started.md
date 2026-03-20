@@ -79,4 +79,4 @@ The three step types you can use in workflows:
 
 If you want the full walkthrough, read [`docs/guide/manual.md`](manual.md) next.
 
-If you prefer a visual navigator, open [`docs/site/index.html`](../site/index.html) in a browser.
+If you prefer a visual navigator, open [`docs/index.html`](../index.html) in a browser.

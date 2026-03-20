@@ -71,7 +71,7 @@ Your agent project can live anywhere; the CLI treats the current directory as th
 
 **Track changes:**
 - [docs/changelog/CHANGELOG_2026-03-20.md](docs/changelog/CHANGELOG_2026-03-20.md) — latest changes
-- [docs/site/index.html](docs/site/index.html) — local docs UI with search
+- [docs/index.html](docs/index.html) — local docs UI with search
 
 ## CLI At A Glance
 

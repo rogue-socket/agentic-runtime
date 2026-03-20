@@ -1,6 +1,6 @@
 const fs = require('fs');
-const js = fs.readFileSync('docs/site/app.js', 'utf8');
-const doc = fs.readFileSync('docs/site/content.js', 'utf8');
+const js = fs.readFileSync('docs/app.js', 'utf8');
+const doc = fs.readFileSync('docs/content.js', 'utf8');
 
 // Mock DOM
 global.document = {
