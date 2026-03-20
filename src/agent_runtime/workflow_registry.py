@@ -30,7 +30,6 @@ from typing import Dict, Optional
 import re
 
 from .errors import WorkflowValidationError
-from .steps import StepHandlerRegistry
 from .workflow import load_workflow
 
 
@@ -61,13 +60,13 @@ class WorkflowRegistry:
         self._workflows: Dict[str, Dict[str, Dict[str, object]]] = {}
 
     @classmethod
-    def from_directory(cls, root: str, handler_registry: StepHandlerRegistry) -> "WorkflowRegistry":
+    def from_directory(cls, root: str, handler_registry=None) -> "WorkflowRegistry":
         """Load versioned workflows from a directory tree.
 
         Files lacking `workflow.version` are skipped to avoid ambiguity.
 
         Example:
-            >>> isinstance(WorkflowRegistry.from_directory(".", StepHandlerRegistry()), WorkflowRegistry)
+            >>> isinstance(WorkflowRegistry.from_directory("."), WorkflowRegistry)
             True
         """
         registry = cls()
@@ -76,7 +75,7 @@ class WorkflowRegistry:
             return registry
 
         for path in sorted(root_path.rglob("*.y*ml")):
-            workflow = load_workflow(str(path), handler_registry)
+            workflow = load_workflow(str(path))
             workflow_version = workflow.get("workflow_version")
             if workflow_version is None:
                 continue

@@ -31,8 +31,9 @@ class RuntimeConfig:
 
     db_path: str = "runtime.db"
     workflows_dir: str = "workflows"
-    handlers_dir: str = "handlers"
     tools_dir: str = "tools"
+    agents_dir: str = "agents"
+    functions_dir: str = "functions"
 
     # Model backend (placeholder for future LLM integration)
     model: Dict[str, Any] = field(default_factory=dict)
@@ -63,7 +64,8 @@ _DEFAULTS = RuntimeConfig()
 
 # Keys in runtime.yaml that map to flat RuntimeConfig fields
 _FLAT_KEYS = {
-    "db_path", "workflows_dir", "handlers_dir", "tools_dir",
+    "db_path", "workflows_dir", "tools_dir",
+    "agents_dir", "functions_dir",
     "overwrite_policy", "default_llm_provider",
 }
 

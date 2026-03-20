@@ -89,6 +89,19 @@ class RunReplayer:
                 f"[{idx}] {step.step_id} ({step.step_type}) status={step.status} attempts={step.attempt_count or 1} (replayed)"
             )
 
+            if getattr(step, "agent_trace", None):
+                self.printer(f"  agent_trace: {len(step.agent_trace)} turn(s)")
+                for t_idx, turn in enumerate(step.agent_trace, start=1):
+                    turn_type = turn.get("type", "unknown")
+                    if turn_type == "model":
+                        model = turn.get("model", "")
+                        self.printer(f"    {t_idx}. [model] {model}")
+                    elif turn_type == "tool":
+                        tool_name = turn.get("tool", "")
+                        self.printer(f"    {t_idx}. [tool] {tool_name}")
+                    else:
+                        self.printer(f"    {t_idx}. [{turn_type}]")
+
             if step.state_after is not None:
                 state = copy.deepcopy(step.state_after)
             # Failed steps have no state_after — state carries forward unchanged

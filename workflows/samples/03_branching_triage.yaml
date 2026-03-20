@@ -1,8 +1,8 @@
 # File: workflows/samples/03_branching_triage.yaml
 # Purpose: Demonstrates deterministic conditional branch routing.
 # Description: Classifies input issue text and routes to bug/feature/default tool steps.
-# Dependencies: Branch evaluation engine, `generate_summary`, and `tools.echo`.
-# Inputs/Outputs: Reads `inputs.issue`; executes one branch path and writes selected step outputs.
+# Dependencies: Branch evaluation engine, functions/stubs.py, tools.echo
+# Inputs/Outputs: Reads `inputs.issue`; executes one branch path.
 # Side Effects: Persists branch path in step execution history.
 
 workflow:
@@ -15,8 +15,8 @@ inputs:
 on_error: fail_fast
 steps:
   - id: classify_issue
-    type: model
-    handler: generate_summary
+    type: function
+    function: stubs.generate_summary
     inputs:
       issue: inputs.issue
     next:

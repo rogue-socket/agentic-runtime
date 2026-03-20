@@ -1,9 +1,9 @@
 # File: workflows/samples/05_llm_call.yaml
-# Purpose: Demonstrate a real LLM-backed workflow using handler: llm.
-# Description: Takes an issue description, summarizes it via an LLM call,
-#   then proposes a fix. Requires a configured LLM provider in runtime.yaml
-#   and the corresponding API key set in the environment.
-# Dependencies: handler: llm, tools.echo
+# Purpose: Demonstrate a real LLM-backed workflow using type: agent.
+# Description: Takes an issue description, summarizes it via an LLM agent step,
+#   then proposes a fix. Requires an agent definition in agents/ and a configured
+#   LLM provider in runtime.yaml with the corresponding API key set.
+# Dependencies: agents/summarizer.yaml, agents/fixer.yaml, tools.echo
 # Inputs/Outputs: Reads inputs.issue; produces LLM-generated summary and fix.
 # Side Effects: Makes HTTP calls to the configured LLM provider API.
 #
@@ -30,14 +30,8 @@ on_error: fail_fast
 
 steps:
   - id: summarize
-    type: model
-    handler: llm
-    model: gpt-4o-mini
-    prompt: "Summarize this issue in 2-3 concise sentences:\n\n{{ inputs.issue }}"
-    system: "You are a senior software engineer triaging production issues. Be concise and precise."
-    temperature: 0.3
-    max_tokens: 256
-    response_key: summary
+    type: agent
+    agent: summarizer
     inputs:
       issue: inputs.issue
 
@@ -48,14 +42,8 @@ steps:
       message: steps.summarize.summary
 
   - id: propose_fix
-    type: model
-    handler: llm
-    model: gpt-4o-mini
-    prompt: "Given this issue summary, propose a concrete fix with specific steps:\n\nIssue: {{ inputs.issue }}\nSummary: {{ steps.summarize.summary }}"
-    system: "You are a senior software engineer. Propose actionable fixes, not vague suggestions. Include specific code changes or configuration updates where applicable."
-    temperature: 0.5
-    max_tokens: 512
-    response_key: fix_proposal
+    type: agent
+    agent: fixer
     inputs:
       issue: inputs.issue
       summary: steps.summarize.summary

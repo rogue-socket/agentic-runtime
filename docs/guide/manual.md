@@ -11,17 +11,20 @@ A workflow is a recipe. Each step reads the current state, does some work, then 
 - Workflow: a YAML file that describes inputs and steps.
 - Step: a unit of work in the workflow.
 - State: the structured data passed between steps.
-- Handler: a Python function used by `model` steps.
-- Tool: a Python class used by `tool` steps.
-- Agent manifest: a portable bundle that references a workflow plus its handlers and tools.
+- Agent: an LLM-backed definition with a reasoning strategy and pipeline, used by `agent` steps.
+- Function: a plain Python callable used by `function` steps for deterministic logic.
+- Tool: a Python class used by `tool` steps for external actions.
+- Agent definition: a YAML file in `agents/` that describes an agent's model, strategy, tools, and pipeline.
 - Run: a persisted execution record stored in SQLite.
 
 **Workflow Definitions vs Agent Definitions**
 
 - Workflow definitions live in `workflows/` and describe inputs + steps.
-- Agent definitions live in `agents/` and point to a workflow plus the handlers/tools it needs.
+- Agent definitions live in `agents/` and describe LLM agents (model, strategy, pipeline).
 
-Use a workflow when you run `ai run workflows/my_workflow.yaml`. Use an agent definition when you run `ai run my_agent@v1`.
+A workflow orchestrates agents, functions, and tools. An agent definition describes a single LLM-backed reasoning unit.
+
+Use a workflow when you run `ai run workflows/my_workflow.yaml`. Use an agent definition when a workflow step references it via `type: agent`.
 
 **Quickstart**
 
@@ -37,12 +40,12 @@ This creates the project structure, configures your LLM provider, and runs the s
 
 ```
 my-agent/
-  agents/
-  handlers/
-  tools/
-  workflows/
-  runtime.yaml
-  .env
+  agents/           # LLM agent definitions (YAML)
+  functions/         # Python functions for function steps
+  tools/             # Python tool classes for tool steps
+  workflows/         # YAML workflow definitions
+  runtime.yaml       # runtime configuration
+  .env               # API keys (not committed)
 ```
 
 **Writing A Workflow**
@@ -50,19 +53,19 @@ my-agent/
 Minimum shape:
 
 ```yaml
-workflow:                     # workflow metadata
-  id: my_workflow              # unique id
-  version: v1                  # version tag
-inputs:                        # declared inputs
+workflow:
+  id: my_workflow
+  version: v1
+inputs:
   issue:
     description: The issue text
-    required: true             # required input
-steps:                         # ordered steps
+    required: true
+steps:
   - id: summarize
-    type: model                # model step
-    handler: generate_summary  # handler function name
+    type: agent
+    agent: summarizer
     inputs:
-      issue: inputs.issue      # input reference
+      issue: inputs.issue
 ```
 
 Referencing data:
@@ -74,17 +77,15 @@ Branching:
 
 ```yaml
 steps:
-  - id: triage
-    type: model                 # model step
-    handler: classify_severity  # handler function
+  - id: classify
+    type: function
+    function: stubs.classify_severity
     inputs:
-      issue: inputs.issue       # input reference
-    branch:
-      when:
-        - if: steps.triage.severity == "high"  # branch condition
-          goto: escalate                        # jump target step id
-        - if: steps.triage.severity == "low"
-          goto: close
+      issue: inputs.issue
+    next:
+      - when: state.inputs.issue == "bug"
+        goto: bug_path
+      - default: default_path
 ```
 
 Retry policy:
@@ -92,14 +93,14 @@ Retry policy:
 ```yaml
 steps:
   - id: unstable_call
-    type: tool                 # tool step
-    tool: tools.http            # built-in HTTP tool
+    type: tool
+    tool: tools.http
     inputs:
-      url: inputs.url           # input reference
+      url: inputs.url
     retry:
-      attempts: 3               # retry count
-      backoff: exponential      # backoff strategy
-      initial_delay: 1          # seconds
+      attempts: 3
+      backoff: exponential
+      initial_delay: 1
 ```
 
 Error handling:
@@ -114,27 +115,53 @@ ai run my_workflow
 ai run my_workflow@v2
 ```
 
-**Handlers (Model Steps)**
+**Agent Definitions**
 
-Handler functions live in `handlers/` and are auto-discovered. They are invoked only when the runtime reaches a step with `type: model` and matches the `handler` name.
+Agent definitions live in `agents/` and are referenced from workflow steps via `type: agent`.
+
+```yaml
+# agents/summarizer.yaml
+agent:
+  id: summarizer
+  version: v1
+  model: gemini/gemini-2.5-flash
+  system: "You are a concise summarizer."
+  strategy: single
+  tools:
+    - tools.echo
+  temperature: 0.3
+  max_tokens: 256
+  pipeline:
+    - id: main
+      type: model
+      prompt: "Summarize this text: {{ inputs.text }}"
+```
+
+Strategies: `single` (one LLM call), `react` (observe→think→act loop), or custom (dotted import path).
+
+**Functions (Function Steps)**
+
+Function files live in `functions/` and are referenced from workflow steps via `type: function`.
 
 ```python
-from agent_runtime.state import RuntimeState
+# functions/my_functions.py
 
-def summarize_issue(state: RuntimeState) -> dict:
-    issue = state.get("issue", "")  # read input
-    return {"summary": issue[:140]}  # return output fields
+def classify_severity(inputs: dict) -> dict:
+    issue = inputs.get("issue", "").lower()
+    if "crash" in issue or "down" in issue:
+        return {"severity": "critical"}
+    return {"severity": "low"}
 ```
 
 Workflow usage:
 
 ```yaml
 steps:
-  - id: summarize
-    type: model                 # model step
-    handler: summarize_issue    # handler function
+  - id: classify
+    type: function
+    function: my_functions.classify_severity
     inputs:
-      issue: inputs.issue       # input reference
+      issue: inputs.issue
 ```
 
 **Tools (Tool Steps)**
@@ -161,8 +188,8 @@ class ExampleTool:
     async def execute(
         self, input: Dict[str, Any], context: RuntimeContext
     ) -> ToolResult:
-        text = input.get("text", "")  # read tool input
-        return ToolResult(             # return tool result
+        text = input.get("text", "")
+        return ToolResult(
             success=True,
             output={"text": text.upper()},
             error=None,
@@ -175,10 +202,10 @@ Workflow usage:
 ```yaml
 steps:
   - id: shout
-    type: tool                 # tool step
-    tool: tools.example         # tool name
+    type: tool
+    tool: tools.example
     inputs:
-      text: inputs.message      # input reference
+      text: inputs.message
 ```
 
 **Running Workflows**
@@ -204,14 +231,58 @@ ai replay <run_id> --verify-state
 
 **Common Errors**
 
-- Unknown handler: confirm the function name is public and in `handlers/`.
-- Unknown tool: confirm the tool class has a `name` and is in `tools/`.
+- Unknown function: confirm the module and function name in `functions/`. Use `module.function_name` format.
+- Unknown agent: confirm the agent id matches a YAML file in `agents/`. Check `agent.id` in the YAML.
+- Unknown tool: confirm the tool class has a `name` attribute and is in `tools/`.
 - Missing inputs: add `-i key=value` or set defaults in the workflow.
 - YAML errors: run `ai validate <agent.yaml>` or fix indentation issues.
+- Workflow hash mismatch on resume: the workflow YAML changed since the original run. Resume requires the same workflow definition.
+- `BranchResolutionError`: no `when` condition matched and no `default` rule was provided.
+- `WorkflowValidationError`: step references a future step's output, duplicate output keys across steps, or invalid retry config.
+- `ReplayMismatchError`: reconstructed state diverges from recorded state during `--verify-state` replay.
+- `safe_eval` rejection: branch condition uses disallowed syntax (imports, dunder access, lambdas, comprehensions).
+
+**Memory System**
+
+The runtime includes a four-tier memory system that enriches execution context:
+
+- **Working memory** — ephemeral per-run scratch store and sliding context window. Stores key-value pairs with byte budget enforcement, context entries from step outputs, and an active task tracker. Resets at run end.
+- **Episodic memory** — SQLite-backed historical run records. Each completed run stores a condensed episode (workflow id, status, inputs summary, outputs summary). On the next run, the runtime hydrates state with past episodes for the same workflow.
+- **Semantic memory** — long-term knowledge facts stored in SQLite with FTS5 full-text search. Supports exact key lookup, tag-based queries, and BM25-ranked text search.
+- **Procedural memory** — stub (planned: pattern mining from episodic history, rule extraction with confidence scoring).
+
+Memory is hydrated before step execution and persisted after run completion. Each tier’s output is namespaced under `runtime.memory.<tier>` in state.
+
+Configure limits in `runtime.yaml`:
+
+```yaml
+memory:
+  working:
+    max_entries: 50
+    max_scratch_bytes: 262144
+```
+
+**Lifecycle Hooks and Telemetry**
+
+The executor emits structured events at five lifecycle points:
+
+- `RUN_START` — when the run begins
+- `STEP_START` — before each step executes
+- `STEP_COMPLETE` — after a step succeeds (includes `duration_ms`)
+- `STEP_ERROR` — after a step fails (includes error details)
+- `RUN_COMPLETE` — when the run finishes (includes `total_duration_ms`)
+
+Per-step timing captures both total step duration and call-specific latency (`handler_duration_ms` for agent steps, `tool_duration_ms` for tool steps). These metrics are surfaced in CLI progress output and HTML/ASCII visualizations.
 
 **Security And Safety**
 
 - Keep API keys in `.env` or environment variables, not in code.
 - Use shell allowlists in `runtime.yaml` if you enable the shell tool.
+- Branch conditions use `safe_eval()` with AST validation — only `state` and `len` are permitted; imports, dunder access, lambdas, and comprehensions are blocked.
+- The `FileTool` sandboxes all operations to the project root — path traversal (`..`) is rejected.
+- Agent import rejects path traversal and symlinks/hardlinks in archives.
+- HTTP tool validates URL schemes (http/https only) to prevent SSRF.
+- HTML visualization escapes all user content via `html.escape()`.
+- LLM credentials are resolved from environment variables at call time — never stored on disk.
 
 If you want deeper reference material, see [Usage](usage.md) and [Writing Workflows](workflows.md).

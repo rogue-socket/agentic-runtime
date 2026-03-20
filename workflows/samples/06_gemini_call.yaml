@@ -1,7 +1,7 @@
 # File: workflows/samples/06_gemini_call.yaml
-# Purpose: Demonstrate a Gemini-backed workflow using handler: llm.
-# Description: Summarizes an issue via Gemini, then echoes the summary.
-# Dependencies: handler: llm, tools.echo
+# Purpose: Demonstrate a Gemini-backed workflow using type: agent.
+# Description: Summarizes an issue via a Gemini-configured agent, then echoes the summary.
+# Dependencies: agents/summarizer.yaml (configured for Gemini), tools.echo
 # Inputs/Outputs: Reads inputs.issue; produces LLM-generated summary.
 # Side Effects: Makes HTTP calls to the Gemini API.
 #
@@ -32,14 +32,8 @@ on_error: fail_fast
 
 steps:
   - id: summarize
-    type: model
-    handler: llm
-    model: gemini/gemini-2.5-flash
-    prompt: "Summarize this issue in 2-3 concise sentences:\n\n{{ inputs.issue }}"
-    system: "You are a senior software engineer triaging production issues. Be concise and precise."
-    temperature: 0.3
-    max_tokens: 256
-    response_key: summary
+    type: agent
+    agent: summarizer
     inputs:
       issue: inputs.issue
 

@@ -9,6 +9,9 @@ description = "A deterministic execution runtime for AI agent workflows"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
+authors = [
+    {name = "agentic-runtime contributors"},
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -18,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
@@ -36,7 +40,9 @@ dev = [
 ai = "agent_runtime.cli:main"
 
 [project.urls]
+Homepage = "https://github.com/agentic-runtime/agentic-runtime"
 Repository = "https://github.com/agentic-runtime/agentic-runtime"
+Issues = "https://github.com/agentic-runtime/agentic-runtime/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -44,3 +50,12 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]

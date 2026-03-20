@@ -1,8 +1,8 @@
 # File: workflows/samples/04_fail_and_resume.yaml
 # Purpose: Demonstrates failure handling and resume semantics.
 # Description: Intentionally references a missing tool adapter to force a failed run state.
-# Dependencies: `generate_summary` handler and missing `tools.missing_adapter`.
-# Inputs/Outputs: Reads `inputs.issue`; fails before finalization step on missing tool lookup.
+# Dependencies: functions/stubs.py, missing `tools.missing_adapter`
+# Inputs/Outputs: Reads `inputs.issue`; fails before finalization step.
 # Side Effects: Creates a FAILED run suitable for `ai resume` demonstration.
 
 workflow:
@@ -15,8 +15,8 @@ inputs:
 on_error: fail_fast
 steps:
   - id: generate_summary
-    type: model
-    handler: generate_summary
+    type: function
+    function: stubs.generate_summary
     inputs:
       issue: inputs.issue
 

@@ -36,11 +36,9 @@ import os
 from typing import Any, Callable, Dict, List, Optional
 
 from .core import Executor, EventCallback, Run, RunState, StepDefinition, StepExecution, StepStatus
-from .steps import StepHandlerRegistry, generate_summary, classify_severity, diagnose_issue, propose_fix, review_code
-from .handler_discovery import discover_handlers, register_discovered_handlers
 from .config import RuntimeConfig, load_config, apply_cli_overrides
 from .errors import WorkflowIntegrityError
-from .agent import AgentManifest, load_agent_manifest, validate_agent
+from .agent import AgentDefinition, AgentRegistry, AgentExecutor, load_agent_definition
 from .llm import LLMRegistry, LLMProvider, ModelConfig, LLMClient, LLMResponse
 from .workflow import load_workflow
 from .replay import RunReplayer, ReplayResult
@@ -140,19 +138,17 @@ async def run_workflow_async(
     ))
     register_discovered_tools(tool_registry, cfg.tools_dir)
 
-    # Build handler registry
-    handler_registry = StepHandlerRegistry()
-    handler_registry.register("generate_summary", generate_summary)
-    handler_registry.register("classify_severity", classify_severity)
-    handler_registry.register("diagnose_issue", diagnose_issue)
-    handler_registry.register("propose_fix", propose_fix)
-    handler_registry.register("review_code", review_code)
+    # Build agent registry and LLM client
     llm_client = LLMClient(registry=cfg.llm_registry, logger=logger)
-    handler_registry.register("llm", make_llm_handler(llm_client))
-    register_discovered_handlers(handler_registry, cfg.handlers_dir)
+    agent_registry = AgentRegistry()
+    agents_dir = getattr(cfg, "agents_dir", "agents")
+    if os.path.isdir(agents_dir):
+        agent_registry = AgentRegistry.from_directory(agents_dir)
+    functions_dir = getattr(cfg, "functions_dir", "functions")
+    functions_dir = functions_dir if os.path.isdir(functions_dir) else None
 
     # Load and parse workflow
-    workflow = load_workflow(workflow_path, handler_registry)
+    workflow = load_workflow(workflow_path, functions_dir=functions_dir)
 
     input_state = inputs or {}
 
@@ -164,6 +160,8 @@ async def run_workflow_async(
         tool_registry=tool_registry,
         overwrite_policy=cfg.overwrite_policy,
         on_event=on_event,
+        agent_registry=agent_registry,
+        llm_client=llm_client,
     )
 
     return await executor.run_async(
@@ -185,14 +183,6 @@ __all__ = [
     "StepDefinition",
     "StepExecution",
     "StepStatus",
-    "StepHandlerRegistry",
-    "generate_summary",
-    "classify_severity",
-    "diagnose_issue",
-    "propose_fix",
-    "review_code",
-    "discover_handlers",
-    "register_discovered_handlers",
     "RuntimeConfig",
     "load_config",
     "apply_cli_overrides",
@@ -206,9 +196,10 @@ __all__ = [
     "ModelConfig",
     "LLMClient",
     "LLMResponse",
-    "AgentManifest",
-    "load_agent_manifest",
-    "validate_agent",
+    "AgentDefinition",
+    "AgentRegistry",
+    "AgentExecutor",
+    "load_agent_definition",
     "run_workflow",
     "run_workflow_async",
 ]

@@ -112,12 +112,3 @@ def _discover_tool_instances(tools_dir: str) -> List[tuple]:
                 continue
 
     return results
-    def discover(self, context: Dict[str, Any]) -> List[ToolSpec]:
-        """Return discovered tool specs for a runtime context.
-
-        Example:
-            >>> ToolDiscovery().discover({})
-            []
-        """
-        # [SCAFFOLD:TOOL_DISCOVERY] Wire to dynamic discovery backends.
-        return []

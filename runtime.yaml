@@ -1,7 +1,8 @@
 db_path: runtime.db
 workflows_dir: workflows
-handlers_dir: handlers
 tools_dir: tools
+agents_dir: agents
+functions_dir: functions
 default_llm_provider: gemini
 llm:
   providers:

@@ -11,7 +11,7 @@ If you are new, remember one sentence:
 - You need to touch files or the network.
 - You need side effects outside the workflow state.
 
-If you only need to transform data in memory, use a handler instead.
+If you only need to transform data in memory, use a function step instead.
 
 **Where Tools Live**
 
@@ -88,9 +88,10 @@ steps:
 
 `RuntimeContext` contains run metadata and access to storage. Most tools can ignore it, but it is there if you need it.
 
-**Tools vs Handlers**
+**Tools vs Functions vs Agents**
 
-- Tools are for external actions.
-- Handlers are for internal logic.
+- Tools are for external actions (APIs, files, shell).
+- Functions are for deterministic internal logic (classification, formatting).
+- Agents are for LLM reasoning (summarizing, reviewing).
 
-If you are unsure, start with a handler and switch to a tool when you need side effects.
+If you are unsure, start with a function and switch to a tool when you need side effects.

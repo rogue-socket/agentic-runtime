@@ -1,8 +1,8 @@
 # File: workflows/example.yaml
-# Purpose: Quickstart workflow that uses the built-in LLM handler and tools.
+# Purpose: Quickstart workflow that uses agent steps and tools.
 # Description: Summarizes an issue, estimates priority, proposes next steps,
 #   builds a report, and echoes results.
-# Dependencies: handler: llm, tools.echo, tools.report_builder, tools.priority_heuristic
+# Dependencies: agents/summarizer.yaml, tools.echo, tools.report_builder, tools.priority_heuristic
 # Inputs/Outputs: Reads inputs.issue; produces summary, priority, next_steps, report.
 # Side Effects: Makes HTTP calls to the configured LLM provider API.
 
@@ -16,17 +16,8 @@ inputs:                        # declared inputs
 on_error: fail_fast            # stop on first error
 steps:                         # ordered steps (a list)
   - id: summarize
-    type: model                # model step uses the LLM handler
-    handler: llm               # built-in LLM handler
-    model: gpt-4o              # default model (quickstart overwrites if needed)
-    system: "You are a senior support engineer. Be concise and actionable."
-    prompt: |
-      Summarize the issue in 2-3 sentences and call out likely root causes.
-
-      Issue: {{ inputs.issue }}
-    temperature: 0.3
-    max_tokens: 240
-    response_key: summary
+    type: agent                # agent step delegates to an agent definition
+    agent: summarizer          # agent defined in agents/summarizer.yaml
     inputs:
       issue: inputs.issue      # read from inputs
   - id: priority
@@ -35,19 +26,8 @@ steps:                         # ordered steps (a list)
     inputs:
       issue: inputs.issue
   - id: next_steps
-    type: model                # model step uses the LLM handler
-    handler: llm
-    model: gpt-4o              # default model (quickstart overwrites if needed)
-    system: "Propose concrete, step-by-step fixes. Avoid vague advice."
-    prompt: |
-      Given the issue and summary, propose the next 3 steps to fix it.
-
-      Issue: {{ inputs.issue }}
-      Summary: {{ steps.summarize.summary }}
-      Priority: {{ steps.priority.priority }}
-    temperature: 0.5
-    max_tokens: 320
-    response_key: next_steps
+    type: agent                # agent step delegates to an agent definition
+    agent: fixer               # agent defined in agents/fixer.yaml
     inputs:
       issue: inputs.issue
       summary: steps.summarize.summary

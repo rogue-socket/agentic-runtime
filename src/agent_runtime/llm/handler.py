@@ -13,12 +13,6 @@ def make_llm_handler(client: LLMClient):
     """Return a handler bound to the provided LLM client.
 
     TODO: Support structured outputs (JSON schema) and response validation.
-    TODO(testing): Add test_llm_handler.py with E2E tests that mock LLMClient
-      and verify: prompt template rendering, response_key mapping, metadata
-      inclusion, error propagation. This is the most critical untested path.
-    TODO(example): Create a real-world example workflow (workflows/samples/05_llm_call.yaml)
-      that uses `handler: llm` with a live OpenAI/Anthropic call to demonstrate
-      the "first five minutes" experience for new users.
     """
 
     def _handler(state: RuntimeState, full_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

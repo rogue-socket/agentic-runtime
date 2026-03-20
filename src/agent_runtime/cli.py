@@ -47,8 +47,6 @@ from .core import Executor, StepStatus
 from .config import RuntimeConfig, load_config, apply_cli_overrides
 from .logging import StructuredLogger
 from .memory import EpisodicMemory, MemoryManager, ProceduralMemory, SemanticMemory, WorkingMemory
-from .steps import StepHandlerRegistry, generate_summary, classify_severity, diagnose_issue, propose_fix, review_code
-from .handler_discovery import register_discovered_handlers
 from .resume import determine_resume_step, validate_resume
 from .replay import RunReplayer
 from .state import RuntimeState
@@ -65,6 +63,7 @@ from .workflow_registry import WorkflowRegistry, parse_workflow_reference
 from .visualization import GraphBuilder, RunLoader, TimelineBuilder, render_ascii, render_html
 from .utils import sha256_json
 from .agent import AgentManifest, load_agent_manifest, validate_agent, export_agent, import_agent
+from .agent import AgentRegistry, load_agent_definition
 from .llm import LLMClient
 from .llm.handler import make_llm_handler
 
@@ -231,17 +230,8 @@ inputs:                        # declared inputs
 on_error: fail_fast            # stop on first error
 steps:                         # ordered steps (a list)
   - id: summarize
-    type: model                # model step uses the LLM handler
-    handler: llm               # built-in LLM handler
-    model: gpt-4o              # default model (quickstart overwrites if needed)
-    system: "You are a senior support engineer. Be concise and actionable."
-    prompt: |
-      Summarize the issue in 2-3 sentences and call out likely root causes.
-
-      Issue: {{ inputs.issue }}
-    temperature: 0.3
-    max_tokens: 240
-    response_key: summary
+    type: agent                # agent step delegates to an agent definition
+    agent: summarizer          # defined in agents/summarizer.yaml
     inputs:
       issue: inputs.issue      # read from inputs
   - id: priority
@@ -249,24 +239,11 @@ steps:                         # ordered steps (a list)
     tool: tools.priority_heuristic  # quick heuristic tool
     inputs:
       issue: inputs.issue
-  - id: next_steps
-    type: model                # model step uses the LLM handler
-    handler: llm
-    model: gpt-4o              # default model (quickstart overwrites if needed)
-    system: "Propose concrete, step-by-step fixes. Avoid vague advice."
-    prompt: |
-      Given the issue and summary, propose the next 3 steps to fix it.
-
-      Issue: {{ inputs.issue }}
-      Summary: {{ steps.summarize.summary }}
-      Priority: {{ steps.priority.priority }}
-    temperature: 0.5
-    max_tokens: 320
-    response_key: next_steps
+  - id: classify
+    type: function             # function step calls a plain Python function
+    function: stubs.classify_severity  # defined in functions/stubs.py
     inputs:
       issue: inputs.issue
-      summary: steps.summarize.summary
-      priority: steps.priority.priority
   - id: build_report
     type: tool                 # tool step uses a tool class
     tool: tools.report_builder # build a markdown report
@@ -274,7 +251,6 @@ steps:                         # ordered steps (a list)
       title: "Quickstart Report"
       summary: steps.summarize.summary
       priority: steps.priority.priority
-      next_steps: steps.next_steps.next_steps
   - id: echo_summary
     type: tool                 # tool step uses a tool class
     tool: tools.echo           # built-in echo tool
@@ -285,59 +261,48 @@ steps:                         # ordered steps (a list)
     tool: tools.echo
     inputs:
       message: steps.build_report.report
-  - id: echo_next_steps
-    type: tool
-    tool: tools.echo
-    inputs:
-      message: steps.next_steps.next_steps
 """
 
-EXAMPLE_HANDLER = '''"""Example handler module.
+EXAMPLE_FUNCTION = '''"""Stub functions for the quickstart workflow.
 
-The runtime auto-discovers handlers from the handlers/ directory.
+The runtime discovers functions from the functions/ directory.
+Any public function in a .py file can be referenced in workflow YAML
+using the `type: function` step type.
 
-Two conventions are supported:
+Reference by qualified name: `module.function_name`
+  e.g. `stubs.classify_severity` references `classify_severity`
+  in `functions/stubs.py`.
 
-1. Zero-config: every public function (not starting with _) is registered
-   using the function name as the handler name.
-
-2. Explicit: define a __handlers__ dict mapping handler names to functions.
-   This gives you full control over naming and lets you skip helper functions.
-
-This file uses convention 1 (zero-config). Both functions below will be
-automatically available as handlers in workflow YAML.
+Signature: (inputs: dict) -> dict
 """
 
-from agent_runtime.state import RuntimeState
 
-
-def example_handler(state: RuntimeState) -> dict:
-    """Example handler that echoes back the input with a prefix.
+def classify_severity(inputs: dict) -> dict:
+    """Classify issue severity based on keywords.
 
     Usage in workflow YAML:
-        - id: my_step
-          type: model
-          handler: example_handler
+        - id: classify
+          type: function
+          function: stubs.classify_severity
           inputs:
-            message: inputs.message
+            issue: inputs.issue
     """
-    # TODO: Replace with real logic (e.g. LLM call).
-    message = state.get("message", "")
-    return {"result": f"Processed: {message}"}
+    issue = (inputs.get("issue") or "").lower()
+    if any(w in issue for w in ("outage", "down", "crash", "data loss")):
+        severity = "critical"
+    elif any(w in issue for w in ("error", "fail", "broken", "500")):
+        severity = "high"
+    elif any(w in issue for w in ("slow", "timeout", "latency")):
+        severity = "medium"
+    else:
+        severity = "low"
+    return {"severity": severity}
 
 
-# --- To use explicit convention instead, uncomment below and remove the
-# --- public function above:
-#
-# def _my_internal_helper():
-#     pass
-#
-# def _my_handler(state):
-#     return {"result": "hello"}
-#
-# __handlers__ = {
-#     "my_handler": _my_handler,
-# }
+def format_output(inputs: dict) -> dict:
+    """Formats text as a simple report."""
+    text = inputs.get("text", "")
+    return {"report": f"--- Report ---\\n{text}\\n--- End ---"}
 '''
 
 EXAMPLE_TOOL = '''"""Example tool module.
@@ -458,8 +423,9 @@ db_path: runtime.db
 
 # ─── Directory paths ──────────────────────────────────────────────────
 workflows_dir: workflows
-handlers_dir: handlers
 tools_dir: tools
+agents_dir: agents
+functions_dir: functions
 
 # ─── State overwrite policy ───────────────────────────────────────────
 # Controls what happens when a step overwrites an existing state key.
@@ -531,74 +497,68 @@ tools_dir: tools
 #   format: json              # json | text
 """
 
-EXAMPLE_AGENT_MANIFEST = """# Agent manifest — the portable unit of the runtime.
-# Declares everything this agent needs to run.
+EXAMPLE_AGENT_DEFINITION = """# Agent definition — describes an LLM-backed agent.
+# Referenced from workflow steps via `type: agent` + `agent: summarizer`.
 agent:
-  id: example_agent
+  id: summarizer
   version: v1
-  description: "Example agent that summarizes and echoes an issue"
+  description: "Summarizes an issue and calls out likely root causes"
+  model: gpt-4o                 # LLM model (provider/model or just model name)
+  system: "You are a senior support engineer. Be concise and actionable."
+  strategy: single              # single | react | cot
+  tools:
+    - tools.echo
+  temperature: 0.3
+  max_tokens: 256
+  pipeline:
+    - id: main
+      type: model
+      prompt: |
+        Summarize the issue in 2-3 sentences and call out likely root causes.
 
-# The workflow this agent executes.
-# TODO: Support multiple workflows with a designated entry point.
-workflow: workflows/example.yaml
-
-# Handler files this agent needs.
-handlers:
-  - handlers/example_handler.py
-
-# Tool files this agent needs.
-tools:
-  - tools/example_tool.py
-
-# LLM providers this agent requires (must be configured in runtime.yaml).
-# providers:
-#   - name: openai
-#     models: [gpt-4]
-
-# Environment variables that must be set.
-# env:
-#   - GITHUB_TOKEN
-
-# Default inputs (can be overridden at run time via -i).
-defaults:
-  issue: "Login API fails for invalid token"
+        Issue: {{ inputs.issue }}
 """
 
 
 def _init_project(target_dir: str, *, model: Optional[str] = None) -> None:
     """Create workflow scaffold files in target directory."""
+    # TODO(gap-1): Scaffold a working LLM workflow by default so new users
+    #   see a real LLM call without editing YAML. Currently the generated
+    #   example uses stub functions. Wire model parameter into the example
+    #   workflow and agent definition so `ai quickstart` runs an actual
+    #   LLM step end-to-end.
     workflows_dir = os.path.join(target_dir, "workflows")
-    handlers_dir = os.path.join(target_dir, "handlers")
     tools_dir = os.path.join(target_dir, "tools")
     agents_dir = os.path.join(target_dir, "agents")
+    functions_dir = os.path.join(target_dir, "functions")
 
     os.makedirs(workflows_dir, exist_ok=True)
-    os.makedirs(handlers_dir, exist_ok=True)
     os.makedirs(tools_dir, exist_ok=True)
     os.makedirs(agents_dir, exist_ok=True)
+    os.makedirs(functions_dir, exist_ok=True)
 
     example_workflow_path = os.path.join(workflows_dir, "example.yaml")
     if not os.path.exists(example_workflow_path):
         with open(example_workflow_path, "w", encoding="utf-8") as f:
-            if model:
-                f.write(EXAMPLE_WORKFLOW.replace("model: gpt-4o", f"model: {model}"))
-            else:
-                f.write(EXAMPLE_WORKFLOW)
+            f.write(EXAMPLE_WORKFLOW)
 
-    example_handler_path = os.path.join(handlers_dir, "example_handler.py")
-    if not os.path.exists(example_handler_path):
-        with open(example_handler_path, "w", encoding="utf-8") as f:
-            f.write(EXAMPLE_HANDLER)
+    example_function_path = os.path.join(functions_dir, "stubs.py")
+    if not os.path.exists(example_function_path):
+        with open(example_function_path, "w", encoding="utf-8") as f:
+            f.write(EXAMPLE_FUNCTION)
 
     example_tool_path = os.path.join(tools_dir, "example_tool.py")
     if not os.path.exists(example_tool_path):
         with open(example_tool_path, "w", encoding="utf-8") as f:
             f.write(EXAMPLE_TOOL)
 
-    example_agent_path = os.path.join(agents_dir, "example_agent.yaml")
+    agent_def = EXAMPLE_AGENT_DEFINITION
+    if model:
+        agent_def = agent_def.replace("model: gpt-4o", f"model: {model}")
+    example_agent_path = os.path.join(agents_dir, "summarizer.yaml")
     if not os.path.exists(example_agent_path):
         with open(example_agent_path, "w", encoding="utf-8") as f:
-            f.write(EXAMPLE_AGENT_MANIFEST)
+            f.write(agent_def)
 
     runtime_yaml_path = os.path.join(target_dir, "runtime.yaml")
     if not os.path.exists(runtime_yaml_path):
@@ -630,28 +590,6 @@ def _update_workflow_model(path: str, model: Optional[str]) -> bool:
         with open(path, "w", encoding="utf-8") as f:
             f.writelines(lines)
     return changed
-
-
-def _default_handler_registry(
-    handlers_dir: str = "handlers",
-    llm_client: Optional[LLMClient] = None,
-) -> StepHandlerRegistry:
-    """Create a handler registry with built-in handlers + discovered handlers."""
-    registry = StepHandlerRegistry()
-
-    # Built-in handlers (always available)
-    registry.register("generate_summary", generate_summary)
-    registry.register("classify_severity", classify_severity)
-    registry.register("diagnose_issue", diagnose_issue)
-    registry.register("propose_fix", propose_fix)
-    registry.register("review_code", review_code)
-    if llm_client is not None:
-        registry.register("llm", make_llm_handler(llm_client))
-
-    # Discover handlers from handlers/ directory
-    register_discovered_handlers(registry, handlers_dir)
-
-    return registry
 
 
 def _default_tool_registry(
@@ -695,17 +633,24 @@ def _default_llm_client(cfg: RuntimeConfig, logger: Optional[StructuredLogger] =
     return LLMClient(registry=cfg.llm_registry, logger=logger)
 
 
+def _default_agent_registry(agents_dir: str = "agents") -> AgentRegistry:
+    """Build an agent registry by scanning the agents directory."""
+    if os.path.isdir(agents_dir):
+        return AgentRegistry.from_directory(agents_dir)
+    return AgentRegistry()
+
+
 def _load_workflow_for_run(
     workflow_ref: str,
-    handler_registry: StepHandlerRegistry,
     workflows_dir: str = "workflows",
+    functions_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Resolve workflow from file path or id/version registry reference."""
     if os.path.exists(workflow_ref):
-        return load_workflow(workflow_ref, handler_registry)
+        return load_workflow(workflow_ref, functions_dir=functions_dir)
 
     ref = parse_workflow_reference(workflow_ref)
-    registry = WorkflowRegistry.from_directory(workflows_dir, handler_registry)
+    registry = WorkflowRegistry.from_directory(workflows_dir)
     return registry.get(ref.workflow_id, ref.version)
 
 
@@ -1288,6 +1233,16 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             if not filename.endswith((".yaml", ".yml")):
                 continue
             filepath = os.path.join(agents_dir, filename)
+            # Try new AgentDefinition format first, fall back to legacy manifest
+            try:
+                defn = load_agent_definition(filepath)
+                desc = f" \u2014 {defn.description}" if defn.description else ""
+                strategy = defn.strategy.type if defn.strategy else "single"
+                print(f"  {defn.agent_id}@{defn.version} [{strategy}] {defn.model}{desc}")
+                found = True
+                continue
+            except Exception:
+                pass
             try:
                 m = load_agent_manifest(filepath)
                 desc = f" \u2014 {m.description}" if m.description else ""
@@ -1306,11 +1261,13 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         # the workflow arg as an agent_id (with optional @version).
         agent_manifest = _try_resolve_agent(args.workflow)
 
+        functions_dir = cfg.functions_dir if os.path.isdir(cfg.functions_dir) else None
+
         try:
             if agent_manifest is not None:
-                handler_registry = _default_handler_registry(cfg.handlers_dir, llm_client)
                 workflow = _load_workflow_for_run(
-                    agent_manifest.workflow, handler_registry, cfg.workflows_dir,
+                    agent_manifest.workflow, cfg.workflows_dir,
+                    functions_dir=functions_dir,
                 )
                 # Merge defaults: agent defaults < CLI -i overrides
                 merged_inputs = list(args.input)
@@ -1324,8 +1281,10 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                             merged_inputs.append(f"{key}={value}")
                 input_state = _build_input_state(merged_inputs, workflow.get("inputs", {}))
             else:
-                handler_registry = _default_handler_registry(cfg.handlers_dir, llm_client)
-                workflow = _load_workflow_for_run(args.workflow, handler_registry, cfg.workflows_dir)
+                workflow = _load_workflow_for_run(
+                    args.workflow, cfg.workflows_dir,
+                    functions_dir=functions_dir,
+                )
                 input_state = _build_input_state(args.input, workflow.get("inputs", {}))
         except FileNotFoundError:
             print(f"Error: workflow file not found: {args.workflow}", file=sys.stderr)
@@ -1350,6 +1309,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             shell_allowlist=cfg.shell_allowlist or None,
             shell_denylist=cfg.shell_denylist or None,
         )
+        agent_registry = _default_agent_registry(cfg.agents_dir)
 
         def _progress_callback(event: str, payload: Dict[str, Any]) -> None:
             step_id = payload.get("step_id", "")
@@ -1374,6 +1334,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             tool_registry=tool_registry,
             overwrite_policy=cfg.overwrite_policy,
             on_event=_progress_callback,
+            agent_registry=agent_registry,
+            llm_client=llm_client,
         )
 
         run = executor.run(
@@ -1417,6 +1379,20 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                 elif step.last_error is not None:
                     print("last_error:")
                     print(step.last_error)
+                if getattr(step, "agent_trace", None):
+                    print("agent_trace:")
+                    for t_idx, turn in enumerate(step.agent_trace, start=1):
+                        turn_type = turn.get("type", "unknown")
+                        if turn_type == "model":
+                            model = turn.get("model", "")
+                            text_preview = (turn.get("response_text") or "")[:120]
+                            print(f"  {t_idx}. [model] {model}: {text_preview}")
+                        elif turn_type == "tool":
+                            tool_name = turn.get("tool", "")
+                            success = turn.get("success", "")
+                            print(f"  {t_idx}. [tool] {tool_name} -> success={success}")
+                        else:
+                            print(f"  {t_idx}. [{turn_type}]")
                 print("")
         else:
             print("Steps:")
@@ -1428,8 +1404,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             print(_redact(latest_state))
 
         if run.workflow_yaml:
-            handler_registry = _default_handler_registry(cfg.handlers_dir, _default_llm_client(cfg))
-            workflow = load_workflow_from_text(run.workflow_yaml, handler_registry)
+            workflow = load_workflow_from_text(run.workflow_yaml)
             resume_step = determine_resume_step(workflow["steps"], steps)
             if resume_step:
                 print(f"Resume point: step {resume_step}")
@@ -1442,18 +1417,19 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         run = storage.load_run(args.run_id)
         validate_resume(run.status)
 
-        handler_registry = _default_handler_registry(cfg.handlers_dir, _default_llm_client(cfg))
+        llm_client_resume = _default_llm_client(cfg)
+        functions_dir_resume = cfg.functions_dir if os.path.isdir(cfg.functions_dir) else None
 
         workflow_text = run.workflow_yaml
         if workflow_text is None:
             if not args.workflow:
                 raise SystemExit("Workflow YAML not stored; provide --workflow to resume.")
-            workflow = load_workflow(args.workflow, handler_registry)
+            workflow = load_workflow(args.workflow, functions_dir=functions_dir_resume)
         else:
-            workflow = load_workflow_from_text(workflow_text, handler_registry)
+            workflow = load_workflow_from_text(workflow_text, functions_dir=functions_dir_resume)
 
         if args.workflow:
-            current = load_workflow(args.workflow, handler_registry)
+            current = load_workflow(args.workflow, functions_dir=functions_dir_resume)
             if run.workflow_hash and current.get("workflow_hash") != run.workflow_hash:
                 raise SystemExit("Workflow hash mismatch; cannot resume.")
 
@@ -1483,6 +1459,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                 shell_denylist=cfg.shell_denylist or None,
             ),
             overwrite_policy=cfg.overwrite_policy,
+            agent_registry=_default_agent_registry(cfg.agents_dir),
+            llm_client=llm_client_resume,
         )
 
         print(f"Resuming run {run.run_id} from step: {resume_step}")

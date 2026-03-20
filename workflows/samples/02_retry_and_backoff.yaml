@@ -1,7 +1,7 @@
 # File: workflows/samples/02_retry_and_backoff.yaml
 # Purpose: Demonstrates per-step retry and backoff configuration.
-# Description: Configures exponential backoff on the model step before delivering output.
-# Dependencies: Runtime retry policy handling, `generate_summary`, and `tools.echo`.
+# Description: Configures exponential backoff on the function step before delivering output.
+# Dependencies: Runtime retry policy handling, functions/stubs.py, tools.echo
 # Inputs/Outputs: Reads `inputs.issue`; writes summary and delivery tool output.
 # Side Effects: May introduce execution delay during retries.
 
@@ -15,8 +15,8 @@ inputs:
 on_error: fail_fast
 steps:
   - id: generate_summary
-    type: model
-    handler: generate_summary
+    type: function
+    function: stubs.generate_summary
     inputs:
       issue: inputs.issue
     retry:

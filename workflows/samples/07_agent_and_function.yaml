@@ -1,0 +1,41 @@
+# Sample workflow: agent + function step types
+#
+# Demonstrates:
+#   - type: agent — delegates to an agent definition (code_reviewer)
+#   - type: function — calls a plain Python function from functions/
+#   - type: tool — direct tool invocation (existing)
+#
+# Prerequisites:
+#   - agents/summarizer.yaml must exist
+#   - functions/formatters.py must exist with format_markdown()
+#
+
+name: agent_function_demo
+version: v1
+
+inputs:
+  text:
+    type: string
+    required: true
+    description: "Text to summarize and format"
+
+steps:
+  - id: summarize
+    type: agent
+    agent: summarizer
+    inputs:
+      text: inputs.text
+    outputs: [summary]
+
+  - id: format
+    type: function
+    function: formatters.format_markdown
+    inputs:
+      text: steps.summarize.summary
+    outputs: [report]
+
+  - id: echo_result
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.format.report

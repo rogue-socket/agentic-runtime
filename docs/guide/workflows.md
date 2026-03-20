@@ -24,19 +24,24 @@ inputs:                        # declared inputs
     required: true             # required input
 on_error: fail_fast            # stop on first error
 steps:                         # ordered steps (a list)
-  - id: summarize              # list item 1
-    type: model                # model step uses a handler
-    handler: generate_summary  # handler function name
+  - id: summarize              # agent step — calls an LLM agent
+    type: agent
+    agent: summarizer           # defined in agents/summarizer.yaml
     inputs:
-      issue: inputs.issue      # read from inputs
-  - id: echo                   # list item 2
-    type: tool                 # tool step uses a tool class
-    tool: tools.echo           # tool name
+      issue: inputs.issue       # read from inputs
+  - id: classify               # function step — calls a Python function
+    type: function
+    function: stubs.classify_severity
+    inputs:
+      issue: inputs.issue
+  - id: echo                   # tool step — calls a tool class
+    type: tool
+    tool: tools.echo
     inputs:
       message: steps.summarize.summary  # read prior step output
 ```
 
-Note on the `-` character: in YAML it means “this is a list item.” You need `-` for each step and for each branch rule because those are lists.
+Note on the `-` character: in YAML it means "this is a list item." You need `-` for each step and for each branch rule because those are lists.
 
 **Inputs**
 
@@ -62,28 +67,34 @@ Example:
 ```yaml
 inputs:
   issue:
-    required: true             # required input
+    required: true
 steps:
   - id: summarize
-    type: model
-    handler: generate_summary
+    type: agent
+    agent: summarizer
     inputs:
-      issue: inputs.issue      # input reference
+      issue: inputs.issue
   - id: classify
-    type: model
-    handler: classify_severity
+    type: function
+    function: stubs.classify_severity
     inputs:
-      summary: steps.summarize.summary  # step output reference
+      summary: steps.summarize.summary
 ```
 
 **Step Types**
 
-`model` step:
-- Calls a handler function (a Python function in `handlers/`).
-- Use this for logic and transformations.
+`agent` step:
+- Delegates to an agent definition in `agents/`.
+- The agent runs its LLM pipeline internally and returns outputs.
+- Use this when you need a language model.
+
+`function` step:
+- Calls a plain Python function in `functions/`.
+- Signature: `(inputs: dict) -> dict`.
+- Use this for deterministic logic and transformations.
 
 `tool` step:
-- Calls a tool class (a Python class in `tools/`).
+- Calls a tool class in `tools/`.
 - Use this for external actions (HTTP, filesystem, shell, APIs).
 
 **Retry Policy**
@@ -91,14 +102,14 @@ steps:
 ```yaml
 steps:
   - id: unstable_call
-    type: tool                 # tool step
-    tool: tools.http            # built-in HTTP tool
+    type: tool
+    tool: tools.http
     inputs:
-      url: inputs.url           # input reference
+      url: inputs.url
     retry:
-      attempts: 3               # retry count
-      backoff: exponential      # backoff strategy
-      initial_delay: 1          # seconds
+      attempts: 3
+      backoff: exponential
+      initial_delay: 1
 ```
 
 **Branching**
@@ -107,20 +118,20 @@ Branching lets you jump to another step based on a condition.
 
 ```yaml
 steps:
-  - id: triage
-    type: model                 # model step
-    handler: classify_severity  # handler function
+  - id: classify
+    type: function
+    function: stubs.classify_severity
     inputs:
-      issue: inputs.issue       # input reference
-    branch:
-      when:
-        - if: steps.triage.severity == "high"  # branch condition
-          goto: escalate                        # jump target step id
-        - if: steps.triage.severity == "low"
-          goto: close
+      issue: inputs.issue
+    next:
+      - when: state.inputs.issue == "bug"
+        goto: bug_path
+      - when: state.inputs.issue == "feature"
+        goto: feature_path
+      - default: default_path
 ```
 
-Branches must point to valid step ids. The runtime validates this at load time.
+Branch targets must point to valid step ids. The runtime validates this at load time.
 
 **Error Policy**
 
@@ -140,7 +151,7 @@ ai run issue_triage@v2
 **Common Mistakes (Quick Fixes)**
 
 - Forgot `-` before a step: YAML will parse incorrectly.
-- Used `handler: handlers/my_handler.py`: handler should be the function name, not a path.
+- Used a file path instead of a reference: `function: my_functions.summarize` not `function: functions/my_functions.py`.
 - Referenced `steps.x` before it runs: only read outputs from earlier steps.
 
-For deeper handler and tool coverage, see [Handlers](handlers.md) and [Tools](tools.md).
+For deeper function, agent, and tool coverage, see [Functions and Agents](functions-and-agents.md) and [Tools](tools.md).

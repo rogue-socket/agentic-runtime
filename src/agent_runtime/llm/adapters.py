@@ -4,10 +4,44 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Protocol
 import json
+import time
 import urllib.error
 import urllib.request
 
 from .types import LLMResponse
+
+# Default HTTP timeout in seconds.
+DEFAULT_TIMEOUT: int = 60
+
+# Default retry config for transient HTTP errors (429, 500, 502, 503, 504).
+DEFAULT_MAX_RETRIES: int = 2
+DEFAULT_INITIAL_DELAY: float = 1.0
+
+_RETRYABLE_CODES = frozenset({429, 500, 502, 503, 504})
+
+
+def _urlopen_with_retry(
+    req: urllib.request.Request,
+    *,
+    timeout: int = DEFAULT_TIMEOUT,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    initial_delay: float = DEFAULT_INITIAL_DELAY,
+) -> Any:
+    """Execute an HTTP request with timeout and exponential-backoff retry."""
+    last_exc: Exception | None = None
+    for attempt in range(1 + max_retries):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code in _RETRYABLE_CODES and attempt < max_retries:
+                last_exc = exc
+                time.sleep(initial_delay * (2 ** attempt))
+                continue
+            raise
+        except urllib.error.URLError:
+            raise
+    raise last_exc  # type: ignore[misc]  # unreachable in practice
 
 
 class LLMAdapter(Protocol):
@@ -34,10 +68,6 @@ class OpenAIAdapter:
     """Minimal OpenAI-compatible adapter using the Chat Completions API.
 
     TODO: Support the newer Responses API and streaming for better token-level feedback.
-    TODO: Add explicit timeouts and retry/backoff for transient HTTP errors.
-    TODO(testing): Add dedicated test file (test_openai_adapter.py) mirroring
-      test_anthropic_adapter.py — mock the urllib call and verify request
-      construction, error handling, and response parsing.
     """
 
     provider_name = "openai"
@@ -82,8 +112,7 @@ class OpenAIAdapter:
         )
 
         try:
-            with urllib.request.urlopen(req) as resp:
-                raw = json.loads(resp.read().decode("utf-8"))
+            raw = _urlopen_with_retry(req)
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8") if exc.fp else ""
             raise RuntimeError(f"OpenAI API error ({exc.code}): {body}") from exc
@@ -110,7 +139,6 @@ class AnthropicAdapter:
     """Adapter for the Anthropic Messages API.
 
     TODO: Add streaming support for token-level feedback.
-    TODO: Add explicit timeouts and retry/backoff for transient HTTP errors.
     """
 
     provider_name = "anthropic"
@@ -154,8 +182,7 @@ class AnthropicAdapter:
         )
 
         try:
-            with urllib.request.urlopen(req) as resp:
-                raw = json.loads(resp.read().decode("utf-8"))
+            raw = _urlopen_with_retry(req)
         except urllib.error.HTTPError as exc:
             body_text = exc.read().decode("utf-8") if exc.fp else ""
             raise RuntimeError(f"Anthropic API error ({exc.code}): {body_text}") from exc
@@ -280,8 +307,7 @@ class GeminiAdapter:
         )
 
         try:
-            with urllib.request.urlopen(req) as resp:
-                raw = json.loads(resp.read().decode("utf-8"))
+            raw = _urlopen_with_retry(req)
         except urllib.error.HTTPError as exc:
             body_text = exc.read().decode("utf-8") if exc.fp else ""
             raise RuntimeError(f"Gemini API error ({exc.code}): {body_text}") from exc

@@ -4,9 +4,25 @@ Welcome! This guide is intentionally beginner-friendly. It will get you from zer
 
 **Install**
 
+Using conda (recommended):
+
+```bash
+conda activate agent_runtime
+pip install -r requirements.txt
+pip install -e .
+```
+
+Using venv:
+
 ```bash
 python -m venv .venv
+
+# macOS/Linux:
 source .venv/bin/activate
+
+# Windows:
+.venv\Scripts\activate
+
 pip install -r requirements.txt
 pip install -e .
 ```
@@ -20,15 +36,9 @@ ai quickstart
 ```
 
 `ai quickstart` does three things:
-1. Initializes a project scaffold (`workflows/`, `handlers/`, `tools/`, `agents/`, `runtime.yaml`).
-2. Writes a workflow definition (`workflows/example.yaml`) and an agent definition (`agents/example_agent.yaml`) that points to it.
-3. Runs the setup flow to configure an LLM provider and optional API key, then executes the workflow so you see a successful run immediately (this workflow uses the LLM handler, so it will call your configured provider).
-
-If you want to run the agent definition instead of the workflow file, use:
-
-```bash
-ai run example_agent@v1
-```
+1. Initializes a project scaffold (`workflows/`, `agents/`, `functions/`, `tools/`, `runtime.yaml`).
+2. Writes example files: a workflow definition (`workflows/example.yaml`), an agent definition (`agents/example_agent.yaml`), example functions (`functions/`), and example tools (`tools/example_tool.py`).
+3. Runs the setup flow to configure an LLM provider and optional API key, then executes the workflow so you see a successful run immediately.
 
 **Run Again With Different Input**
 
@@ -51,13 +61,16 @@ ai visualize <run_id> --html
 cp workflows/example.yaml workflows/my_workflow.yaml
 ```
 
-Edit `workflows/my_workflow.yaml` to swap a step handler or add a new step, then run it:
+Edit `workflows/my_workflow.yaml` to add a new step or swap an agent reference, then run it:
 
 ```bash
 ai run workflows/my_workflow.yaml
 ```
 
-If you add a new handler, put it in `handlers/` and reference it by name in the workflow. The runtime auto-discovers handler functions and tool classes from those folders.
+The three step types you can use in workflows:
+- `type: agent` — calls an LLM agent defined in `agents/`.
+- `type: function` — calls a Python function from `functions/`.
+- `type: tool` — calls a tool class from `tools/`.
 
 If you want the full walkthrough, read [`docs/guide/manual.md`](manual.md) next.
 

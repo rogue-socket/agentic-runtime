@@ -27,12 +27,13 @@ Side Effects:
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 import copy
 import uuid
 import time
 import asyncio
 import inspect
+import warnings
 
 from .errors import BranchResolutionError, StepExecutionError, WorkflowIntegrityError
 from .logging import StructuredLogger
@@ -112,9 +113,13 @@ class StepDefinition:
     """Workflow step definition normalized for execution."""
 
     step_id: str
-    step_type: str
-    handler: Optional[StepHandler] = None
+    step_type: str  # "agent" | "function" | "tool"
+    handler: Optional[StepHandler] = None  # legacy — kept for backward compat in tests
     tool_name: Optional[str] = None
+    agent_id: Optional[str] = None
+    agent_version: Optional[str] = None
+    function_ref: Optional[str] = None  # original dotted-path reference
+    function_callable: Optional[Callable] = None  # resolved at parse time
     raw_input: Optional[Dict[str, Any]] = None
     retry: Optional["RetryPolicy"] = None
     input_spec: Optional[Dict[str, Any]] = None
@@ -156,6 +161,7 @@ class StepExecution:
     duration_ms: Optional[int] = None
     handler_duration_ms: Optional[int] = None
     tool_duration_ms: Optional[int] = None
+    agent_trace: Optional[List[Dict[str, Any]]] = None  # agent reasoning trace
     attempt_count: Optional[int] = None
     last_error: Optional[str] = None
     state_before: Optional[StateDict] = None
@@ -228,6 +234,8 @@ class Executor:
         tool_registry: ToolRegistry,
         overwrite_policy: str = "warn",
         on_event: Optional[EventCallback] = None,
+        agent_registry: Any = None,
+        llm_client: Any = None,
     ) -> None:
         """Initialize executor dependencies and step lookup tables."""
         self.steps = steps
@@ -239,6 +247,8 @@ class Executor:
         self.tool_registry = tool_registry
         self.overwrite_policy = overwrite_policy
         self.on_event = on_event
+        self.agent_registry = agent_registry
+        self.llm_client = llm_client
 
     def _emit(self, event: str, payload: Dict[str, Any]) -> None:
         """Fire the on_event callback if registered."""
@@ -407,9 +417,15 @@ class Executor:
         self, run: Run, current_step_id: Optional[str], on_error: str,
         state_version: int, had_errors: bool, execution_index: int,
     ) -> Run:
+        visited: Set[str] = set()
         while current_step_id is not None:
             if current_step_id not in self.step_map:
                 raise StepExecutionError(f"Unknown step id: {current_step_id}")
+            if current_step_id in visited:
+                raise BranchResolutionError(
+                    f"Circular branch detected: step '{current_step_id}' has already been executed in this run."
+                )
+            visited.add(current_step_id)
             step_def = self.step_map[current_step_id]
             if step_def.step_id in run.state.data.get("steps", {}):
                 raise StepExecutionError(f"Duplicate step execution: {step_def.step_id}")
@@ -461,7 +477,66 @@ class Executor:
                     execution.attempt_count = attempt
 
                     try:
-                        if step_def.step_type == "model":
+                        if step_def.step_type == "agent":
+                            if not step_def.agent_id:
+                                raise StepExecutionError("Agent step missing agent_id.")
+                            if not self.agent_registry:
+                                raise StepExecutionError("AgentRegistry not configured.")
+                            if not self.llm_client:
+                                raise StepExecutionError("LLMClient not configured.")
+                            from .agent.executor import AgentExecutor
+                            from .agent.strategies import AgentContext
+                            agent_def = self.agent_registry.get(
+                                step_def.agent_id, step_def.agent_version
+                            )
+                            agent_executor = AgentExecutor(
+                                self.llm_client, self.tool_registry, self.logger
+                            )
+                            agent_ctx = AgentContext(
+                                run_id=run.run_id,
+                                step_id=step_def.step_id,
+                                state=snapshot,
+                                logger=self.logger,
+                            )
+                            agent_input = step_input if step_def.input_spec is not None else snapshot
+                            call_start = time.monotonic()
+                            agent_result = await agent_executor.execute(
+                                agent_def, agent_input, agent_ctx
+                            )
+                            handler_duration_ms = int((time.monotonic() - call_start) * 1000)
+                            output = agent_result.outputs
+                            # store agent trace for observability
+                            execution.agent_trace = [
+                                {
+                                    "iteration": t.iteration,
+                                    "llm_request": t.llm_request,
+                                    "llm_response_text": t.llm_response.text if t.llm_response else None,
+                                    "tool_calls": [
+                                        {"tool": tc.tool_name, "input": tc.tool_input,
+                                         "success": tc.result.success if tc.result else None,
+                                         "duration_ms": tc.duration_ms}
+                                        for tc in t.tool_calls
+                                    ],
+                                    "observation": t.observation,
+                                }
+                                for t in agent_result.trace
+                            ]
+                        elif step_def.step_type == "function":
+                            if step_def.function_callable is None:
+                                raise StepExecutionError("Function step missing resolved callable.")
+                            func_input = step_input if step_def.input_spec is not None else snapshot
+                            if isinstance(func_input, RuntimeState):
+                                func_input = func_input.to_dict()
+                            call_start = time.monotonic()
+                            output = step_def.function_callable(func_input)
+                            handler_duration_ms = int((time.monotonic() - call_start) * 1000)
+                        elif step_def.step_type == "model":
+                            warnings.warn(
+                                "Step type 'model' is deprecated. "
+                                "Use type 'agent' or 'function' instead.",
+                                DeprecationWarning,
+                                stacklevel=2,
+                            )
                             if step_def.handler is None:
                                 raise StepExecutionError("Missing model handler.")
                             call_start = time.monotonic()
@@ -679,9 +754,6 @@ class Executor:
 
     def _resolve_next_step(self, step_def: StepDefinition, state: StateDict) -> Optional[str]:
         """Resolve next step via branch rules or sequential fallback."""
-        # [TODO] Detect infinite loops caused by circular branching.
-        #   Suggested: maintain a visited set or step counter; raise
-        #   BranchResolutionError if a step is visited more than N times.
         # [TODO] Support parallel step execution when DAG scheduler is introduced.
         # [TODO(roadmap)] Multi-agent composition: allow a step to invoke
         #   a sub-workflow or delegate to another agent manifest. This is

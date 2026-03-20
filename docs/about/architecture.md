@@ -105,8 +105,10 @@ Workflow-level input declarations:
 - Workflows without input declarations infer available inputs from step references
 
 Step types:
-- `model`
-- `tool`
+- `agent` — delegates to an agent definition (LLM-backed reasoning)
+- `function` — calls a plain Python function for deterministic logic
+- `tool` — calls a tool class for external actions
+- `model` — deprecated, kept for backward compatibility with existing tests
 
 Step controls:
 - `inputs` mapping from state paths (`inputs.issue`, `steps.a.summary`)
@@ -126,54 +128,76 @@ Versioning behavior:
 
 ## 5. Execution engine (`Executor`)
 
-## Handlers (model step functions)
+## Step types and dispatch
 
-A handler is a Python function that implements the logic for a `model` step.
+The Executor dispatches each step based on its `step_type`:
 
-The contract:
-```python
-StepHandler = Callable[[RuntimeState], Dict[str, Any]]
+**Agent steps** (`type: agent`):
+1. Resolve `AgentDefinition` from the `AgentRegistry` by agent id.
+2. Instantiate `AgentExecutor` with the definition, `LLMClient`, and `ToolRegistry`.
+3. Run the agent's pipeline using its configured strategy (single, react, or custom).
+4. Capture `AgentResult` (outputs, trace, iterations, token usage).
+5. Write outputs to `steps.<step_id>` in state; store trace in `StepExecution.agent_trace`.
+
+**Function steps** (`type: function`):
+1. Resolve function callable from `functions/` directory at parse time.
+2. Build input dict from the step's `inputs` mapping.
+3. Call `function_callable(inputs)` and capture the returned dict.
+4. Write output to `steps.<step_id>` in state.
+
+**Tool steps** (`type: tool`):
+1. Resolve tool from `ToolRegistry` by name.
+2. Validate input against `input_schema`.
+3. Call `tool.execute(input, context)` with runtime context.
+4. Write output to `steps.<step_id>` in state.
+
+**Model steps** (`type: model`, deprecated):
+Kept for backward compatibility with existing tests. Calls a handler function
+(`Callable[[RuntimeState], dict]`) resolved during workflow parsing.
+
+### Agent definitions
+
+Agent YAML files live in `agents/` and describe LLM-backed reasoning units:
+
+```yaml
+agent:
+  id: code_reviewer
+  version: v1
+  model: gemini/gemini-2.5-flash
+  system: "You are a senior code reviewer."
+  strategy:
+    type: react
+    max_iterations: 5
+  tools:
+    - tools.file
+  pipeline:
+    - id: analyze
+      type: model
+      prompt: "Analyze this code: {{ inputs.diff }}"
+    - id: review
+      type: model
+      prompt: "Write review based on: {{ analyze.text }}"
 ```
 
-A handler receives the step's input as a `RuntimeState` and returns a dict of outputs. The runtime manages everything else — retries, state snapshots, persistence, resume.
+Key classes (module `agent/`):
+- `AgentDefinition` — parsed agent dataclass with pipeline, strategy, tools
+- `AgentRegistry` — discovers and resolves agents from `agents/` directory
+- `AgentExecutor` — runs the agent pipeline with the configured strategy
+- `StrategyConfig` — strategy type and parameters
+- `PipelineStep` — individual step within an agent's pipeline
 
-Lifecycle:
-1. Workflow YAML declares `handler: <name>` on a `model` step.
-2. At startup, built-in handlers are registered and the `handlers/` directory is scanned for user-defined handlers.
-3. During workflow loading, the name is resolved to the actual function and attached to the `StepDefinition`.
-4. At execution time, `Executor` calls `step_def.handler(step_input_state)` and captures the returned dict.
-5. The output dict is written to `steps.<step_id>` in state.
+Strategies:
+- `SingleCallStrategy` — run pipeline once linearly
+- `ReActStrategy` — observe→think→act loop with max iterations
+- Custom strategies via dotted import path (`strategy.handler`)
 
-Registration (built-in):
-```python
-registry = StepHandlerRegistry()
-registry.register("generate_summary", generate_summary)
-```
+### Function resolution
 
-Auto-discovery from `handlers/` directory:
-```python
-from agent_runtime.handler_discovery import register_discovered_handlers
-register_discovered_handlers(registry, "handlers")
-```
+Functions live in `functions/` and are referenced by qualified name:
+- `stubs.generate_summary` → `functions/stubs.py` → `generate_summary()`
+- `formatters.format_markdown` → `functions/formatters.py` → `format_markdown()`
 
-Discovery conventions (per module in `handlers/`):
-1. **Zero-config:** every public function (name not starting with `_`) is registered using the function name.
-2. **Explicit:** define a `__handlers__` dict mapping handler names to functions. This gives full naming control and skips helper functions.
-
-Example handler:
-```python
-def generate_summary(state: RuntimeState) -> Dict[str, Any]:
-    issue = state["issue"]
-    return {"summary": f"Summary of: {issue}"}
-```
-
-Handlers are distinct from tools:
-- **Handlers** are plain functions (`Callable[[RuntimeState], dict]`) for `model` steps.
-- **Tools** implement the `Tool` protocol (with `execute`, `input_schema`, etc.) for `tool` steps.
-
-Modules:
-- `steps.py` — `StepHandlerRegistry` and built-in handlers
-- `handler_discovery.py` — directory-based handler auto-discovery
+Resolution happens at parse time (fail fast). Module: `function_resolver.py`.
 
 ## Step pointer model
 Executor uses a pointer (`current_step_id`) rather than list-only traversal.
@@ -492,9 +516,9 @@ CLI flag  >  runtime.yaml  >  built-in default
 Config fields:
 - `db_path` — SQLite database path (default: `runtime.db`)
 - `workflows_dir` — workflow YAML directory (default: `workflows`)
-- `handlers_dir` — handler discovery directory (default: `handlers`)
 - `tools_dir` — tool discovery directory (default: `tools`)
-- `model` — model backend settings (placeholder for LLM integration)
+- `agents_dir` — agent definition directory (default: `agents`)
+- `functions_dir` — function discovery directory (default: `functions`)
 - `logging.level` / `logging.format` — log configuration
 - `overwrite_policy` — state overwrite behavior: `warn` (default), `strict`, `allow`
 - `working_memory_max_entries` — max sliding window entries (default: 50)
@@ -538,15 +562,19 @@ Visualization renderers (HTML, ASCII) and CLI progress output surface these metr
 ## 19. Extension points
 
 Designed for future expansion:
-- stronger expression engine for branching
+- Stronger expression engine for branching (`.startswith()`, `in`, min/max)
 - DAG scheduler and parallel step execution
-- typed state schemas
-- tool permissions and sandbox policies
-- state redaction and compression for large payloads
+- Typed state schemas
+- Tool permissions and sandbox policies
+- State redaction and compression for large payloads
 - LLM streaming / token-level events
-- multi-agent composition (sub-workflow invocation)
+- Native LLM function calling (vs text-based tool_call parsing)
+- Multi-agent composition (sub-workflow invocation)
 - PostgreSQL storage backend
+- Remote storage (S3 + DynamoDB)
 - OpenTelemetry / Prometheus observability
+- Vector/embedding search for semantic memory
+- Procedural memory pattern extraction
 
 ## 20. LLM registry
 
@@ -587,7 +615,7 @@ llm:
 ```
 
 The registry is loaded from the `llm` section of `RuntimeConfig` during startup
-and is available for handlers to query which model to use.
+and is available for agents and the LLM client to determine which model to use.
 
 ### LLM call pipeline
 
@@ -604,8 +632,9 @@ workflow YAML (handler: llm, model, prompt)
 Adapters:
 - `OpenAIAdapter` — Chat Completions API (`/v1/chat/completions`)
 - `AnthropicAdapter` — Messages API (`/v1/messages`)
+- `GeminiAdapter` — Gemini generateContent API
 
-Both use stdlib `urllib` (zero additional dependencies).
+All adapters use stdlib `urllib` (zero additional dependencies) with exponential-backoff retry on 429/5xx errors.
 
 Built-in `llm` handler:
 - Registered as `handler: llm` in workflow YAML
@@ -615,25 +644,37 @@ Built-in `llm` handler:
 - Optional `include_metadata: true` captures provider, model, and token usage in output
 
 > **Status: Implemented** — registry, config loading, credential resolution,
-> OpenAI adapter, Anthropic adapter, LLM client, and built-in handler are
-> functional.  Adapters are synchronous (stdlib `urllib`); async adapters
-> for concurrent execution are a future enhancement.
+> OpenAI adapter, Anthropic adapter, Gemini adapter, LLM client, and built-in handler are
+> functional.  All adapters are synchronous (stdlib `urllib`) with exponential-backoff
+> retry on 429/5xx errors.  Streaming is a future enhancement.
 
-## 19. Agent manifest system
+## 20.5. Agent system
 
-An agent manifest (`agent.yaml`) is the portable unit of the runtime.  It
-declares everything an agent needs to run — workflow, handlers, tools, LLM
-providers, and environment variables — in a single file.
+The runtime has two agent subsystems:
 
-Manifests live in the `agents/` directory.  Multiple agents can coexist
-in one project, sharing handlers and tools.
+### Agent definitions (current)
+
+Agent definitions (`agents/*.yaml`) describe LLM-backed reasoning units with
+model, strategy, pipeline, tools, and prompt configuration. They are referenced
+from workflow steps via `type: agent`.
+
+Key classes (module `agent/`):
+- `AgentDefinition` — parsed definition dataclass
+- `AgentRegistry` — discovers and resolves agents from directory
+- `AgentExecutor` — runs agent pipeline with configured strategy
+- `PromptRegistry` — manages versioned prompts for A/B testing
+
+### Agent manifests (legacy)
+
+Agent manifests (`agent.yaml`) are the legacy portable unit that declares
+a workflow plus its handlers, tools, providers, and environment variables.
+Still supported for `ai validate`, `ai export`, and `ai import` commands.
 
 Key classes (module `agent/`):
 - `AgentManifest` — parsed manifest dataclass
-- `ProviderRequirement` — LLM provider + models the agent depends on
-- `ValidationResult` — one pre-flight check result
+- `ValidationResult` — pre-flight check result
 
-### Manifest schema
+### Manifest schema (legacy)
 
 ```yaml
 agent:
@@ -643,10 +684,6 @@ agent:
   runtime: ">=0.1"
 
 workflow: workflows/triage.yaml
-
-handlers:
-  - handlers/classify.py
-  - handlers/summarize.py
 
 tools:
   - tools/github_tool.py
@@ -692,35 +729,48 @@ and env vars so the operator can configure the environment.
 > CLI commands, and agent-aware run resolution are functional.
 > TODO: Support multiple workflows per agent with a designated entry point.
 
-## 20. Status summary
+## 21. Status summary
 
 | Capability | Status |
 |---|---|
 | Core execution engine | Implemented |
-| Retry / backoff | Implemented |
-| Conditional branching | Implemented |
-| SQLite persistence | Implemented |
+| Retry / backoff (fixed + exponential) | Implemented |
+| Conditional branching + circular detection | Implemented |
+| SQLite persistence (WAL, transactions) | Implemented |
 | Resume from failure | Implemented |
 | Workflow hash lock on resume | Implemented |
 | Deterministic replay | Implemented |
-| State diff & visualization | Implemented |
+| State diff & visualization (HTML + ASCII) | Implemented |
 | Workflow versioning & registry | Implemented |
-| Step contracts | Implemented |
-| Tool subsystem & discovery | Implemented |
-| Handler auto-discovery | Implemented |
+| Step contracts (input + output) | Implemented |
+| Tool subsystem & auto-discovery | Implemented |
+| Function resolution (fail-fast) | Implemented |
 | LLM provider registry | Implemented |
-| Credential resolution (env vars) | Implemented |
-| Agent manifest system | Implemented |
+| Credential resolution (env vars only) | Implemented |
+| Agent definition system (pipeline + strategy) | Implemented |
+| Agent manifest system (legacy) | Implemented |
 | Agent validate / export / import | Implemented |
 | Agent-aware run resolution | Implemented |
-| LLM API call adapters | Implemented |
-| Anthropic adapter | Implemented |
-| Async executor | Implemented |
-| Built-in tools (HTTP, File, Shell) | Implemented |
+| Prompt versioning (`id@vN`) | Implemented |
+| Function step type | Implemented |
+| Agent step type | Implemented |
+| Tool step type | Implemented |
+| LLM adapters (OpenAI, Anthropic, Gemini) | Implemented |
+| Adapter retry with backoff (429/5xx) | Implemented |
+| Async executor with sync wrappers | Implemented |
+| Built-in tools (Echo, HTTP, File, Shell) | Implemented |
+| Working memory (scratch + sliding window) | Implemented |
 | Episodic memory (SQLite) | Implemented |
-| Memory tiers (working, semantic, procedural) | Scaffolding |
+| Semantic memory (SQLite + FTS5) | Implemented |
+| Procedural memory | Stub |
+| Lifecycle hooks (event callbacks) | Implemented |
+| Timing telemetry (per-step + run-level) | Implemented |
+| `safe_eval` sandboxed expressions | Implemented |
 | Multi-workflow agents | Planned |
 | DAG / parallel execution | Planned |
+| LLM streaming | Planned |
+| Vector/embedding search | Planned |
+| PostgreSQL storage backend | Planned |
+| OpenTelemetry / metrics | Planned |
 | Tool permissions / sandboxing | Planned |
 | Idempotency keys | Planned |
-| Event sourcing ledger | Planned |

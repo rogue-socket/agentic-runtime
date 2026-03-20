@@ -1,11 +1,4 @@
-<!--
-File: docs/guide/usage.md
-Purpose: Command-focused usage reference for daily runtime operations.
-Description: Covers setup, running workflows, inspect/resume/replay flows, and common debugging patterns.
-Dependencies: `ai` CLI and sample workflows.
-Inputs/Outputs: Input for users; output is executable command guidance.
-Side Effects: None.
--->
+<!-- docs/guide/usage.md — command reference and scenario cookbook -->
 
 # Usage
 
@@ -31,8 +24,7 @@ cd my-agent
 ai quickstart
 ```
 
-`ai quickstart` initializes the project (if needed), configures an LLM provider,
-writes `.env`, and runs a starter workflow.
+`ai quickstart` initializes the project (if needed), configures an LLM provider, writes `.env`, and runs a starter workflow.
 
 Prefer non-interactive setup?
 
@@ -46,25 +38,27 @@ Run the wizard from another directory:
 ai onboard --path my-project
 ```
 
-When run with no args, `ai` opens a home screen with common actions
-(setup, run sample, inspect, visualize).
+When run with no args, `ai` opens a home screen with common actions (setup, run sample, inspect, visualize).
 
 Creates a project structure:
 
 ```
 ├── workflows/
 │   └── example.yaml           # example workflow definition
-├── handlers/
-│   └── example_handler.py     # example model step handler
+├── agents/
+│   └── example_agent.yaml     # example agent definition
+├── functions/
+│   └── example_functions.py   # example function step implementations
 ├── tools/
 │   └── example_tool.py        # example tool implementation
 └── runtime.yaml               # runtime configuration
 ```
 
-- `workflows/` — YAML workflow definitions
-- `handlers/` — Python functions for `model` step handlers
+- `workflows/` — YAML workflow definitions (orchestrate agents, functions, and tools)
+- `agents/` — YAML agent definitions (LLM model, strategy, pipeline)
+- `functions/` — Python functions for `function` steps (`(inputs: dict) -> dict`)
 - `tools/` — Python classes implementing the `Tool` protocol for `tool` steps
-- `runtime.yaml` — runtime configuration (db path, directory paths, model backend settings)
+- `runtime.yaml` — runtime configuration (db path, directory paths, LLM providers)
 
 ## 3. Run workflows
 
@@ -84,12 +78,9 @@ inputs:
     default: "medium"
 ```
 
-The `inputs:` block declares what the workflow expects from the caller.
-Inputs can specify `description`, `required` (default `true`), and `default`.
-A shorthand list form is also supported: `inputs: [issue, priority]` (all required, no defaults).
+The `inputs:` block declares what the workflow expects from the caller. Inputs can specify `description`, `required` (default `true`), and `default`. A shorthand list form is also supported: `inputs: [issue, priority]` (all required, no defaults).
 
-Workflows without an `inputs:` block still work — the runtime infers
-available inputs from step references (backward compatible).
+Workflows without an `inputs:` block still work — the runtime infers available inputs from step references (backward compatible).
 
 ## Run default example
 
@@ -214,7 +205,7 @@ ai replay <run_id> --step-by-step
 
 Replay guarantees:
 - no tool invocation
-- no model invocation
+- no agent invocation
 - no persisted data mutation
 
 ## 7. Sample workflows
@@ -231,83 +222,93 @@ ai run workflows/samples/versioning/code_review_agent_v2.yaml
 ```
 
 What each sample demonstrates:
-- `01_linear_issue_summary.yaml`: baseline linear execution
+- `01_linear_issue_summary.yaml`: baseline linear execution (function steps)
 - `02_retry_and_backoff.yaml`: retry semantics and attempt visibility
 - `03_branching_triage.yaml`: deterministic conditional branching
 - `04_fail_and_resume.yaml`: failure path and resume flow
-- `versioning/code_review_agent_v1.yaml` + `versioning/code_review_agent_v2.yaml`: workflow version evolution
+- `05_llm_call.yaml`: agent steps with LLM provider
+- `06_gemini_call.yaml`: agent steps with Gemini provider
+- `07_agent_and_function.yaml`: mixed agent + function + tool steps
+- `versioning/code_review_agent_v1.yaml` + `v2`: workflow version evolution
 
-## 8. Step contracts workflow pattern
+## 8. Step types and authoring
 
-### Writing a handler
+### Writing a function
 
-A handler is a Python function that does the actual work for a `model` step. The runtime calls it, passing in the step's input state, and expects a dict back.
+A function is a Python callable that does deterministic work for a `function` step. The runtime calls it with the step's inputs and expects a dict back.
 
 Signature:
 ```python
-def my_handler(state: RuntimeState) -> Dict[str, Any]:
-    # read inputs from state
-    # do work (call an LLM, transform data, etc.)
+def my_function(inputs: dict) -> dict:
+    # read inputs
+    # do work (transform data, classify, format, etc.)
     # return a dict of outputs
 ```
 
-Example — a handler that classifies issue severity:
+Example — a function that classifies issue severity:
 ```python
-def classify_severity(state: RuntimeState) -> Dict[str, Any]:
-    issue = state["issue"]
-    if "crash" in issue.lower() or "down" in issue.lower():
+# functions/classifiers.py
+
+def classify_severity(inputs: dict) -> dict:
+    issue = inputs.get("issue", "").lower()
+    if "crash" in issue or "down" in issue:
         return {"severity": "critical", "reason": "Service impact detected"}
     return {"severity": "low", "reason": "No immediate impact"}
 ```
 
-### Handler auto-discovery
-
-The runtime automatically discovers handlers from the `handlers/` directory. Just drop a `.py` file there and your handlers are available.
-
-**Convention 1 — zero-config:** every public function (not starting with `_`) is registered using the function name.
-
-```
-handlers/
-└── my_handlers.py     # contains classify_severity() → available as handler: classify_severity
-```
-
-**Convention 2 — explicit:** define a `__handlers__` dict for full naming control.
-
-```python
-# handlers/my_handlers.py
-
-def _internal_helper():
-    pass
-
-def _my_classify(state):
-    return {"severity": "low", "reason": "No impact"}
-
-__handlers__ = {
-    "classify_severity": _my_classify,
-}
-```
-
-Built-in handlers (`generate_summary`, `classify_severity`, `diagnose_issue`, `propose_fix`, `review_code`) are always available regardless of what's in `handlers/`.
-
-Using a handler in a workflow:
+Using a function in a workflow:
 ```yaml
 steps:
   - id: triage
-    type: model
-    handler: classify_severity
+    type: function
+    function: classifiers.classify_severity
     inputs:
       issue: inputs.issue
 ```
 
 When this step runs, the runtime:
-1. Builds the input state from the `inputs` mapping
-2. Calls `classify_severity(input_state)`
-3. Writes the returned dict to `steps.triage` in state
-4. Persists `state_before`, `state_after`, timing, and attempt count to SQLite
+1. Resolves `classifiers.classify_severity` from `functions/classifiers.py`
+2. Builds the input dict from the `inputs` mapping
+3. Calls `classify_severity(inputs)`
+4. Writes the returned dict to `steps.triage` in state
+5. Persists `state_before`, `state_after`, timing, and attempt count to SQLite
 
-Handlers vs tools:
-- **Handlers** = plain Python functions for `model` steps (type: `model`, field: `handler`)
-- **Tools** = objects implementing the `Tool` protocol for `tool` steps (type: `tool`, field: `tool`)
+### Writing an agent definition
+
+An agent definition describes an LLM-backed reasoning unit. It lives in `agents/` as a YAML file.
+
+```yaml
+# agents/reviewer.yaml
+agent:
+  id: reviewer
+  version: v1
+  model: gemini/gemini-2.5-flash
+  system: "You are a senior code reviewer."
+  strategy:
+    type: react
+    max_iterations: 5
+  tools:
+    - tools.file
+  temperature: 0.2
+  max_tokens: 4096
+  pipeline:
+    - id: analyze
+      type: model
+      prompt: "Analyze this diff for issues: {{ inputs.diff }}"
+    - id: review
+      type: model
+      prompt: "Write a complete review based on: {{ analyze.text }}"
+```
+
+Using an agent in a workflow:
+```yaml
+steps:
+  - id: review
+    type: agent
+    agent: reviewer
+    inputs:
+      diff: inputs.pr_diff
+```
 
 ### Writing a tool
 
@@ -328,7 +329,6 @@ class MyTool:
     retries: Optional[int] = None       # optional retry count
 
     async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
-        # Do work here (API call, file operation, etc.)
         return ToolResult(success=True, output={"result": "..."},
                           error=None, metadata=None)
 ```
@@ -345,7 +345,16 @@ steps:
       message: inputs.text
 ```
 
-Built-in tools (`tools.echo`) are always available regardless of what's in `tools/`.
+Built-in tools (`tools.echo`, `tools.http`, `tools.file`, `tools.shell`) are always available regardless of what's in `tools/`.
+
+### Choosing a step type
+
+| | `type: function` | `type: agent` | `type: tool` |
+|---|---|---|---|
+| **When** | Deterministic logic | LLM reasoning needed | External side effects |
+| **Where** | `functions/` | `agents/` | `tools/` |
+| **Signature** | `(dict) -> dict` | Agent YAML | Tool protocol class |
+| **Examples** | Parsing, formatting, classification | Summarizing, reviewing, planning | HTTP calls, file I/O, shell |
 
 ### Using step contracts
 
@@ -355,11 +364,11 @@ workflow:
   version: v1
 inputs_contract: [issue]
 steps:
-  - id: generate_summary
-    type: model
-    handler: generate_summary
+  - id: classify
+    type: function
+    function: stubs.classify_severity
     inputs: [issue]
-    outputs: [summary]
+    outputs: [severity]
 ```
 
 Behavior:
@@ -415,8 +424,9 @@ Example `runtime.yaml` (generated by `ai init`):
 ```yaml
 db_path: runtime.db
 workflows_dir: workflows
-handlers_dir: handlers
 tools_dir: tools
+agents_dir: agents
+functions_dir: functions
 
 # llm:
 #   providers:
@@ -443,8 +453,7 @@ tools_dir: tools
 #   format: json
 ```
 
-Tip: `ai setup` can scaffold this config and write `.env`, and
-`ai setup --check` validates which provider keys are available.
+Tip: `ai setup` can scaffold this config and write `.env`, and `ai setup --check` validates which provider keys are available.
 
 Precedence: `--db-path` flag > `runtime.yaml` value > built-in default (`runtime.db`).
 
@@ -499,22 +508,36 @@ HTML visualization with explicit HTML mode (also auto-opens browser):
 ai visualize <run_id> --html
 ```
 
-HTML visualization without auto-opening browser:
+## 15. Validate, export, import, and list
+
+### Validate an agent manifest
 
 ```bash
-ai visualize <run_id> --html --no-open
+ai validate agents/my_agent.yaml
 ```
 
-Output:
-- file path `.runs/<run_id>/visualization.html`
-- default mode attempts to open the file in the default browser
-- `--html` also opens the browser unless `--no-open` is provided
+Pre-flight checks: file existence (workflow, tools), provider credentials, required env vars, model configs.
 
-HTML includes:
-- execution graph view
-- branch decision table
-- run summary (start, completion, total duration)
-- per-step call durations (tool/LLM)
-- step timeline with attempts/duration
-- tool call table (args/result/latency)
-- state timeline with per-step diffs
+### Export an agent as a portable archive
+
+```bash
+ai export agents/my_agent.yaml -o my_agent.tar.gz
+```
+
+Bundles the agent manifest, workflow, functions, and tools into a self-contained `.tar.gz` archive. Does not include `runtime.yaml` or API keys.
+
+### Import an agent from an archive
+
+```bash
+ai import my_agent.tar.gz --path .
+```
+
+Extracts into the project tree and places the manifest in `agents/`. Post-import validation reports missing providers and env vars.
+
+### List agents
+
+```bash
+ai list
+```
+
+Lists all agent definitions found in `agents/` with their id and version.

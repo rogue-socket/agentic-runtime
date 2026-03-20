@@ -293,6 +293,12 @@ def safe_eval(expr: str, state: Dict[str, Any]) -> bool:
         True
     """
     # [SCAFFOLD:DETERMINISM] Simple safe eval; replace with dedicated expression engine later.
+    # TODO(gap-7): Expand the expression language for branch conditions.
+    #   Currently limited to `state` and `len`. Useful additions:
+    #   - String methods: .startswith(), .endswith(), .lower(), "x" in state.y
+    #   - Math helpers: min, max, abs
+    #   - Membership tests: value in [list]
+    #   Must preserve determinism and block unsafe execution.
     tree = ast.parse(expr, mode="eval")
     _SafeExprValidator().visit(tree)
     context = {"state": _DotDict(state), "len": len}

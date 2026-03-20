@@ -83,4 +83,3 @@ def validate_resume(run_status: str) -> None:
 
 # [TODO] Support step-level idempotency verification before resuming side-effecting steps.
 # [TODO] Support retry conditions (e.g., retry only on specific error types).
-# [TODO] Detect infinite loops caused by circular branching.

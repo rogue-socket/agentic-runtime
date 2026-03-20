@@ -76,7 +76,8 @@ class FileTool:
         if action == "read":
             if not os.path.isfile(abs_path):
                 return ToolResult(success=False, output=None, error=f"File not found: {rel_path}", metadata=None)
-            data = open(abs_path, "r", encoding="utf-8").read(_MAX_READ_BYTES)
+            with open(abs_path, "r", encoding="utf-8") as f:
+                data = f.read(_MAX_READ_BYTES)
             return ToolResult(success=True, output={"content": data}, error=None, metadata=None)
 
         if action == "write":

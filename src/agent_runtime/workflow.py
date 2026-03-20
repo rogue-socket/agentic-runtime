@@ -28,10 +28,15 @@ Side Effects:
 from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
+import warnings
+
 from .core import NextRule, RetryPolicy, StepDefinition
 from .errors import WorkflowValidationError
-from .steps import StepHandlerRegistry
 from .utils import sha256_text
+
+# Valid step types for workflow steps
+# "model" is deprecated — use "agent" or "function" instead.
+VALID_STEP_TYPES = {"agent", "function", "tool", "model"}
 
 
 def _validate_step(step: Dict[str, Any]) -> None:
@@ -41,17 +46,29 @@ def _validate_step(step: Dict[str, Any]) -> None:
     for inputs/outputs/branch rules before object construction.
 
     Example:
-        >>> _validate_step({"id": "a", "type": "model", "handler": "h"})
+        >>> _validate_step({"id": "a", "type": "agent", "agent": "reviewer"})
         >>> _validate_step({"id": "b", "type": "tool", "tool": "tools.echo"})
+        >>> _validate_step({"id": "c", "type": "function", "function": "format_markdown"})
     """
     if "id" not in step or not isinstance(step["id"], str):
         raise WorkflowValidationError("Each step must have a string id.")
-    if "type" not in step or step["type"] not in {"model", "tool"}:
-        raise WorkflowValidationError("Each step must have type: model or tool.")
-    if step["type"] == "model" and "handler" not in step:
-        raise WorkflowValidationError("Model steps must include handler.")
+    if "type" not in step or step["type"] not in VALID_STEP_TYPES:
+        raise WorkflowValidationError(
+            f"Each step must have type: {', '.join(sorted(VALID_STEP_TYPES))}."
+        )
+    if step["type"] == "agent" and "agent" not in step:
+        raise WorkflowValidationError("Agent steps must include 'agent' reference.")
+    if step["type"] == "agent" and not isinstance(step["agent"], str):
+        raise WorkflowValidationError("Agent step 'agent' must be a string (agent id).")
+    if step["type"] == "function" and "function" not in step:
+        raise WorkflowValidationError("Function steps must include 'function' reference.")
+    if step["type"] == "function" and not isinstance(step["function"], str):
+        raise WorkflowValidationError("Function step 'function' must be a string.")
     if step["type"] == "tool" and "tool" not in step:
         raise WorkflowValidationError("Tool steps must include tool.")
+    # Deprecated: model steps require a handler reference.
+    if step["type"] == "model" and "handler" not in step:
+        raise WorkflowValidationError("Model steps must include handler (deprecated — use agent or function).")
     if "inputs" in step and not isinstance(step["inputs"], (dict, list)):
         raise WorkflowValidationError("Step inputs must be a mapping or list.")
     if "inputs" in step and isinstance(step["inputs"], list):
@@ -62,25 +79,6 @@ def _validate_step(step: Dict[str, Any]) -> None:
             raise WorkflowValidationError("Step outputs must be a list of strings.")
     if "next" in step and not isinstance(step["next"], list):
         raise WorkflowValidationError("Step next must be a list of rules.")
-    if step["type"] == "model" and step.get("handler") == "llm":
-        if "prompt" not in step or not isinstance(step["prompt"], str):
-            raise WorkflowValidationError("LLM steps must include a string prompt.")
-        if "model" not in step or not isinstance(step["model"], str):
-            raise WorkflowValidationError("LLM steps must include a string model.")
-        if "system" in step and not isinstance(step["system"], str):
-            raise WorkflowValidationError("LLM system prompt must be a string.")
-        if "provider" in step and not isinstance(step["provider"], str):
-            raise WorkflowValidationError("LLM provider must be a string.")
-        if "response_key" in step and not isinstance(step["response_key"], str):
-            raise WorkflowValidationError("LLM response_key must be a string.")
-        if "temperature" in step and not isinstance(step["temperature"], (int, float)):
-            raise WorkflowValidationError("LLM temperature must be a number.")
-        if "max_tokens" in step and not isinstance(step["max_tokens"], int):
-            raise WorkflowValidationError("LLM max_tokens must be an integer.")
-        if "params" in step and not isinstance(step["params"], dict):
-            raise WorkflowValidationError("LLM params must be a mapping.")
-        if "include_metadata" in step and not isinstance(step["include_metadata"], bool):
-            raise WorkflowValidationError("LLM include_metadata must be a boolean.")
 
 
 def _extract_workflow_identity(raw: Dict[str, Any]) -> Tuple[str, Optional[str]]:
@@ -175,15 +173,19 @@ def _infer_inputs(raw_steps: List[Dict[str, Any]]) -> set:
     return found
 
 
-def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dict[str, Any]:
+def _parse_workflow(
+    raw_text: str,
+    handler_registry=None,  # deprecated — used only for legacy model steps
+    functions_dir: Optional[str] = None,
+) -> Dict[str, Any]:
     """Parse raw workflow YAML into runtime execution metadata.
 
-    This performs structural validation, resolves handlers, parses retry
-    and branch rules, validates contracts, and computes workflow hash.
+    This performs structural validation, resolves functions,
+    parses retry and branch rules, validates contracts, and computes
+    workflow hash.
 
     Example:
-        >>> reg = StepHandlerRegistry(); reg.register("h", lambda s: {"ok": True})
-        >>> wf = _parse_workflow("name: w\\nsteps:\\n  - id: a\\n    type: model\\n    handler: h\\n", reg)
+        >>> wf = _parse_workflow("name: w\\nsteps:\\n  - id: a\\n    type: tool\\n    tool: tools.echo\\n")
         >>> wf["workflow_id"]
         'w'
     """
@@ -307,38 +309,72 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
                     )
                 produced_by[output_key] = step["id"]
 
-        if step_type == "model":
-            llm_config = None
-            if step.get("handler") == "llm":
-                llm_config = {}
-                for key in (
-                    "prompt",
-                    "model",
-                    "system",
-                    "provider",
-                    "response_key",
-                    "temperature",
-                    "max_tokens",
-                    "params",
-                    "include_metadata",
-                ):
-                    if key in step:
-                        llm_config[key] = step[key]
-            handler = handler_registry.get(step["handler"])
+        if step_type == "agent":
+            agent_ref = step["agent"]
+            # parse optional version pinning: "code_reviewer@v2"
+            agent_id = agent_ref
+            agent_version = None
+            if "@" in agent_ref:
+                agent_id, agent_version = agent_ref.rsplit("@", 1)
             steps.append(
                 StepDefinition(
                     step_id=step["id"],
-                    step_type="model",
-                    handler=handler,
+                    step_type="agent",
+                    agent_id=agent_id,
+                    agent_version=agent_version,
                     retry=retry,
                     input_spec=input_spec if isinstance(input_spec, dict) else None,
                     input_contract=input_contract,
                     output_contract=output_contract,
-                    raw_input=llm_config,
                     next_rules=next_rules,
                 )
             )
-        else:
+        elif step_type == "function":
+            func_ref = step["function"]
+            # Resolve function at parse time (fail fast)
+            func_callable = None
+            if functions_dir:
+                from .function_resolver import resolve_function
+                func_callable = resolve_function(func_ref, functions_dir)
+            steps.append(
+                StepDefinition(
+                    step_id=step["id"],
+                    step_type="function",
+                    function_ref=func_ref,
+                    function_callable=func_callable,
+                    retry=retry,
+                    input_spec=input_spec if isinstance(input_spec, dict) else None,
+                    input_contract=input_contract,
+                    output_contract=output_contract,
+                    next_rules=next_rules,
+                )
+            )
+        elif step_type == "model":
+            warnings.warn(
+                "Workflow step type 'model' is deprecated. "
+                "Use type 'agent' or 'function' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            handler_ref = step.get("handler")
+            handler_callable = handler_ref
+            if handler_registry is not None and handler_ref:
+                resolved = handler_registry.get(handler_ref)
+                if resolved is not None:
+                    handler_callable = resolved
+            steps.append(
+                StepDefinition(
+                    step_id=step["id"],
+                    step_type="model",
+                    handler=handler_callable,
+                    retry=retry,
+                    input_spec=input_spec if isinstance(input_spec, dict) else None,
+                    input_contract=input_contract,
+                    output_contract=output_contract,
+                    next_rules=next_rules,
+                )
+            )
+        else:  # tool
             steps.append(
                 StepDefinition(
                     step_id=step["id"],
@@ -372,7 +408,12 @@ def _parse_workflow(raw_text: str, handler_registry: StepHandlerRegistry) -> Dic
     }
 
 
-def load_workflow(path: str, handler_registry: StepHandlerRegistry) -> Dict[str, Any]:
+def load_workflow(
+    path: str,
+    handler_registry=None,  # deprecated — ignored, kept for backward compat
+    *,
+    functions_dir: Optional[str] = None,
+) -> Dict[str, Any]:
     """Load workflow YAML from file path and parse it.
 
     Example:
@@ -381,18 +422,22 @@ def load_workflow(path: str, handler_registry: StepHandlerRegistry) -> Dict[str,
     """
     with open(path, "r", encoding="utf-8") as f:
         raw_text = f.read()
-    return _parse_workflow(raw_text, handler_registry)
+    return _parse_workflow(raw_text, handler_registry=handler_registry, functions_dir=functions_dir)
 
 
-def load_workflow_from_text(raw_text: str, handler_registry: StepHandlerRegistry) -> Dict[str, Any]:
+def load_workflow_from_text(
+    raw_text: str,
+    handler_registry=None,  # deprecated — ignored, kept for backward compat
+    *,
+    functions_dir: Optional[str] = None,
+) -> Dict[str, Any]:
     """Parse workflow from in-memory YAML text.
 
     Useful for tests and replay/inspect flows where workflow YAML is
     stored in the database instead of read from filesystem.
 
     Example:
-        >>> reg = StepHandlerRegistry(); reg.register("h", lambda s: {"ok": True})
-        >>> load_workflow_from_text("name: w\\nsteps:\\n  - id: a\\n    type: model\\n    handler: h\\n", reg)["workflow_id"]
+        >>> load_workflow_from_text("name: w\\nsteps:\\n  - id: a\\n    type: tool\\n    tool: tools.echo\\n")["workflow_id"]
         'w'
     """
-    return _parse_workflow(raw_text, handler_registry)
+    return _parse_workflow(raw_text, handler_registry=handler_registry, functions_dir=functions_dir)

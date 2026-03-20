@@ -1,0 +1,23 @@
+agent:
+  id: summarizer
+  version: v1
+  description: "Summarizes issues and text into concise reports"
+  model: gemini/gemini-2.5-flash
+  system: prompts.summarizer_system
+  tools:
+    - tools.echo
+  strategy:
+    type: single
+  temperature: 0.3
+  max_tokens: 2048
+  pipeline:
+    - id: main
+      type: model
+      prompt: "Summarize the following text:\n\n{{ inputs.text }}"
+  prompts:
+    - id: summarizer_system
+      version: v1
+      text: |
+        You are a technical writer. Summarize the given issue or text
+        into a brief, clear summary suitable for a status report.
+        Focus on what happened, the impact, and the current state.

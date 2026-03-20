@@ -51,4 +51,4 @@ flowchart TD
 
 ## Scripted Walkthrough
 
-Removed — use `ai onboard` for the guided flow.
+Removed — use `ai onboard` or `ai quickstart` for the guided flow.

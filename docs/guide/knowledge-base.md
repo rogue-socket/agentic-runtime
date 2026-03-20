@@ -9,7 +9,8 @@ This page explains what the runtime is, what workflows, handlers, and tools are,
 **Core Building Blocks**
 
 - Workflow: the YAML recipe that describes inputs and steps.
-- Handler: a Python function that powers a `model` step.
+- Function: a Python callable that powers a `function` step.
+- Agent: an LLM-backed definition that powers an `agent` step.
 - Tool: a Python class that powers a `tool` step.
 - State: the structured data that flows between steps.
 - Run: a persisted execution record stored in SQLite.
@@ -17,7 +18,7 @@ This page explains what the runtime is, what workflows, handlers, and tools are,
 **Agent Definitions vs Workflow Definitions**
 
 - Workflow definition: the YAML file in `workflows/` that defines inputs and steps.
-- Agent definition: the YAML file in `agents/` that *points to a workflow* and declares which handlers, tools, and defaults that workflow needs.
+- Agent definition: the YAML file in `agents/` that describes an LLM agent's model, strategy, tools, and pipeline.
 
 Think of it like this:
 The **workflow** is the recipe, and the **agent** is the packaged meal kit that says which recipe to run and what ingredients to include.
@@ -25,19 +26,13 @@ The **workflow** is the recipe, and the **agent** is the packaged meal kit that 
 **How They Tie Together**
 
 1. You write a workflow (`workflows/my_workflow.yaml`).
-2. The workflow references handlers and tools by name.
+2. The workflow references agents, functions, and tools by name.
 3. The runtime loads the workflow and builds the step registry.
-4. When it reaches a `model` step, it resolves the `handler` name and calls that Python function.
-5. Each step runs in order (with branching/retries if configured).
-6. Every step output is merged into state and persisted.
-
-**Where Handlers Come In**
-
-Handlers only run at **`model` steps**. That is the exact moment a handler is invoked.
-
-1. The runtime reads the step: `type: model` + `handler: some_name`.
-2. It looks up `some_name` in `handlers/` (or a `__handlers__` registry).
-3. It calls the function with the current state and stores the returned dictionary in state.
+4. When it reaches an `agent` step, it resolves the agent definition and runs its LLM pipeline.
+5. When it reaches a `function` step, it calls the Python function.
+6. When it reaches a `tool` step, it calls the tool's `execute()` method.
+7. Each step runs in order (with branching/retries if configured).
+8. Every step output is merged into state and persisted.
 
 **Visual Summary**
 
@@ -45,8 +40,9 @@ Handlers only run at **`model` steps**. That is the exact moment a handler is in
 Workflow YAML
   ├─ Inputs (initial state)
   ├─ Steps
-  │   ├─ model step → Handler (Python function)
-  │   └─ tool step  → Tool (Python class)
+  │   ├─ agent step    → Agent definition (LLM pipeline)
+  │   ├─ function step → Python function
+  │   └─ tool step     → Tool class
   └─ Outputs (state after each step)
 
 Runtime
@@ -70,8 +66,8 @@ inputs:                        # declared inputs
     required: true             # required input
 steps:                         # ordered steps
   - id: summarize
-    type: model                # model step uses a handler
-    handler: generate_summary  # handler name
+    type: agent                # agent step uses an LLM agent
+    agent: summarizer          # agent id from agents/
     inputs:
       issue: inputs.issue      # input reference
   - id: echo
@@ -81,16 +77,14 @@ steps:                         # ordered steps
       message: steps.summarize.summary  # step output reference
 ```
 
-**Handlers**
+**Functions**
 
-Handlers are Python functions. They read state and return a dictionary of outputs.
+Functions are plain Python callables. They receive an inputs dict and return a dictionary of outputs.
 
 ```python
-from agent_runtime.state import RuntimeState
-
-def summarize_issue(state: RuntimeState) -> dict:
-    issue = state.get("issue", "")  # read input from state
-    return {"summary": issue[:140]}  # return output fields
+def summarize_issue(inputs: dict) -> dict:
+    issue = inputs.get("issue", "")
+    return {"summary": issue[:140]}
 ```
 
 **Tools**
@@ -137,5 +131,5 @@ class ExampleTool:
 - [Getting Started](getting-started.md)
 - [Manual](manual.md)
 - [Writing Workflows](workflows.md)
-- [Handlers](handlers.md)
+- [Functions and Agents](functions-and-agents.md)
 - [Tools](tools.md)

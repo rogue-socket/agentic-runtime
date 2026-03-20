@@ -1,0 +1,48 @@
+agent:
+  id: code_reviewer
+  version: v1
+  description: "Reviews code diffs for bugs, security, and style issues"
+  model: gemini/gemini-2.5-flash
+  system: prompts.code_review_system@v2
+  tools:
+    - tools.file
+    - tools.http
+  strategy:
+    type: react
+    max_iterations: 5
+  temperature: 0.2
+  max_tokens: 4096
+  pipeline:
+    - id: analyze
+      type: model
+      prompt: "Analyze this code diff for bugs, security issues, and style problems:\n\n{{ inputs.diff }}"
+    - id: fetch_context
+      type: tool
+      tool: tools.file
+      inputs:
+        path: analyze.suggested_file
+    - id: review
+      type: model
+      prompt: |
+        Based on your analysis and the file context, write a complete code review.
+        Analysis: {{ analyze.text }}
+        File context: {{ fetch_context }}
+        
+        If you need more information, describe what you need.
+        If your review is complete, provide your final answer using the ```final_answer``` format.
+  prompts:
+    - id: code_review_system
+      version: v1
+      text: |
+        You are a senior code reviewer. Analyze the code diff provided
+        and identify bugs, security issues, and style problems.
+        Be concise and actionable in your feedback.
+    - id: code_review_system
+      version: v2
+      text: |
+        You are a senior code reviewer. Analyze the code diff provided.
+        For each issue found, specify:
+        - Location: file and line number
+        - Severity: critical, warning, or info
+        - Category: bug, security, performance, or style
+        - Fix suggestion: a concrete recommendation

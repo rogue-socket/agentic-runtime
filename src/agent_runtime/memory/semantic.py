@@ -38,42 +38,48 @@ class SemanticMemory:
         self._db_path = db_path
         self._max_results = max_results
         self._fallback: Dict[str, Any] = {}
+        self._conn: Optional[sqlite3.Connection] = None
         if db_path is not None:
+            self._conn = self._open_connection()
             self._init_db()
 
     # ------------------------------------------------------------------
     # SQLite setup
     # ------------------------------------------------------------------
 
-    def _connect(self) -> sqlite3.Connection:
+    def _open_connection(self) -> sqlite3.Connection:
         assert self._db_path is not None
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row
         return conn
 
+    def close(self) -> None:
+        """Close the underlying SQLite connection if open."""
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+
     def _init_db(self) -> None:
-        with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS semantic_facts (
-                    key         TEXT PRIMARY KEY,
-                    value       TEXT NOT NULL,
-                    tags        TEXT NOT NULL DEFAULT '',
-                    metadata    TEXT,
-                    created_at  TEXT NOT NULL,
-                    updated_at  TEXT NOT NULL
-                )
-                """
+        assert self._conn is not None
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS semantic_facts (
+                key         TEXT PRIMARY KEY,
+                value       TEXT NOT NULL,
+                tags        TEXT NOT NULL DEFAULT '',
+                metadata    TEXT,
+                created_at  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL
             )
-            # FTS5 virtual table for full-text search over key + value + tags.
-            # content= links it to semantic_facts so we don't duplicate storage.
-            # We use a content-sync approach: manual sync on insert/update/delete.
-            conn.execute(
-                """
-                CREATE VIRTUAL TABLE IF NOT EXISTS semantic_facts_fts
-                USING fts5(key, value, tags, content='semantic_facts', content_rowid='rowid')
-                """
-            )
+            """
+        )
+        self._conn.execute(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS semantic_facts_fts
+            USING fts5(key, value, tags, content='semantic_facts', content_rowid='rowid')
+            """
+        )
+        self._conn.commit()
 
     # ------------------------------------------------------------------
     # MemoryTier protocol
@@ -160,43 +166,43 @@ class SemanticMemory:
         meta_str = json.dumps(metadata, default=str) if metadata else None
         now = datetime.now(timezone.utc).isoformat()
 
-        with self._connect() as conn:
-            existing = conn.execute(
-                "SELECT rowid FROM semantic_facts WHERE key = ?", (key,)
-            ).fetchone()
+        assert self._conn is not None
+        existing = self._conn.execute(
+            "SELECT rowid FROM semantic_facts WHERE key = ?", (key,)
+        ).fetchone()
 
-            if existing:
-                rowid = existing["rowid"]
-                # Delete old FTS entry, update main row, re-insert FTS entry.
-                conn.execute(
-                    "INSERT INTO semantic_facts_fts(semantic_facts_fts, rowid, key, value, tags) "
-                    "VALUES('delete', ?, ?, ?, ?)",
-                    (rowid, key,
-                     conn.execute("SELECT value FROM semantic_facts WHERE key = ?", (key,)).fetchone()["value"],
-                     conn.execute("SELECT tags FROM semantic_facts WHERE key = ?", (key,)).fetchone()["tags"]),
-                )
-                conn.execute(
-                    "UPDATE semantic_facts SET value = ?, tags = ?, metadata = ?, updated_at = ? "
-                    "WHERE key = ?",
-                    (value, tags_str, meta_str, now, key),
-                )
-                conn.execute(
-                    "INSERT INTO semantic_facts_fts(rowid, key, value, tags) VALUES (?, ?, ?, ?)",
-                    (rowid, key, value, tags_str),
-                )
-            else:
-                conn.execute(
-                    "INSERT INTO semantic_facts (key, value, tags, metadata, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
-                    (key, value, tags_str, meta_str, now, now),
-                )
-                rowid = conn.execute(
-                    "SELECT rowid FROM semantic_facts WHERE key = ?", (key,)
-                ).fetchone()["rowid"]
-                conn.execute(
-                    "INSERT INTO semantic_facts_fts(rowid, key, value, tags) VALUES (?, ?, ?, ?)",
-                    (rowid, key, value, tags_str),
-                )
+        if existing:
+            rowid = existing["rowid"]
+            self._conn.execute(
+                "INSERT INTO semantic_facts_fts(semantic_facts_fts, rowid, key, value, tags) "
+                "VALUES('delete', ?, ?, ?, ?)",
+                (rowid, key,
+                 self._conn.execute("SELECT value FROM semantic_facts WHERE key = ?", (key,)).fetchone()["value"],
+                 self._conn.execute("SELECT tags FROM semantic_facts WHERE key = ?", (key,)).fetchone()["tags"]),
+            )
+            self._conn.execute(
+                "UPDATE semantic_facts SET value = ?, tags = ?, metadata = ?, updated_at = ? "
+                "WHERE key = ?",
+                (value, tags_str, meta_str, now, key),
+            )
+            self._conn.execute(
+                "INSERT INTO semantic_facts_fts(rowid, key, value, tags) VALUES (?, ?, ?, ?)",
+                (rowid, key, value, tags_str),
+            )
+        else:
+            self._conn.execute(
+                "INSERT INTO semantic_facts (key, value, tags, metadata, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (key, value, tags_str, meta_str, now, now),
+            )
+            rowid = self._conn.execute(
+                "SELECT rowid FROM semantic_facts WHERE key = ?", (key,)
+            ).fetchone()["rowid"]
+            self._conn.execute(
+                "INSERT INTO semantic_facts_fts(rowid, key, value, tags) VALUES (?, ?, ?, ?)",
+                (rowid, key, value, tags_str),
+            )
+        self._conn.commit()
 
     def get(self, key: str) -> Optional[Dict[str, Any]]:
         """Retrieve a single fact by exact key."""
@@ -204,12 +210,12 @@ class SemanticMemory:
             val = self._fallback.get(key)
             return {"key": key, "value": val} if val is not None else None
 
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT key, value, tags, metadata, created_at, updated_at "
-                "FROM semantic_facts WHERE key = ?",
-                (key,),
-            ).fetchone()
+        assert self._conn is not None
+        row = self._conn.execute(
+            "SELECT key, value, tags, metadata, created_at, updated_at "
+            "FROM semantic_facts WHERE key = ?",
+            (key,),
+        ).fetchone()
         return self._row_to_dict(row) if row else None
 
     def delete(self, key: str) -> bool:
@@ -217,18 +223,19 @@ class SemanticMemory:
         if self._db_path is None:
             return self._fallback.pop(key, None) is not None
 
-        with self._connect() as conn:
-            existing = conn.execute(
-                "SELECT rowid, value, tags FROM semantic_facts WHERE key = ?", (key,)
-            ).fetchone()
-            if not existing:
-                return False
-            conn.execute(
-                "INSERT INTO semantic_facts_fts(semantic_facts_fts, rowid, key, value, tags) "
-                "VALUES('delete', ?, ?, ?, ?)",
-                (existing["rowid"], key, existing["value"], existing["tags"]),
-            )
-            conn.execute("DELETE FROM semantic_facts WHERE key = ?", (key,))
+        assert self._conn is not None
+        existing = self._conn.execute(
+            "SELECT rowid, value, tags FROM semantic_facts WHERE key = ?", (key,)
+        ).fetchone()
+        if not existing:
+            return False
+        self._conn.execute(
+            "INSERT INTO semantic_facts_fts(semantic_facts_fts, rowid, key, value, tags) "
+            "VALUES('delete', ?, ?, ?, ?)",
+            (existing["rowid"], key, existing["value"], existing["tags"]),
+        )
+        self._conn.execute("DELETE FROM semantic_facts WHERE key = ?", (key,))
+        self._conn.commit()
         return True
 
     # ------------------------------------------------------------------
@@ -252,19 +259,19 @@ class SemanticMemory:
             return []
         match_expr = " ".join(f'"{t}"*' for t in tokens)
 
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT sf.key, sf.value, sf.tags, sf.metadata,
-                       sf.created_at, sf.updated_at
-                FROM semantic_facts_fts fts
-                JOIN semantic_facts sf ON sf.rowid = fts.rowid
-                WHERE fts MATCH ?
-                ORDER BY rank
-                LIMIT ?
-                """,
-                (match_expr, limit),
-            ).fetchall()
+        assert self._conn is not None
+        rows = self._conn.execute(
+            """
+            SELECT sf.key, sf.value, sf.tags, sf.metadata,
+                   sf.created_at, sf.updated_at
+            FROM semantic_facts_fts
+            JOIN semantic_facts sf ON sf.rowid = semantic_facts_fts.rowid
+            WHERE semantic_facts_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+            """,
+            (match_expr, limit),
+        ).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
     def search_by_tags(
@@ -282,30 +289,29 @@ class SemanticMemory:
             return []
         limit = limit or self._max_results
 
-        with self._connect() as conn:
-            if match_all:
-                # Every tag must appear in the comma-separated tags column.
-                where_parts = []
-                params: list = []
-                for tag in tags:
-                    where_parts.append("(',' || tags || ',' LIKE ?)")
-                    params.append(f"%,{tag},%")
-                where_clause = " AND ".join(where_parts)
-            else:
-                where_parts = []
-                params = []
-                for tag in tags:
-                    where_parts.append("(',' || tags || ',' LIKE ?)")
-                    params.append(f"%,{tag},%")
-                where_clause = " OR ".join(where_parts)
+        assert self._conn is not None
+        if match_all:
+            where_parts = []
+            params: list = []
+            for tag in tags:
+                where_parts.append("(',' || tags || ',' LIKE ?)")
+                params.append(f"%,{tag},%")
+            where_clause = " AND ".join(where_parts)
+        else:
+            where_parts = []
+            params = []
+            for tag in tags:
+                where_parts.append("(',' || tags || ',' LIKE ?)")
+                params.append(f"%,{tag},%")
+            where_clause = " OR ".join(where_parts)
 
-            params.append(limit)
-            rows = conn.execute(
-                f"SELECT key, value, tags, metadata, created_at, updated_at "
-                f"FROM semantic_facts WHERE {where_clause} "
-                f"ORDER BY updated_at DESC LIMIT ?",
-                params,
-            ).fetchall()
+        params.append(limit)
+        rows = self._conn.execute(
+            f"SELECT key, value, tags, metadata, created_at, updated_at "
+            f"FROM semantic_facts WHERE {where_clause} "
+            f"ORDER BY updated_at DESC LIMIT ?",
+            params,
+        ).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
     def list_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -313,20 +319,20 @@ class SemanticMemory:
         if self._db_path is None:
             return [{"key": k, "value": v} for k, v in self._fallback.items()]
         limit = limit or self._max_results
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT key, value, tags, metadata, created_at, updated_at "
-                "FROM semantic_facts ORDER BY updated_at DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+        assert self._conn is not None
+        rows = self._conn.execute(
+            "SELECT key, value, tags, metadata, created_at, updated_at "
+            "FROM semantic_facts ORDER BY updated_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
     def count(self) -> int:
         """Return total number of stored facts."""
         if self._db_path is None:
             return len(self._fallback)
-        with self._connect() as conn:
-            row = conn.execute("SELECT COUNT(*) AS n FROM semantic_facts").fetchone()
+        assert self._conn is not None
+        row = self._conn.execute("SELECT COUNT(*) AS n FROM semantic_facts").fetchone()
         return row["n"] if row else 0
 
     # ------------------------------------------------------------------

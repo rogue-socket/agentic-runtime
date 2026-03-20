@@ -1,7 +1,7 @@
 # File: workflows/samples/versioning/code_review_agent_v2.yaml
 # Purpose: Versioned workflow sample (v2) extending v1.
 # Description: Adds a finalization step to illustrate workflow evolution across versions.
-# Dependencies: Workflow registry latest-version selection and `tools.echo`.
+# Dependencies: Workflow registry latest-version selection, functions/stubs.py, tools.echo
 # Inputs/Outputs: Reads `inputs.issue`; writes summary, echo summary, and finalization outputs.
 # Side Effects: Produces run metadata with workflow_version=v2.
 
@@ -15,8 +15,8 @@ inputs:
 on_error: fail_fast
 steps:
   - id: generate_summary
-    type: model
-    handler: generate_summary
+    type: function
+    function: stubs.generate_summary
     inputs:
       issue: inputs.issue
 

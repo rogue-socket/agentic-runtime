@@ -25,35 +25,44 @@ class EpisodicMemory:
         self._db_path = db_path
         self._max_recall = max_recall
         self._fallback: Dict[str, Any] = {}
+        self._conn: Optional[sqlite3.Connection] = None
         if db_path is not None:
+            self._conn = self._open_connection()
             self._init_db()
 
     # ------------------------------------------------------------------
     # SQLite helpers
     # ------------------------------------------------------------------
 
-    def _connect(self) -> sqlite3.Connection:
+    def _open_connection(self) -> sqlite3.Connection:
         assert self._db_path is not None
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row
         return conn
 
     def _init_db(self) -> None:
-        with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS episodes (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    workflow_id TEXT    NOT NULL,
-                    run_id      TEXT,
-                    status      TEXT,
-                    inputs_summary TEXT,
-                    outputs_summary TEXT,
-                    error       TEXT,
-                    created_at  TEXT    NOT NULL
-                )
-                """
+        assert self._conn is not None
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS episodes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                workflow_id TEXT    NOT NULL,
+                run_id      TEXT,
+                status      TEXT,
+                inputs_summary TEXT,
+                outputs_summary TEXT,
+                error       TEXT,
+                created_at  TEXT    NOT NULL
             )
+            """
+        )
+        self._conn.commit()
+
+    def close(self) -> None:
+        """Close the underlying SQLite connection if open."""
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
 
     # ------------------------------------------------------------------
     # MemoryTier protocol
@@ -124,41 +133,42 @@ class EpisodicMemory:
         if self._db_path is None:
             return
         now = datetime.now(timezone.utc).isoformat()
-        with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO episodes
-                    (workflow_id, run_id, status, inputs_summary, outputs_summary, error, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (workflow_id, run_id, status, inputs_summary, outputs_summary, error, now),
-            )
+        assert self._conn is not None
+        self._conn.execute(
+            """
+            INSERT INTO episodes
+                (workflow_id, run_id, status, inputs_summary, outputs_summary, error, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (workflow_id, run_id, status, inputs_summary, outputs_summary, error, now),
+        )
+        self._conn.commit()
 
     def recall(self, workflow_id: str, limit: int = 5) -> List[Dict[str, Any]]:
         """Return the most recent episodes for *workflow_id*."""
         if self._db_path is None:
             return []
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT workflow_id, run_id, status, inputs_summary,
-                       outputs_summary, error, created_at
-                FROM episodes
-                WHERE workflow_id = ?
-                ORDER BY id DESC
-                LIMIT ?
-                """,
-                (workflow_id, limit),
-            ).fetchall()
+        assert self._conn is not None
+        rows = self._conn.execute(
+            """
+            SELECT workflow_id, run_id, status, inputs_summary,
+                   outputs_summary, error, created_at
+            FROM episodes
+            WHERE workflow_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (workflow_id, limit),
+        ).fetchall()
         return [dict(r) for r in rows]
 
     def recall_all(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Return most recent episodes across all workflows."""
         if self._db_path is None:
             return []
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM episodes ORDER BY id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+        assert self._conn is not None
+        rows = self._conn.execute(
+            "SELECT * FROM episodes ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
         return [dict(r) for r in rows]

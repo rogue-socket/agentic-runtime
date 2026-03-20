@@ -1,27 +1,12 @@
 from __future__ import annotations
 
-"""File: src/agent_runtime/steps.py
+"""Deprecated: model-step handler registry.
 
-Purpose:
-Define model-step handler registration and default scaffold handler(s).
+This module is retained only for backward compatibility with existing tests
+that use ``type: model`` workflow steps.  New workflows should use
+``type: function`` (backed by functions/) or ``type: agent`` instead.
 
-Description:
-Provides a lightweight registry mapping handler names to callables and
-ships `generate_summary` as a deterministic example model handler.
-
-Key Components:
-- `StepHandlerRegistry`
-- `generate_summary`
-
-Dependencies:
-- RuntimeState wrapper and error types
-
-Inputs/Outputs:
-- Input: handler names and runtime step input states
-- Output: structured dict outputs written into step namespaces
-
-Side Effects:
-- None.
+Only ``StepHandlerRegistry`` and ``generate_summary`` are still referenced.
 """
 
 from typing import Any, Callable, Dict
@@ -114,105 +99,5 @@ def generate_summary(state: RuntimeState) -> StateDict:
     return {"summary": summary}
 
 
-def classify_severity(state: RuntimeState) -> StateDict:
-    # TODO: Replace with LLM-backed classification.
-    #   Should send issue context to a model and return a structured severity assessment.
-    if "issue" not in state:
-        raise KeyError("Missing required key: issue")
-    issue = state["issue"]
-    if not isinstance(issue, str) or not issue.strip():
-        raise ValueError("issue must be a non-empty string")
-
-    lowered = issue.strip().lower()
-    if any(word in lowered for word in ["crash", "down", "outage", "critical", "data loss"]):
-        severity = "critical"
-        reason = "Service impact keywords detected."
-    elif any(word in lowered for word in ["error", "fail", "broken", "bug", "timeout"]):
-        severity = "high"
-        reason = "Functional failure keywords detected."
-    elif any(word in lowered for word in ["slow", "degraded", "intermittent", "flaky"]):
-        severity = "medium"
-        reason = "Performance or reliability keywords detected."
-    else:
-        severity = "low"
-        reason = "No high-impact keywords detected."
-
-    return {"severity": severity, "reason": reason}
-
-
-def diagnose_issue(state: RuntimeState) -> StateDict:
-    # TODO: Replace with LLM-backed diagnosis.
-    #   Should analyze the issue summary and any gathered context (logs, metrics) to
-    #   produce a root-cause hypothesis and recommended next steps.
-    if "summary" not in state:
-        raise KeyError("Missing required key: summary")
-    summary = state["summary"]
-    if not isinstance(summary, str) or not summary.strip():
-        raise ValueError("summary must be a non-empty string")
-
-    analysis = f"Diagnosis: The issue described as '{summary.strip()}' likely involves a configuration or integration problem."
-    root_cause = "Potential root cause: misconfigured service dependency or transient upstream failure."
-    recommendation = "Recommended action: verify service configuration and check upstream dependency health."
-
-    return {
-        "analysis": analysis,
-        "root_cause": root_cause,
-        "recommendation": recommendation,
-    }
-
-
-def propose_fix(state: RuntimeState) -> StateDict:
-    # TODO: Replace with LLM-backed fix proposal.
-    #   Should take the diagnosis and produce a concrete, actionable fix (code patch,
-    #   config change, runbook steps) based on the root cause analysis.
-    if "analysis" not in state:
-        raise KeyError("Missing required key: analysis")
-    analysis = state["analysis"]
-    if not isinstance(analysis, str) or not analysis.strip():
-        raise ValueError("analysis must be a non-empty string")
-
-    fix = "Proposed fix: review and update the service configuration for the affected dependency."
-    confidence = "medium"
-    steps_to_fix = [
-        "1. Identify the failing dependency from error logs.",
-        "2. Verify connection parameters and credentials.",
-        "3. Apply corrected configuration and restart the service.",
-        "4. Monitor for recurrence.",
-    ]
-
-    return {
-        "fix": fix,
-        "confidence": confidence,
-        "steps": steps_to_fix,
-    }
-
-
-def review_code(state: RuntimeState) -> StateDict:
-    # TODO: Replace with LLM-backed code review.
-    #   Should analyze a code diff and produce structured review comments with
-    #   severity, line references, and suggested changes.
-    if "diff" not in state:
-        raise KeyError("Missing required key: diff")
-    diff = state["diff"]
-    if not isinstance(diff, str) or not diff.strip():
-        raise ValueError("diff must be a non-empty string")
-
-    line_count = len(diff.strip().splitlines())
-    comments = [
-        {
-            "type": "suggestion",
-            "message": "Consider adding input validation for edge cases.",
-        },
-        {
-            "type": "nit",
-            "message": "Minor: variable naming could be more descriptive.",
-        },
-    ]
-    verdict = "approve" if line_count < 50 else "request_changes"
-    summary = f"Reviewed {line_count} lines of changes."
-
-    return {
-        "comments": comments,
-        "verdict": verdict,
-        "summary": summary,
-    }
+# classify_severity, diagnose_issue, propose_fix, review_code were removed.
+# Use functions/stubs.py for deterministic stubs with the modern (dict -> dict) signature.
