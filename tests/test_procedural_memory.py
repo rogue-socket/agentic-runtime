@@ -17,13 +17,12 @@ def test_write_then_read() -> None:
     assert result == {"rule": "always retry on 503", "confidence": 0.9}
 
 
-def test_write_replaces_previous() -> None:
+def test_write_merges_previous() -> None:
     mem = ProceduralMemory()
     mem.write({"a": 1})
     mem.write({"b": 2})
     result = mem.read({})
-    assert result == {"b": 2}
-    assert "a" not in result
+    assert result == {"a": 1, "b": 2}
 
 
 def test_read_returns_copy() -> None:

@@ -59,6 +59,7 @@ class LLMAdapter(Protocol):
         params: Dict[str, Any],
         base_url: Optional[str],
         context: Optional[Dict[str, Any]],
+        timeout: int = DEFAULT_TIMEOUT,
     ) -> LLMResponse:
         """Execute an LLM request and return a normalized response."""
         ...
@@ -82,6 +83,7 @@ class OpenAIAdapter:
         params: Dict[str, Any],
         base_url: Optional[str],
         context: Optional[Dict[str, Any]],
+        timeout: int = DEFAULT_TIMEOUT,
     ) -> LLMResponse:
         if not api_key:
             raise ValueError("Missing OpenAI API key.")
@@ -112,7 +114,7 @@ class OpenAIAdapter:
         )
 
         try:
-            raw = _urlopen_with_retry(req)
+            raw = _urlopen_with_retry(req, timeout=timeout)
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8") if exc.fp else ""
             raise RuntimeError(f"OpenAI API error ({exc.code}): {body}") from exc
@@ -153,6 +155,7 @@ class AnthropicAdapter:
         params: Dict[str, Any],
         base_url: Optional[str],
         context: Optional[Dict[str, Any]],
+        timeout: int = DEFAULT_TIMEOUT,
     ) -> LLMResponse:
         if not api_key:
             raise ValueError("Missing Anthropic API key.")
@@ -182,7 +185,7 @@ class AnthropicAdapter:
         )
 
         try:
-            raw = _urlopen_with_retry(req)
+            raw = _urlopen_with_retry(req, timeout=timeout)
         except urllib.error.HTTPError as exc:
             body_text = exc.read().decode("utf-8") if exc.fp else ""
             raise RuntimeError(f"Anthropic API error ({exc.code}): {body_text}") from exc
@@ -253,6 +256,7 @@ class GeminiAdapter:
         params: Dict[str, Any],
         base_url: Optional[str],
         context: Optional[Dict[str, Any]],
+        timeout: int = DEFAULT_TIMEOUT,
     ) -> LLMResponse:
         if not api_key:
             raise ValueError("Missing Gemini API key.")
@@ -307,7 +311,7 @@ class GeminiAdapter:
         )
 
         try:
-            raw = _urlopen_with_retry(req)
+            raw = _urlopen_with_retry(req, timeout=timeout)
         except urllib.error.HTTPError as exc:
             body_text = exc.read().decode("utf-8") if exc.fp else ""
             raise RuntimeError(f"Gemini API error ({exc.code}): {body_text}") from exc

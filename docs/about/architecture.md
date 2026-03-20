@@ -3,6 +3,23 @@ File: docs/about/architecture.md
 Purpose: Defines the runtime's architectural model and execution contracts.
 Description: Documents entities, control flow, state model, persistence, replay, and extension points.
 Dependencies: Mirrors behavior implemented in src/agent_runtime.
+
+TODO(H5-high): This file still has ~15 stale "handler" references from the
+  pre-Phase-2 architecture.  The handler concept was replaced by the three
+  step types (function, agent, tool).  Specific locations to fix:
+  - L155: "Calls a handler function" (model step section — OK as deprecated note)
+  - L192: "strategy.handler" should be "strategy: custom" or dotted import path
+  - L354: "giving handlers context about prior runs" should say "giving steps…"
+  - L407: "step handler or tool failure" should say "step function, agent, or tool failure"
+  - L409: HandlerNotFoundError — deprecated; document it as legacy
+  - L463: "does not call handlers/tools/models" → "does not call functions/tools/agents"
+  - L545/L555: "handler_duration_ms" — field name is correct (DB column) but description
+    should clarify it maps to function-step or model-step timing
+  - L625-626: "handler: llm" / "make_llm_handler()" — the LLM handler is a legacy
+    integration path; document it as deprecated in favor of agent steps
+  - L639-640: "Built-in llm handler" — same, mark as deprecated path
+  - L670: "handlers, tools, providers" → "functions, tools, providers" (manifest section)
+  - L720: "handlers + tools" → "functions + tools" (export section)
 Inputs/Outputs: Input for developers; output is shared architecture understanding.
 Side Effects: None.
 -->

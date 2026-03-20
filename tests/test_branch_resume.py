@@ -1,3 +1,5 @@
+# TODO(H3-high): This file contains 4 junk auto-generated docstrings
+#   that should be replaced with real descriptions or removed entirely.
 from __future__ import annotations
 
 """File: tests/test_branch_resume.py
@@ -126,7 +128,7 @@ steps:
     tool_registry.register(FlakyTool())
 
     executor = Executor(wf["steps"], storage, None, _memory_manager(), tool_registry)
-    run = executor.run(wf["name"], {"issue": "bug"})
+    run = executor.run(wf["workflow_id"], {"issue": "bug"})
     assert run.status == "FAILED"
 
     steps = storage.load_steps(run.run_id)

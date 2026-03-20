@@ -56,7 +56,12 @@ class AgentRegistry:
                 try:
                     defn = load_agent_definition(path)
                     registry.register(defn)
-                except Exception:
+                except Exception as exc:
+                    import warnings
+                    warnings.warn(
+                        f"Skipping invalid agent file {path}: {exc}",
+                        stacklevel=2,
+                    )
                     continue  # skip invalid files during directory scan
         return registry
 
@@ -66,10 +71,4 @@ class AgentRegistry:
         return versions[key]
 
 
-def _version_sort_key(v: str):
-    """Sort key that handles 'v1', 'v2', ..., 'v10' correctly."""
-    stripped = v.lstrip("vV")
-    try:
-        return (0, int(stripped))
-    except ValueError:
-        return (1, v)
+from ..utils import version_sort_key as _version_sort_key

@@ -58,6 +58,7 @@ class StepStatus(str):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
+    COMPLETED_WITH_ERRORS = "COMPLETED_WITH_ERRORS"
     FAILED = "FAILED"
 
 
@@ -315,11 +316,20 @@ class Executor:
             created_at=utc_now().isoformat(),
             started_at=utc_now().isoformat(),
             state=RunState(
-                _data={"inputs": copy.deepcopy(initial_state), "steps": {}, "runtime": {}},
+                _data={
+                    "inputs": copy.deepcopy(initial_state),
+                    "steps": {},
+                    "runtime": {
+                        "workflow_id": workflow_id,
+                        "run_id": str(uuid.uuid4()),  # will be overwritten below
+                    },
+                },
                 _overwrite_policy=self.overwrite_policy,
                 _logger=self.logger,
             ),
         )
+        # Align the run_id in state.runtime with the actual run record.
+        run.state.data["runtime"]["run_id"] = run.run_id
 
         state_version = 0
 
@@ -661,7 +671,7 @@ class Executor:
             current_step_id = self._resolve_next_step(step_def, run.state.data)
 
         if run.status != StepStatus.FAILED:
-            final_status = "COMPLETED_WITH_ERRORS" if had_errors else StepStatus.COMPLETED
+            final_status = StepStatus.COMPLETED_WITH_ERRORS if had_errors else StepStatus.COMPLETED
             run.set_status(final_status, completed_at=utc_now().isoformat())
             self.storage.update_run_status(
                 run.run_id,
@@ -670,6 +680,19 @@ class Executor:
                 completed_at=run.completed_at,
             )
             run.freeze()
+
+        # Final memory persist with run outcome so episodic memory can record
+        # the completed episode (status, error) alongside step outputs.
+        try:
+            run.unfreeze()
+            run.state.data.setdefault("runtime", {}).update({
+                "status": run.status,
+                "error": run.error or "",
+            })
+            self.memory_manager.persist_state(run.state.data)
+            run.freeze()
+        except Exception:
+            pass  # best-effort; don't fail the run for memory persistence
 
         self._emit("RUN_COMPLETE", {
             "run_id": run.run_id,
@@ -754,7 +777,15 @@ class Executor:
 
     def _resolve_next_step(self, step_def: StepDefinition, state: StateDict) -> Optional[str]:
         """Resolve next step via branch rules or sequential fallback."""
-        # [TODO] Support parallel step execution when DAG scheduler is introduced.
+        # TODO(PM-3, parallel-execution): Steps currently execute sequentially.
+        #   To enable parallel execution:
+        #   1. Extend StepDefinition with a `parallel_group` field so adjacent
+        #      steps in the same group can run concurrently via asyncio.gather.
+        #   2. Build a lightweight DAG scheduler that resolves data dependencies
+        #      between steps and only parallelises truly independent ones.
+        #   3. Merge parallel step outputs into state atomically (snapshot per
+        #      group, not per step) to preserve replay determinism.
+        #   4. Update visualization to render parallel branches side-by-side.
         # [TODO(roadmap)] Multi-agent composition: allow a step to invoke
         #   a sub-workflow or delegate to another agent manifest. This is
         #   the foundation for orchestrator-specialist agent patterns.

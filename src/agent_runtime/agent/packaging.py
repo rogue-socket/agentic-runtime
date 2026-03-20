@@ -6,9 +6,10 @@ import os
 import shutil
 import tarfile
 import tempfile
-from typing import List
+from typing import List, Union
 
 from ..errors import AgentValidationError
+from .definition import AgentDefinition, load_agent_definition
 from .manifest import AgentManifest, load_agent_manifest
 
 
@@ -61,13 +62,15 @@ def export_agent(manifest: AgentManifest, output_path: str, project_root: str = 
     return os.path.abspath(output_path)
 
 
-def import_agent(archive_path: str, project_root: str = ".") -> AgentManifest:
+def import_agent(archive_path: str, project_root: str = ".") -> Union[AgentManifest, AgentDefinition]:
     """Import an agent archive into the project.
 
     Extracts the archive, copies files into the project tree, and places
-    the manifest in ``agents/``.
+    the agent YAML in ``agents/``.
 
-    Returns the loaded :class:`AgentManifest` from the imported files.
+    Supports both definition-format and manifest-format archives.
+
+    Returns the loaded agent (``AgentDefinition`` or ``AgentManifest``).
     """
     if not os.path.isfile(archive_path):
         raise AgentValidationError(f"Archive not found: {archive_path}")
@@ -89,12 +92,28 @@ def import_agent(archive_path: str, project_root: str = ".") -> AgentManifest:
                     )
             tar.extractall(tmp_dir)
 
-        # Load manifest from extracted files
-        manifest_path = os.path.join(tmp_dir, "agent.yaml")
-        if not os.path.isfile(manifest_path):
+        # Load agent from extracted files
+        agent_yaml_path = os.path.join(tmp_dir, "agent.yaml")
+        if not os.path.isfile(agent_yaml_path):
             raise AgentValidationError("Archive does not contain agent.yaml")
 
-        manifest = load_agent_manifest(manifest_path)
+        # Try definition format first (canonical), fall back to manifest
+        agent_def = None
+        try:
+            agent_def = load_agent_definition(agent_yaml_path)
+        except Exception:
+            pass
+
+        if agent_def is not None:
+            # Definition-format: self-contained, just copy to agents/
+            agents_dir = os.path.join(project_root, "agents")
+            os.makedirs(agents_dir, exist_ok=True)
+            dst = os.path.join(agents_dir, f"{agent_def.agent_id}.yaml")
+            shutil.copy2(agent_yaml_path, dst)
+            return load_agent_definition(dst)
+
+        # Legacy manifest format
+        manifest = load_agent_manifest(agent_yaml_path)
 
         def _safe_copy(rel_path: str, label: str) -> None:
             """Copy a file from tmp extraction into project_root, rejecting traversal."""
@@ -125,7 +144,7 @@ def import_agent(archive_path: str, project_root: str = ".") -> AgentManifest:
         dst_manifest = os.path.join(
             agents_dir, f"{manifest.agent_id}.yaml"
         )
-        shutil.copy2(manifest_path, dst_manifest)
+        shutil.copy2(agent_yaml_path, dst_manifest)
 
         # Reload from final location
         return load_agent_manifest(dst_manifest)

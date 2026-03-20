@@ -4,6 +4,12 @@ An agent manifest (``agent.yaml``) is the portable unit of the runtime.
 It declares everything an agent needs to run: workflow, handlers, tools,
 LLM providers, and environment variables.
 
+# TODO(M13-medium): This module and its docstring/example still use "handlers"
+#   as a first-class concept. The handlers field in AgentManifest is stale —
+#   modern agents use type: function and type: agent steps instead.
+#   Update the manifest schema, docstring examples, and validation logic to
+#   replace "handlers" with "functions" (or remove handler validation entirely).
+
 Example ``agent.yaml``::
 
     agent:
@@ -63,7 +69,16 @@ class ProviderRequirement:
 
 @dataclass
 class AgentManifest:
-    """Parsed agent manifest."""
+    """Parsed agent manifest (packaging model — deprecated).
+
+    .. deprecated::
+        ``AgentManifest`` is the legacy *packaging* format.  For defining
+        how an agent executes (LLM config, pipeline, strategy), use
+        ``AgentDefinition`` from ``agent_runtime.agent.definition``.
+        Packaging fields (``workflow``, ``handlers``, ``tools``, ``env``)
+        will be folded into ``AgentDefinition`` in a future release and
+        this class will be removed.
+    """
 
     # Identity
     agent_id: str

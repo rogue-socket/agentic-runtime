@@ -74,10 +74,10 @@ class ToolNotFoundError(RuntimeErrorBase):
 
 
 class HandlerNotFoundError(RuntimeErrorBase):
-    """Raised when a model step handler key is not registered.
+    """Deprecated: raised when a model step handler key is not registered.
 
-    Workflow loading resolves handlers eagerly, so this is usually raised
-    before run execution starts.
+    Only used by the deprecated ``steps.py`` module.  Will be removed
+    when ``steps.py`` is fully retired.
 
     Example:
         >>> raise HandlerNotFoundError("handler missing")

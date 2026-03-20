@@ -74,7 +74,7 @@ def validate_resume(run_status: str) -> None:
     Raises:
         StepExecutionError: For non-failed statuses.
     """
-    if run_status == StepStatus.COMPLETED or run_status == "COMPLETED_WITH_ERRORS":
+    if run_status == StepStatus.COMPLETED or run_status == StepStatus.COMPLETED_WITH_ERRORS:
         raise StepExecutionError("Cannot resume a completed run.")
     if run_status == StepStatus.RUNNING:
         raise StepExecutionError("Cannot resume a running run.")

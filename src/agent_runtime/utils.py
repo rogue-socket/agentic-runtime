@@ -293,12 +293,17 @@ def safe_eval(expr: str, state: Dict[str, Any]) -> bool:
         True
     """
     # [SCAFFOLD:DETERMINISM] Simple safe eval; replace with dedicated expression engine later.
-    # TODO(gap-7): Expand the expression language for branch conditions.
-    #   Currently limited to `state` and `len`. Useful additions:
+    # TODO(Eng-5, expression-language): Expand the expression language for
+    #   branch conditions.  Currently limited to `state` and `len`.
+    #   Useful additions:
     #   - String methods: .startswith(), .endswith(), .lower(), "x" in state.y
     #   - Math helpers: min, max, abs
     #   - Membership tests: value in [list]
+    #   - Regex matching: re_match(pattern, state.field)
     #   Must preserve determinism and block unsafe execution.
+    #   Consider replacing the AST-walk approach with a small grammar
+    #   (e.g., Lark or a hand-rolled recursive-descent parser) so the
+    #   language surface is explicit rather than an implicit subset of Python.
     tree = ast.parse(expr, mode="eval")
     _SafeExprValidator().visit(tree)
     context = {"state": _DotDict(state), "len": len}
@@ -328,3 +333,12 @@ def sha256_json(data: Any) -> str:
     # [SCAFFOLD:DETERMINISM] Canonical JSON hash; migrate to full event sourcing later.
     canonical = json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return sha256_text(canonical)
+
+
+def version_sort_key(v: str):
+    """Sort key that handles 'v1', 'v2', ..., 'v10' correctly."""
+    stripped = v.lstrip("vV")
+    try:
+        return (0, int(stripped))
+    except ValueError:
+        return (1, v)

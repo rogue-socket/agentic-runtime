@@ -1,3 +1,6 @@
+# TODO(M10-medium): FakeLLMClient, FakeTool, and FakeToolRegistry helper
+#   classes are defined in this file but could be shared with other test files.
+#   Consider extracting to conftest.py or a shared test_helpers module.
 """Tests for the agent definition layer (Phase 1 + Phase 2 pipeline).
 
 Covers: PromptRegistry, AgentDefinition, PipelineStep, AgentRegistry,

@@ -1,3 +1,5 @@
+# TODO(H3-high): This file contains 8 junk auto-generated docstrings
+#   that should be replaced with real descriptions or removed entirely.
 from __future__ import annotations
 
 """File: tests/test_workflow_versioning.py

@@ -123,3 +123,57 @@ class TestAppendStepEmptyDict:
         assert loaded[0].output == {"summary": "done"}
         assert loaded[0].state_before["inputs"]["issue"] == "test"
         assert loaded[0].state_after["steps"]["s1"]["summary"] == "done"
+
+
+class TestAgentTraceRoundtrip:
+    """Verify agent_trace field survives write→read roundtrip (C1 fix)."""
+
+    def test_agent_trace_none_stays_none(self) -> None:
+        storage = _storage()
+        _ensure_run(storage)
+        step = _make_step(agent_trace=None)
+        storage.append_step("run1", step)
+
+        loaded = storage.load_steps("run1")
+        assert loaded[0].agent_trace is None
+
+    def test_agent_trace_roundtrips(self) -> None:
+        storage = _storage()
+        _ensure_run(storage)
+        trace = [
+            {
+                "iteration": 1,
+                "llm_request": "Summarize this issue",
+                "llm_response_text": "The issue is about login failures.",
+                "tool_calls": [
+                    {"tool": "tools.echo", "input": {"message": "hi"},
+                     "success": True, "duration_ms": 5}
+                ],
+                "observation": "Tool returned successfully",
+            },
+            {
+                "iteration": 2,
+                "llm_request": "Any more details?",
+                "llm_response_text": "No further info needed.",
+                "tool_calls": [],
+                "observation": None,
+            },
+        ]
+        step = _make_step(agent_trace=trace)
+        storage.append_step("run1", step)
+
+        loaded = storage.load_steps("run1")
+        assert loaded[0].agent_trace is not None
+        assert len(loaded[0].agent_trace) == 2
+        assert loaded[0].agent_trace[0]["iteration"] == 1
+        assert loaded[0].agent_trace[0]["tool_calls"][0]["tool"] == "tools.echo"
+        assert loaded[0].agent_trace[1]["llm_response_text"] == "No further info needed."
+
+    def test_empty_trace_list_roundtrips(self) -> None:
+        storage = _storage()
+        _ensure_run(storage)
+        step = _make_step(agent_trace=[])
+        storage.append_step("run1", step)
+
+        loaded = storage.load_steps("run1")
+        assert loaded[0].agent_trace == []

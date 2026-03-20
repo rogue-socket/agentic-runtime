@@ -1,3 +1,5 @@
+# TODO(H3-high): This file contains 1 junk auto-generated docstring
+#   that should be replaced with a real description or removed entirely.
 from __future__ import annotations
 
 """File: tests/test_state_history.py

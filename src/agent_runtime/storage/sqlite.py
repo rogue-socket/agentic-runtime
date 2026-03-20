@@ -181,6 +181,7 @@ class SQLiteStorage(Storage):
                 handler_duration_ms INTEGER,
                 tool_duration_ms INTEGER,
                 attempts INTEGER,
+                agent_trace_json TEXT,
                 FOREIGN KEY(run_id) REFERENCES runs(id)
             );
             CREATE TABLE IF NOT EXISTS state_versions (
@@ -214,6 +215,8 @@ class SQLiteStorage(Storage):
             conn.execute("ALTER TABLE steps ADD COLUMN handler_duration_ms INTEGER")
         if "tool_duration_ms" not in columns:
             conn.execute("ALTER TABLE steps ADD COLUMN tool_duration_ms INTEGER")
+        if "agent_trace_json" not in columns:
+            conn.execute("ALTER TABLE steps ADD COLUMN agent_trace_json TEXT")
 
     def _ensure_runs_columns(self, conn: sqlite3.Connection) -> None:
         """Add missing `runs` table columns for backward compatibility."""
@@ -280,9 +283,9 @@ class SQLiteStorage(Storage):
             INSERT INTO steps (
                 run_id, step_id, type, status, input_json, output_json, error, last_error,
                 state_before_json, state_after_json, execution_index, started_at, finished_at,
-                duration_ms, handler_duration_ms, tool_duration_ms, attempts
+                duration_ms, handler_duration_ms, tool_duration_ms, attempts, agent_trace_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -302,6 +305,7 @@ class SQLiteStorage(Storage):
                 step.handler_duration_ms,
                 step.tool_duration_ms,
                 step.attempt_count,
+                json_dumps(step.agent_trace) if step.agent_trace is not None else None,
             ),
         )
 
@@ -356,6 +360,7 @@ class SQLiteStorage(Storage):
         steps: list[StepExecution] = []
         for row in rows:
             from ..core import StepExecution
+            agent_trace_raw = row["agent_trace_json"] if "agent_trace_json" in row.keys() else None
             steps.append(
                 StepExecution(
                     step_id=row["step_id"],
@@ -374,6 +379,7 @@ class SQLiteStorage(Storage):
                     tool_duration_ms=row["tool_duration_ms"],
                     attempt_count=row["attempts"],
                     execution_index=row["execution_index"],
+                    agent_trace=json_loads(agent_trace_raw) if agent_trace_raw else None,
                 )
             )
         return steps
@@ -417,3 +423,28 @@ class SQLiteStorage(Storage):
         if row is None or row["max_execution_index"] is None:
             return 0
         return int(row["max_execution_index"])
+
+    def list_runs(self, limit: int = 20) -> list:
+        """Load most recent runs ordered by creation time descending."""
+        rows = self._conn.execute(
+            "SELECT * FROM runs ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        runs = []
+        for row in rows:
+            from ..core import Run
+            runs.append(Run(
+                run_id=row["id"],
+                workflow_id=row["workflow_id"],
+                workflow_version=row["workflow_version"],
+                workflow_hash=row["workflow_hash"],
+                workflow_yaml=None,  # skip large payload for listing
+                workflow_steps=None,
+                input_hash=row["input_hash"],
+                status=row["status"],
+                created_at=row["created_at"],
+                started_at=row["started_at"],
+                completed_at=row["completed_at"],
+                error=row["error"],
+            ))
+        return runs

@@ -396,7 +396,6 @@ def _parse_workflow(
 
     workflow_hash = sha256_text(raw_text)
     return {
-        "name": workflow_id,
         "workflow_id": workflow_id,
         "workflow_version": workflow_version,
         "inputs": workflow_inputs,
@@ -410,6 +409,10 @@ def _parse_workflow(
 
 def load_workflow(
     path: str,
+    # TODO(M7-medium): handler_registry parameter is dead — only used for
+    #   deprecated `type: model` steps. It's threaded through parse_workflow()
+    #   at L178 and L430 but ignored by all current step types. Remove once
+    #   model steps are fully deprecated (see M1, M6).
     handler_registry=None,  # deprecated — ignored, kept for backward compat
     *,
     functions_dir: Optional[str] = None,

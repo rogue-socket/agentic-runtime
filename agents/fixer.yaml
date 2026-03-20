@@ -1,0 +1,30 @@
+agent:
+  id: fixer
+  version: v1
+  description: "Proposes actionable fixes for issues based on a summary and priority"
+  model: gemini/gemini-2.5-flash
+  system: prompts.fixer_system
+  tools:
+    - tools.echo
+  strategy:
+    type: single
+  temperature: 0.4
+  max_tokens: 2048
+  pipeline:
+    - id: main
+      type: model
+      prompt: |
+        Given this issue and its summary, propose concrete next steps to fix it.
+
+        Issue: {{ inputs.issue }}
+        Summary: {{ inputs.summary }}
+
+        Respond with a numbered list of actionable steps a developer should take.
+  prompts:
+    - id: fixer_system
+      version: v1
+      text: |
+        You are a senior software engineer specializing in incident response.
+        Given an issue description and summary, propose clear, actionable fixes.
+        Prioritize the most impactful changes first. Be specific about file paths,
+        configuration changes, or code modifications when possible.

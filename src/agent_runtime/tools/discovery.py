@@ -93,6 +93,8 @@ def _discover_tool_instances(tools_dir: str) -> List[tuple]:
             continue
 
         module = importlib.util.module_from_spec(spec)
+        # TODO(Eng-3, module-caching): Same sys.modules caching concern as
+        #   function_resolver._import_from_path — stale modules after edits.
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
 
@@ -108,6 +110,9 @@ def _discover_tool_instances(tools_dir: str) -> List[tuple]:
             try:
                 instance = attr()
                 results.append((instance.name, instance))
+            # TODO(L2-low): Silent exception swallowing — tool instantiation
+            #   failures are silently skipped. A tool class might import fine
+            #   but fail to construct. Log a warning so users can diagnose.
             except Exception:
                 continue
 

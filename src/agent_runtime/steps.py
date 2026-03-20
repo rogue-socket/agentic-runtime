@@ -9,6 +9,14 @@ that use ``type: model`` workflow steps.  New workflows should use
 Only ``StepHandlerRegistry`` and ``generate_summary`` are still referenced.
 """
 
+import warnings
+
+warnings.warn(
+    "agent_runtime.steps is deprecated — use type: function or type: agent steps instead",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from typing import Any, Callable, Dict
 
 from .errors import HandlerNotFoundError
@@ -81,13 +89,6 @@ def generate_summary(state: RuntimeState) -> StateDict:
         'Issue related to bug.'
     """
     # [SCAFFOLD:LLM] Replace deterministic summary with model-backed generation.
-    # TODO: Replace this stub with an actual LLM call (e.g. OpenAI, Anthropic).
-    #   This handler currently returns a hardcoded string transformation.
-    #   It needs to:
-    #   1. Accept a model backend configuration (provider, model name, temperature, etc.)
-    #   2. Build a prompt from the step input
-    #   3. Call the model and return structured output
-    #   4. Handle model errors, token limits, and retries at the handler level
     if "issue" not in state:
         raise KeyError("Missing required key: issue")
     issue = state["issue"]

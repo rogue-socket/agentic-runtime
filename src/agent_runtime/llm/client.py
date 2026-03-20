@@ -53,9 +53,11 @@ class LLMClient:
 
         model_cfg = provider_obj.get_model(model_id)
         merged_params: Dict[str, Any] = {}
+        timeout: int = 60  # default
         if model_cfg is not None:
             merged_params["temperature"] = model_cfg.temperature
             merged_params["max_tokens"] = model_cfg.max_tokens
+            timeout = model_cfg.timeout
             merged_params.update(model_cfg.extra)
 
         if params:
@@ -81,6 +83,7 @@ class LLMClient:
                 params=merged_params,
                 base_url=provider_obj.base_url,
                 context=context,
+                timeout=timeout,
             )
         except Exception as exc:  # noqa: BLE001
             if self.logger:

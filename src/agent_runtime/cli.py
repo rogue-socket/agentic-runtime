@@ -63,7 +63,7 @@ from .workflow_registry import WorkflowRegistry, parse_workflow_reference
 from .visualization import GraphBuilder, RunLoader, TimelineBuilder, render_ascii, render_html
 from .utils import sha256_json
 from .agent import AgentManifest, load_agent_manifest, validate_agent, export_agent, import_agent
-from .agent import AgentRegistry, load_agent_definition
+from .agent import AgentDefinition, AgentRegistry, load_agent_definition
 from .llm import LLMClient
 from .llm.handler import make_llm_handler
 
@@ -505,7 +505,7 @@ agent:
   description: "Summarizes an issue and calls out likely root causes"
   model: gpt-4o                 # LLM model (provider/model or just model name)
   system: "You are a senior support engineer. Be concise and actionable."
-  strategy: single              # single | react | cot
+  strategy: single              # single | react | custom
   tools:
     - tools.echo
   temperature: 0.3
@@ -521,12 +521,12 @@ agent:
 
 
 def _init_project(target_dir: str, *, model: Optional[str] = None) -> None:
-    """Create workflow scaffold files in target directory."""
-    # TODO(gap-1): Scaffold a working LLM workflow by default so new users
-    #   see a real LLM call without editing YAML. Currently the generated
-    #   example uses stub functions. Wire model parameter into the example
-    #   workflow and agent definition so `ai quickstart` runs an actual
-    #   LLM step end-to-end.
+    """Create workflow scaffold files in target directory.
+
+    The scaffolded example workflow includes an ``agent`` step that makes
+    a real LLM call (summarizer), so ``ai quickstart`` produces a live
+    end-to-end run out of the box once a provider API key is configured.
+    """
     workflows_dir = os.path.join(target_dir, "workflows")
     tools_dir = os.path.join(target_dir, "tools")
     agents_dir = os.path.join(target_dir, "agents")
@@ -625,7 +625,7 @@ def _default_memory_manager(
         working=WorkingMemory(max_entries=max_entries, max_scratch_bytes=max_scratch_bytes),
         episodic=EpisodicMemory(db_path=db_path),
         semantic=SemanticMemory(db_path=db_path),
-        procedural=ProceduralMemory(),
+        procedural=ProceduralMemory(db_path=db_path),
     )
 
 def _default_llm_client(cfg: RuntimeConfig, logger: Optional[StructuredLogger] = None) -> LLMClient:
@@ -689,11 +689,12 @@ def _coerce_value(raw: str) -> Any:
 def _try_resolve_agent(
     ref: str,
     agents_dir: str = "agents",
-) -> Optional[AgentManifest]:
+) -> Optional[AgentManifest | AgentDefinition]:
     """Try to resolve *ref* as an agent id from the agents/ directory.
 
-    Returns the manifest if found, ``None`` otherwise (falls back to workflow
-    resolution).
+    Returns an ``AgentDefinition`` or ``AgentManifest`` if found, ``None``
+    otherwise (falls back to workflow resolution).
+    Tries the definition format first (canonical), then legacy manifest.
     """
     if not os.path.isdir(agents_dir):
         return None
@@ -709,14 +710,72 @@ def _try_resolve_agent(
         if not filename.endswith((".yaml", ".yml")):
             continue
         filepath = os.path.join(agents_dir, filename)
+        # Try definition format first (canonical)
+        try:
+            defn = load_agent_definition(filepath)
+            if defn.agent_id == agent_id:
+                if version is None or defn.version == version:
+                    return defn
+            continue
+        except Exception as exc:
+            # Only swallow "wrong agent" / "not an agent file" errors.
+            # Log parse failures so users can diagnose broken YAML.
+            import logging as _logging
+            _logging.getLogger("agent_runtime").debug(
+                "Could not load %s as definition: %s", filepath, exc,
+            )
+        # Fall back to legacy manifest
         try:
             m = load_agent_manifest(filepath)
-        except Exception:
+        except Exception as exc:
+            import logging as _logging
+            _logging.getLogger("agent_runtime").debug(
+                "Could not load %s as manifest: %s", filepath, exc,
+            )
             continue
         if m.agent_id == agent_id:
             if version is None or m.version == version:
                 return m
     return None
+
+
+def _workflow_from_definition(defn: AgentDefinition, input_keys: list[str] | None = None) -> Dict[str, Any]:
+    """Synthesize a minimal workflow dict from an AgentDefinition.
+
+    Creates a single ``type: agent`` step so that ``ai run <agent_id>``
+    works for definition-format agents that don't have a separate workflow file.
+
+    Args:
+        defn: The agent definition.
+        input_keys: If provided, the step's input_spec maps each key from
+            ``state.inputs.<key>`` so the agent receives clean inputs
+            matching what its pipeline templates expect.
+    """
+    from .core import StepDefinition
+
+    input_spec: Dict[str, Any] | None = None
+    if input_keys:
+        input_spec = {k: f"inputs.{k}" for k in input_keys}
+
+    step = StepDefinition(
+        step_id=defn.agent_id,
+        step_type="agent",
+        agent_id=defn.agent_id,
+        agent_version=defn.version,
+        input_spec=input_spec,
+    )
+    workflow_id = f"{defn.agent_id}_auto"
+    return {
+        "name": workflow_id,
+        "workflow_id": workflow_id,
+        "workflow_version": defn.version,
+        "inputs": {},
+        "steps": [step],
+        "on_error": "fail_fast",
+        "workflow_hash": "",
+        "workflow_yaml": "",
+        "workflow_steps": [step.step_id],
+    }
 
 
 def _build_input_state(
@@ -1114,6 +1173,12 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     list_parser = subparsers.add_parser("list", help="List available agents")
     list_parser.add_argument("--agents-dir", default="agents", help="Agents directory")
 
+    runs_parser = subparsers.add_parser("runs", help="List recent runs")
+    runs_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
+    runs_parser.add_argument("--limit", type=int, default=20, help="Maximum number of runs to show (default 20)")
+    runs_parser.add_argument("--html", action="store_true", help="Generate browsable HTML dashboard")
+    runs_parser.add_argument("--no-open", action="store_true", help="Do not auto-open HTML in browser")
+
     args = parser.parse_args(argv)
 
     if args.command == "init":
@@ -1187,6 +1252,41 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     cfg = apply_cli_overrides(cfg, args)
 
     if args.command == "validate":
+        # Try definition format first (canonical), fall back to manifest
+        agent_def = None
+        try:
+            agent_def = load_agent_definition(args.manifest)
+        except Exception:
+            pass
+
+        if agent_def is not None:
+            # Validate definition-format agent
+            all_ok = True
+            checks = [
+                ("identity", "agent.id", bool(agent_def.agent_id)),
+                ("identity", "agent.version", bool(agent_def.version)),
+                ("model", "agent.model", bool(agent_def.model)),
+                ("pipeline", "pipeline steps", len(agent_def.pipeline) > 0),
+            ]
+            # Check that model is configured in LLM registry
+            if agent_def.model and cfg.llm_registry:
+                provider = agent_def.model.split("/")[0] if "/" in agent_def.model else None
+                has_provider = provider and cfg.llm_registry.get_provider(provider) is not None if provider else True
+                checks.append(("provider", agent_def.model, has_provider))
+            for category, name, ok in checks:
+                icon = "\u2713" if ok else "\u2717"
+                if ok:
+                    print(f"  {icon} {category}: {name}")
+                else:
+                    print(f"  {icon} {category}: {name} \u2014 missing or invalid")
+                    all_ok = False
+            if all_ok:
+                print(f"\nAgent {agent_def.agent_id}@{agent_def.version} is valid.")
+                return 0
+            else:
+                print(f"\nAgent {agent_def.agent_id}@{agent_def.version} has validation errors.")
+                return 1
+
         manifest = load_agent_manifest(args.manifest)
         results = validate_agent(manifest, project_root=".", llm_registry=cfg.llm_registry)
         all_ok = True
@@ -1206,6 +1306,23 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             return 1
 
     if args.command == "export":
+        # Try definition format first; fall back to manifest
+        agent_def = None
+        try:
+            agent_def = load_agent_definition(args.manifest)
+        except Exception:
+            pass
+
+        if agent_def is not None:
+            # Definition-format agents are self-contained — pack the YAML directly
+            output = args.output or f"{agent_def.agent_id}_{agent_def.version}.tar.gz"
+            import tarfile
+            os.makedirs(os.path.dirname(os.path.abspath(output)) or ".", exist_ok=True)
+            with tarfile.open(output, "w:gz") as tar:
+                tar.add(agent_def.definition_path, arcname="agent.yaml")
+            print(f"Exported {agent_def.agent_id}@{agent_def.version} -> {os.path.abspath(output)}")
+            return 0
+
         manifest = load_agent_manifest(args.manifest)
         output = args.output or f"{manifest.agent_id}_{manifest.version}.tar.gz"
         archive_path = export_agent(manifest, output, project_root=".")
@@ -1213,14 +1330,17 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == "import":
-        manifest = import_agent(args.archive, project_root=args.path)
-        print(f"Imported {manifest.agent_id}@{manifest.version}")
-        results = validate_agent(manifest, project_root=args.path, llm_registry=cfg.llm_registry)
-        failures = [r for r in results if not r.ok]
-        if failures:
-            print("Post-import validation warnings:")
-            for r in failures:
-                print(f"  \u2717 {r.category}: {r.name} \u2014 {r.message}")
+        imported = import_agent(args.archive, project_root=args.path)
+        if isinstance(imported, AgentDefinition):
+            print(f"Imported {imported.agent_id}@{imported.version}")
+        else:
+            print(f"Imported {imported.agent_id}@{imported.version}")
+            results = validate_agent(imported, project_root=args.path, llm_registry=cfg.llm_registry)
+            failures = [r for r in results if not r.ok]
+            if failures:
+                print("Post-import validation warnings:")
+                for r in failures:
+                    print(f"  \u2717 {r.category}: {r.name} \u2014 {r.message}")
         return 0
 
     if args.command == "list":
@@ -1254,29 +1374,62 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             print("No agents found.")
         return 0
 
+    if args.command == "runs":
+        storage = SQLiteStorage(cfg.db_path)
+        runs = storage.list_runs(limit=args.limit)
+        if not runs:
+            print("No runs found.")
+            return 0
+
+        if args.html:
+            html_path = _render_runs_html(runs)
+            print(f"Runs dashboard generated: {html_path}")
+            if not args.no_open:
+                try:
+                    webbrowser.open(f"file://{os.path.abspath(html_path)}")
+                except Exception:
+                    print("Could not open browser automatically. Open the file manually.")
+            return 0
+
+        # Text output
+        print(f"Recent runs ({len(runs)}):\n")
+        for run in runs:
+            version = f"@{run.workflow_version}" if run.workflow_version else ""
+            status_icon = "\u2713" if run.status == "COMPLETED" else ("\u2717" if run.status == "FAILED" else "\u29d7")
+            error_hint = f" \u2014 {run.error[:60]}..." if run.error and len(run.error) > 60 else (f" \u2014 {run.error}" if run.error else "")
+            print(f"  {status_icon} {run.run_id[:12]}  {run.workflow_id}{version}  {run.status}{error_hint}")
+            print(f"    created: {run.created_at or 'n/a'}  completed: {run.completed_at or 'n/a'}")
+        print(f"\nInspect: ai inspect <run_id> --steps")
+        print(f"Visualize: ai visualize <run_id>")
+        return 0
+
     if args.command == "run":
         logger = StructuredLogger(stream=sys.stderr)
         llm_client = _default_llm_client(cfg, logger)
-        # Try agent-aware resolution: check agents/ for a manifest matching
-        # the workflow arg as an agent_id (with optional @version).
-        agent_manifest = _try_resolve_agent(args.workflow)
+        # Try agent-aware resolution: check agents/ for a definition or
+        # manifest matching the workflow arg as an agent_id (with optional @version).
+        resolved_agent = _try_resolve_agent(args.workflow)
 
         functions_dir = cfg.functions_dir if os.path.isdir(cfg.functions_dir) else None
 
         try:
-            if agent_manifest is not None:
+            if isinstance(resolved_agent, AgentDefinition):
+                # Definition-format agent: synthesize a workflow wrapper
+                input_state = _build_input_state(args.input, {})
+                workflow = _workflow_from_definition(resolved_agent, input_keys=list(input_state.keys()))
+            elif isinstance(resolved_agent, AgentManifest):
                 workflow = _load_workflow_for_run(
-                    agent_manifest.workflow, cfg.workflows_dir,
+                    resolved_agent.workflow, cfg.workflows_dir,
                     functions_dir=functions_dir,
                 )
                 # Merge defaults: agent defaults < CLI -i overrides
                 merged_inputs = list(args.input)
-                if agent_manifest.defaults:
+                if resolved_agent.defaults:
                     provided_keys = set()
                     for item in args.input:
                         if "=" in item:
                             provided_keys.add(item.partition("=")[0].strip())
-                    for key, value in agent_manifest.defaults.items():
+                    for key, value in resolved_agent.defaults.items():
                         if key not in provided_keys:
                             merged_inputs.append(f"{key}={value}")
                 input_state = _build_input_state(merged_inputs, workflow.get("inputs", {}))
@@ -1314,7 +1467,10 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         def _progress_callback(event: str, payload: Dict[str, Any]) -> None:
             step_id = payload.get("step_id", "")
             step_type = payload.get("step_type", "")
-            if event == "STEP_COMPLETE":
+            if event == "STEP_START":
+                hint = " (calling LLM...)" if step_type == "agent" else ""
+                print(f"  \u29d7 {step_id} ({step_type}){hint}")
+            elif event == "STEP_COMPLETE":
                 duration = payload.get("duration_ms")
                 duration_str = f"{duration}ms" if isinstance(duration, int) else "n/a"
                 call_duration = payload.get("tool_duration_ms")
@@ -1421,10 +1577,27 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         functions_dir_resume = cfg.functions_dir if os.path.isdir(cfg.functions_dir) else None
 
         workflow_text = run.workflow_yaml
-        if workflow_text is None:
-            if not args.workflow:
+        if not workflow_text:
+            # No stored YAML — either the run used a definition-auto workflow
+            # (ai run <agent_id>) or workflow storage was disabled.
+            # Try to reconstruct from agent registry first.
+            wf_id = run.workflow_id or ""
+            if wf_id.endswith("_auto"):
+                agent_id = wf_id.removesuffix("_auto")
+                resolved = _try_resolve_agent(agent_id, cfg.agents_dir)
+                if isinstance(resolved, AgentDefinition):
+                    state = storage.load_latest_state(args.run_id)
+                    input_keys = list(state.get("inputs", {}).keys())
+                    workflow = _workflow_from_definition(resolved, input_keys=input_keys)
+                else:
+                    raise SystemExit(
+                        f"Cannot reconstruct workflow for agent '{agent_id}'. "
+                        "Provide --workflow to resume."
+                    )
+            elif args.workflow:
+                workflow = load_workflow(args.workflow, functions_dir=functions_dir_resume)
+            else:
                 raise SystemExit("Workflow YAML not stored; provide --workflow to resume.")
-            workflow = load_workflow(args.workflow, functions_dir=functions_dir_resume)
         else:
             workflow = load_workflow_from_text(workflow_text, functions_dir=functions_dir_resume)
 
@@ -1541,6 +1714,64 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 0
 
     return 1
+
+
+def _render_runs_html(runs) -> str:
+    """Generate a standalone HTML runs dashboard and return the file path."""
+    import html as html_mod
+
+    rows = []
+    for run in runs:
+        version = f"@{run.workflow_version}" if run.workflow_version else ""
+        status_cls = "ok" if run.status == "COMPLETED" else ("fail" if run.status == "FAILED" else "run")
+        error_cell = html_mod.escape(run.error or "")
+        rows.append(
+            "<tr>"
+            f'<td><a href=".runs/{html_mod.escape(run.run_id)}/visualization.html">'
+            f"{html_mod.escape(run.run_id[:12])}</a></td>"
+            f"<td>{html_mod.escape(run.workflow_id)}{html_mod.escape(version)}</td>"
+            f'<td class="{status_cls}">{html_mod.escape(run.status)}</td>'
+            f"<td>{html_mod.escape(run.created_at or '')}</td>"
+            f"<td>{html_mod.escape(run.completed_at or '')}</td>"
+            f"<td>{error_cell}</td>"
+            "</tr>"
+        )
+
+    doc = f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Runs Dashboard</title>
+  <style>
+    body {{ font-family: "IBM Plex Sans", "Segoe UI", sans-serif; background: #f6f8fb; margin: 0; padding: 24px; }}
+    h1 {{ margin: 0 0 16px 0; }}
+    table {{ width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; }}
+    th, td {{ border: 1px solid #d1d5db; padding: 8px 12px; text-align: left; font-size: 13px; }}
+    th {{ background: #e5eef5; }}
+    a {{ color: #0f766e; text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    .ok {{ color: #15803d; font-weight: 600; }}
+    .fail {{ color: #b91c1c; font-weight: 600; }}
+    .run {{ color: #a16207; font-weight: 600; }}
+    .hint {{ font-size: 13px; color: #6b7280; margin-top: 12px; }}
+  </style>
+</head>
+<body>
+  <h1>Runs Dashboard</h1>
+  <table>
+    <thead><tr><th>Run ID</th><th>Workflow</th><th>Status</th><th>Created</th><th>Completed</th><th>Error</th></tr></thead>
+    <tbody>{''.join(rows) if rows else '<tr><td colspan="6">No runs found.</td></tr>'}</tbody>
+  </table>
+  <p class="hint">Inspect: <code>ai inspect &lt;run_id&gt; --steps</code> &nbsp;|&nbsp;
+  Visualize: <code>ai visualize &lt;run_id&gt;</code></p>
+</body>
+</html>"""
+
+    os.makedirs(".runs", exist_ok=True)
+    out_path = os.path.join(".runs", "dashboard.html")
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(doc)
+    return out_path
 
 
 def main() -> None:

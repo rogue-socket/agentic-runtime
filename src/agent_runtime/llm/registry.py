@@ -28,6 +28,7 @@ class ModelConfig:
     model_id: str                          # e.g. "gpt-4", "claude-3-opus"
     temperature: float = 0.2
     max_tokens: int = 4096
+    timeout: int = 60                      # HTTP request timeout in seconds
     extra: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -35,6 +36,7 @@ class ModelConfig:
             "model_id": self.model_id,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
+            "timeout": self.timeout,
         }
         if self.extra:
             d["extra"] = dict(self.extra)
@@ -206,8 +208,9 @@ class LLMRegistry:
                         model_id=model_id,
                         temperature=float(model_data.get("temperature", 0.2)),
                         max_tokens=int(model_data.get("max_tokens", 4096)),
+                        timeout=int(model_data.get("timeout", 60)),
                         extra={k: v for k, v in model_data.items()
-                               if k not in ("temperature", "max_tokens")},
+                               if k not in ("temperature", "max_tokens", "timeout")},
                     ))
             registry.register_provider(provider)
         return registry

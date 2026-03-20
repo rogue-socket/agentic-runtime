@@ -22,6 +22,8 @@ import importlib.util
 import os
 import sys
 from pathlib import Path
+# TODO(M12-medium): Unused imports — Dict and Optional are imported but never
+#   used in this module. Remove them.
 from typing import Callable, Dict, Optional
 
 
@@ -104,6 +106,13 @@ def _resolve_unqualified(ref: str, functions_dir: str) -> Callable:
 
 def _import_from_path(filepath: str, module_name: str):
     """Import a Python module from an absolute file path."""
+    # TODO(Eng-3, module-caching): Modules are cached in sys.modules under
+    #   a synthetic prefix (_runtime_functions.*).  This means:
+    #   - File edits on disk are invisible until the process restarts.
+    #   - Long-running CLI sessions or watch-mode servers will use stale code.
+    #   Consider adding a `--reload` flag that clears the prefix before
+    #   discovery, or use importlib.reload() for already-cached modules.
+    #   See also: tools/discovery.py which has the same pattern.
     qualified = f"_runtime_functions.{module_name}"
     if qualified in sys.modules:
         return sys.modules[qualified]

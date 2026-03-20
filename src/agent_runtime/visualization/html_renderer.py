@@ -31,6 +31,15 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
     Returns:
         Absolute/relative path written to disk.
     """
+    # TODO(Eng-8, html-template): This renderer builds the entire HTML page
+    #   via f-string concatenation.  This is fragile and hard to maintain
+    #   as the report grows.  Consider:
+    #   1. Move the HTML/CSS skeleton to a separate .html template file
+    #      loaded at runtime with simple {{placeholder}} substitution.
+    #   2. Or use Python's string.Template / jinja2 (lightweight) for
+    #      structured templating with loops and conditionals.
+    #   3. Keep the html.escape() calls for any user-supplied values to
+    #      prevent XSS in the generated report.
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 

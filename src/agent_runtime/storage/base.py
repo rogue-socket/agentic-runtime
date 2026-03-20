@@ -26,6 +26,13 @@ class Storage(ABC):
       subclass should be a drop-in replacement for SQLiteStorage.
     TODO(roadmap): Consider a remote-capable storage adapter (e.g., S3 + DynamoDB)
       for cloud-native deployments where SQLite files aren't practical.
+    TODO(PM-6, multi-user): Storage is currently single-user — one SQLite file
+      per project with no authentication or access control.  For team use:
+      1. Add a `user_id` / `tenant_id` column to the runs table.
+      2. Add row-level filtering in all read paths so users only see their runs.
+      3. For a shared PostgreSQL backend, use connection-pool scoping or
+         Row-Level Security policies.
+      4. Consider an auth middleware layer in a future HTTP API surface.
     """
 
     @contextmanager
@@ -101,4 +108,9 @@ class Storage(ABC):
     @abstractmethod
     def load_max_execution_index(self, run_id: str) -> int:
         """Load maximum step execution index integer for a run."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_runs(self, limit: int = 20) -> list[Run]:
+        """Load most recent runs ordered by creation time descending."""
         raise NotImplementedError

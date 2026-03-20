@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+# TODO(M11-medium): Unused imports — Callable and List from typing are imported
+#   but never used in this module. Remove them.
 from typing import Any, Callable, Dict, List, Optional
 
 from .core import Executor, EventCallback, Run, RunState, StepDefinition, StepExecution, StepStatus
@@ -126,7 +128,7 @@ async def run_workflow_async(
         ),
         episodic=EpisodicMemory(db_path=cfg.db_path),
         semantic=SemanticMemory(db_path=cfg.db_path),
-        procedural=ProceduralMemory(),
+        procedural=ProceduralMemory(db_path=cfg.db_path),
     )
     tool_registry = ToolRegistry()
     tool_registry.register(EchoTool())

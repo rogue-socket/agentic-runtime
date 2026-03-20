@@ -1,6 +1,21 @@
-"""Agent subsystem — definition, registry, execution, and prompts."""
+"""Agent subsystem — definition, registry, execution, and prompts.
 
-# New agent system
+Two data models coexist in this package:
+
+* **AgentDefinition** (``definition.py``) — the *execution* model.  Describes
+  how an agent works: LLM config, pipeline steps, strategy, and tools.
+  Used by ``type: agent`` workflow steps and the ``AgentExecutor``.
+  **This is the canonical model going forward.**
+
+* **AgentManifest** (``manifest.py``) — the *packaging* model.  Describes
+  what files an agent bundles for distribution: workflow path, handler
+  files, tool files, environment variables.  Used by ``ai export`` /
+  ``ai import`` and ``ai run <agent_id>`` resolution.
+  **Deprecated**: packaging fields will be merged into AgentDefinition
+  in a future release.  Prefer AgentDefinition for new agent YAML files.
+"""
+
+# Canonical agent system (execution)
 from .definition import AgentDefinition, PipelineStep, StrategyConfig, load_agent_definition
 from .executor import AgentExecutor
 from .prompts import PromptEntry, PromptRegistry
@@ -15,7 +30,8 @@ from .strategies import (
     resolve_strategy,
 )
 
-# Legacy exports (kept during transition — will be removed in Phase 5)
+# Deprecated packaging model — will be removed in Phase 5.
+# Prefer AgentDefinition for new agent definitions.
 from .manifest import AgentManifest, load_agent_manifest, validate_agent, ValidationResult
 from .packaging import export_agent, import_agent
 

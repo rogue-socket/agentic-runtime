@@ -12,9 +12,10 @@ from typing import Any, Dict, Optional
 from .base import RuntimeContext, ToolResult
 
 
-# Default root is the current working directory.
-# In production, callers should configure a tighter sandbox.
-_DEFAULT_ROOT = os.getcwd()
+def _get_default_root() -> str:
+    """Return the current working directory at call time (not import time)."""
+    return os.getcwd()
+
 
 _MAX_READ_BYTES = 1_048_576  # 1 MB safety limit
 
@@ -47,7 +48,7 @@ class FileTool:
     retries: Optional[int] = None
 
     def __init__(self, root: Optional[str] = None) -> None:
-        self.root = os.path.abspath(root or _DEFAULT_ROOT)
+        self.root = os.path.abspath(root or _get_default_root())
 
     def _safe_path(self, relative: str) -> Optional[str]:
         """Resolve path and verify it stays within root."""

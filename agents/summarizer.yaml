@@ -1,7 +1,7 @@
 agent:
   id: summarizer
   version: v1
-  description: "Summarizes issues and text into concise reports"
+  description: "Summarizes issues into concise reports with root-cause analysis"
   model: gemini/gemini-2.5-flash
   system: prompts.summarizer_system
   tools:
@@ -13,7 +13,11 @@ agent:
   pipeline:
     - id: main
       type: model
-      prompt: "Summarize the following text:\n\n{{ inputs.text }}"
+      prompt: |
+        Summarize the following issue in 2-3 sentences. Call out the likely root cause
+        and suggest immediate next steps.
+
+        Issue: {{ inputs.issue }}
   prompts:
     - id: summarizer_system
       version: v1

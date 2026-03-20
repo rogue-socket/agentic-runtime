@@ -1,3 +1,11 @@
+# TODO(H3-high): This file contains 14 junk auto-generated docstrings
+#   that should be replaced with real descriptions or removed entirely.
+# TODO(M10-medium): _storage() and _memory_manager() helper functions are
+#   copy-pasted across 12 test files. Extract them into a shared conftest.py
+#   fixture. Affected files: test_branching, test_branch_resume, test_executor_e2e,
+#   test_replay, test_resume, test_retry_policy, test_runtime, test_step_contracts,
+#   test_storage_roundtrip, test_transaction_safety, test_visualization,
+#   test_workflow_versioning, test_workflow_lock.
 from __future__ import annotations
 
 """File: tests/test_runtime.py
@@ -373,10 +381,11 @@ def test_memory_hooks_invoked() -> None:
     assert episodic.read_calls == 1
     assert semantic.read_calls == 1
     assert procedural.read_calls == 1
-    assert working.write_calls == 1
-    assert episodic.write_calls == 1
-    assert semantic.write_calls == 1
-    assert procedural.write_calls == 1
+    # 1 write per step + 1 final write at run completion for episodic recording
+    assert working.write_calls == 2
+    assert episodic.write_calls == 2
+    assert semantic.write_calls == 2
+    assert procedural.write_calls == 2
 
 
 def test_retry_policy_succeeds() -> None:

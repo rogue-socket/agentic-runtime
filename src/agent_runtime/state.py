@@ -250,16 +250,11 @@ class RuntimeState:
         changes: list[Dict[str, Any]] = []
 
         def walk(b: Any, a: Any, prefix: str) -> None:
-            """Auto-generated documentation for this callable.
-            
-            Describes purpose, expected inputs/outputs, and behavior in this module.
-            
-            Example:
-                >>> # Example 1
-                >>> walk
-                >>> # Example 2
-                >>> walk
-            """
+            # TODO(H2-high): Replace this junk auto-generated docstring with a
+            #   real one, or remove it entirely. There are 81 instances of
+            #   "Auto-generated documentation for this callable" across 14 files
+            #   (13 test files + this one). All should be cleaned up (see H3).
+            """Recursively walk two nested dicts and record differences."""
             if isinstance(b, dict) and isinstance(a, dict):
                 b_keys = set(b.keys())
                 a_keys = set(a.keys())

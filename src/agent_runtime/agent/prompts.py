@@ -171,10 +171,4 @@ def _validate_prompt_item(item: dict, path: str) -> None:
             raise ValueError(f"{path}: prompt missing required field '{key}'")
 
 
-def _version_sort_key(v: str):
-    """Sort key that handles 'v1', 'v2', ..., 'v10' correctly."""
-    stripped = v.lstrip("vV")
-    try:
-        return (0, int(stripped))
-    except ValueError:
-        return (1, v)
+from ..utils import version_sort_key as _version_sort_key

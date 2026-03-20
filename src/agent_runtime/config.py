@@ -35,6 +35,8 @@ class RuntimeConfig:
     agents_dir: str = "agents"
     functions_dir: str = "functions"
 
+    # TODO(M4-medium): Stale comment — LLM integration is fully implemented
+    #   via llm_registry on the next line. Update or remove this comment.
     # Model backend (placeholder for future LLM integration)
     model: Dict[str, Any] = field(default_factory=dict)
 

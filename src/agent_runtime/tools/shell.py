@@ -79,28 +79,42 @@ class ShellTool:
         self._allowlist = [re.compile(p) for p in allowlist] if allowlist else None
         self._denylist = [re.compile(p) for p in denylist] if denylist else None
 
-    def _extract_program(self, command: str) -> str:
-        """Extract the first token (program name) from a command string."""
-        try:
-            tokens = shlex.split(command)
-        except ValueError:
-            tokens = command.split()
-        return tokens[0] if tokens else ""
+    def _extract_programs(self, command: str) -> list[str]:
+        """Extract all program names from a command string.
+
+        Handles pipes (``|``), logical operators (``&&``, ``||``), and
+        semicolons (``;``) to prevent denylist bypass via chaining.
+        """
+        # Split on shell operators to get individual commands.
+        segments = re.split(r'\|{1,2}|&&|;', command)
+        programs: list[str] = []
+        for segment in segments:
+            segment = segment.strip()
+            if not segment:
+                continue
+            try:
+                tokens = shlex.split(segment)
+            except ValueError:
+                tokens = segment.split()
+            if tokens:
+                programs.append(tokens[0])
+        return programs
 
     def _check_command(self, command: str) -> Optional[str]:
         """Return an error message if the command is restricted, else None."""
-        program = self._extract_program(command)
-        if not program:
+        programs = self._extract_programs(command)
+        if not programs:
             return None
 
-        if self._denylist:
-            for pattern in self._denylist:
-                if pattern.fullmatch(program):
-                    return f"Command '{program}' is blocked by denylist"
+        for program in programs:
+            if self._denylist:
+                for pattern in self._denylist:
+                    if pattern.fullmatch(program):
+                        return f"Command '{program}' is blocked by denylist"
 
-        if self._allowlist:
-            if not any(p.fullmatch(program) for p in self._allowlist):
-                return f"Command '{program}' is not in the allowlist"
+            if self._allowlist:
+                if not any(p.fullmatch(program) for p in self._allowlist):
+                    return f"Command '{program}' is not in the allowlist"
 
         return None
 
@@ -116,6 +130,16 @@ class ShellTool:
         cwd = input.get("cwd")
         cmd_timeout = input.get("timeout", _DEFAULT_TIMEOUT)
 
+        # TODO(Eng-2, shell-security): subprocess.run with shell=True passes
+        #   the command string through the system shell, which is vulnerable
+        #   to shell injection if command values ever include untrusted input.
+        #   Mitigation plan:
+        #   1. Switch to shell=False with shlex.split(command) as default.
+        #   2. Add an explicit `shell: true` flag in the tool input schema
+        #      that callers must opt into when shell features (pipes, globs)
+        #      are genuinely needed.
+        #   3. When shell=True is used, apply stricter sanitisation and
+        #      require that the command matches the allowlist.
         try:
             result = subprocess.run(
                 command,

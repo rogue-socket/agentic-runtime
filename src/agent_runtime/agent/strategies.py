@@ -204,24 +204,8 @@ def _render_pipeline_prompt(template: str, state: Dict[str, Any]) -> str:
 
     Uses dot-path resolution: ``{{ inputs.code }}`` or ``{{ analyze.issues }}``.
     """
-    import re
-    _RE = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
-
-    def _resolve(path: str, data: Dict[str, Any]) -> Any:
-        parts = path.split(".")
-        current: Any = data
-        for part in parts:
-            if isinstance(current, dict) and part in current:
-                current = current[part]
-            else:
-                raise KeyError(f"Pipeline prompt path not found: {path}")
-        return current
-
-    def _replace(match: re.Match) -> str:
-        path = match.group(1).strip()
-        return str(_resolve(path, state))
-
-    return _RE.sub(_replace, template)
+    from ..utils import render_path_template
+    return render_path_template(template, state)
 
 
 def _resolve_pipeline_tool_inputs(
@@ -414,6 +398,25 @@ class ReActStrategy:
                     token_usage=_aggregate_usage(all_turns),
                     final_text=last_text,
                 )
+
+            # evaluate stop_conditions against current pipeline state
+            if agent.strategy.stop_conditions:
+                from ..utils import safe_eval
+                for cond in agent.strategy.stop_conditions:
+                    try:
+                        if safe_eval(cond, pipeline_state):
+                            last_step_id = agent.pipeline[-1].id
+                            step_output = pipeline_state.get(last_step_id, {})
+                            outputs = step_output if isinstance(step_output, dict) else {"text": str(step_output)}
+                            return AgentResult(
+                                outputs=outputs,
+                                trace=all_turns,
+                                iterations=i,
+                                token_usage=_aggregate_usage(all_turns),
+                                final_text=last_text if last_text else "",
+                            )
+                    except Exception:
+                        pass  # invalid condition — skip rather than crash the loop
 
             # no final_answer — plain text with no loop signal;
             # continue to next iteration (or stop at max)

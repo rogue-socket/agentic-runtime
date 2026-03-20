@@ -1,3 +1,5 @@
+# TODO(H3-high): This file contains 8 junk auto-generated docstrings
+#   that should be replaced with real descriptions or removed entirely.
 from __future__ import annotations
 
 """File: tests/test_resume.py
@@ -165,3 +167,9 @@ def test_validate_resume_blocks_running() -> None:
     """
     with pytest.raises(StepExecutionError):
         validate_resume(StepStatus.RUNNING)
+
+
+def test_validate_resume_blocks_completed_with_errors() -> None:
+    """COMPLETED_WITH_ERRORS runs should not be resumable (L4 fix)."""
+    with pytest.raises(StepExecutionError):
+        validate_resume(StepStatus.COMPLETED_WITH_ERRORS)

@@ -1,3 +1,6 @@
+# TODO(H3-high): This file contains 6 junk auto-generated docstrings
+#   ("Auto-generated documentation for this callable") that should be replaced
+#   with real descriptions or removed entirely. Found at lines 26, 45, 79, 93, 135, 177.
 from __future__ import annotations
 
 """File: tests/test_branching.py
@@ -127,7 +130,7 @@ steps:
     tool_registry.register(EchoTool())
 
     executor = Executor(wf["steps"], _storage(), None, _memory_manager(), tool_registry)
-    run = executor.run(wf["name"], {"issue": "bug"})
+    run = executor.run(wf["workflow_id"], {"issue": "bug"})
     assert "bug_path" in run.state.data["steps"]
 
 
@@ -169,7 +172,7 @@ steps:
     tool_registry.register(EchoTool())
 
     executor = Executor(wf["steps"], _storage(), None, _memory_manager(), tool_registry)
-    run = executor.run(wf["name"], {"issue": "feature"})
+    run = executor.run(wf["workflow_id"], {"issue": "feature"})
     assert "end" in run.state.data["steps"]
 
 

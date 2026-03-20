@@ -318,7 +318,6 @@ def _parse_prompts(
             else os.path.join(agent_dir, prompts_file)
         )
         if os.path.isfile(abs_path):
-            file_reg = PromptRegistry.from_directory(os.path.dirname(abs_path))
             # only load the specific file, not the whole directory
             from .prompts import _load_prompt_file
             for entry in _load_prompt_file(abs_path):

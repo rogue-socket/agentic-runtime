@@ -81,6 +81,11 @@ class WorkingMemory:
         steps = payload.get("steps", {})
         if steps:
             # Add the most-recently-written step output as an entry.
+            # TODO(Eng-6, dict-order): Relies on dict insertion order (Python 3.7+)
+            #   to grab the "latest" step output.  This is fragile — if state is
+            #   round-tripped through JSON or a DB, key order may not reflect
+            #   execution order.  Use an explicit timestamp or sequence number
+            #   embedded in the step output to identify the most recent entry.
             last_key = list(steps.keys())[-1]
             self.add_entry("step_output", {
                 "step_id": last_key,
