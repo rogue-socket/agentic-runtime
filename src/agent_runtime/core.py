@@ -254,6 +254,7 @@ class Executor:
         on_event: Optional[EventCallback] = None,
         agent_registry: Any = None,
         llm_client: Any = None,
+        default_model: str = "",
     ) -> None:
         """Initialize executor dependencies and step lookup tables."""
         self.steps = steps
@@ -267,6 +268,7 @@ class Executor:
         self.on_event = on_event
         self.agent_registry = agent_registry
         self.llm_client = llm_client
+        self.default_model = default_model
 
     # TODO(Prod Pain Point #11 — Heartbeats for Long-Running Workflows): A react
     #   agent iterating 5 times with tool calls can take 30+ seconds. Behind a
@@ -532,9 +534,9 @@ class Executor:
                             )
                             # Inject default model from runtime config when the
                             # agent definition doesn't specify one.
-                            if not agent_def.model and self.config.default_model:
+                            if not agent_def.model and self.default_model:
                                 agent_def = copy.copy(agent_def)
-                                agent_def.model = self.config.default_model
+                                agent_def.model = self.default_model
                             agent_executor = AgentExecutor(
                                 self.llm_client, self.tool_registry, self.logger
                             )

@@ -1861,6 +1861,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             on_event=_progress_callback,
             agent_registry=agent_registry,
             llm_client=llm_client,
+            default_model=cfg.default_model,
         )
 
         run = executor.run(
@@ -2011,6 +2012,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             overwrite_policy=cfg.overwrite_policy,
             agent_registry=_default_agent_registry(cfg.agents_dir),
             llm_client=llm_client_resume,
+            default_model=cfg.default_model,
         )
 
         print(f"Resuming run {run.run_id} from step: {resume_step}")

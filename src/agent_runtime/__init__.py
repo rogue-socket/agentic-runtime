@@ -182,6 +182,7 @@ async def run_workflow_async(
             on_event=on_event,
             agent_registry=agent_registry,
             llm_client=llm_client,
+            default_model=cfg.default_model,
         )
 
         return await executor.run_async(
