@@ -8,6 +8,7 @@ agent:
     - tools.echo
   strategy:
     type: single
+  output_key: summary
   temperature: 0.3
   max_tokens: 2048
   pipeline:

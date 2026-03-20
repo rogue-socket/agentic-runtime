@@ -242,6 +242,13 @@ steps:                         # ordered steps (a list)
     function: stubs.classify_severity  # defined in functions/stubs.py
     inputs:
       issue: inputs.issue
+  - id: next_steps
+    type: agent                # agent step delegates to an agent definition
+    agent: fixer               # defined in agents/fixer.yaml
+    inputs:
+      issue: inputs.issue
+      summary: steps.summarize.summary
+      priority: steps.priority.priority
   - id: build_report
     type: tool                 # tool step uses a tool class
     tool: tools.report_builder # build a markdown report
@@ -249,6 +256,7 @@ steps:                         # ordered steps (a list)
       title: "Quickstart Report"
       summary: steps.summarize.summary
       priority: steps.priority.priority
+      next_steps: steps.next_steps.next_steps
   - id: echo_summary
     type: tool                 # tool step uses a tool class
     tool: tools.echo           # built-in echo tool
@@ -259,6 +267,11 @@ steps:                         # ordered steps (a list)
     tool: tools.echo
     inputs:
       message: steps.build_report.report
+  - id: echo_next_steps
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.next_steps.next_steps
 """
 
 EXAMPLE_FUNCTION = '''"""Stub functions for the quickstart workflow.
@@ -504,6 +517,7 @@ agent:
   model: gpt-4o                 # LLM model (provider/model or just model name)
   system: "You are a senior support engineer. Be concise and actionable."
   strategy: single              # single | react | custom
+  output_key: summary           # key name for the agent's text output
   tools:
     - tools.echo
   temperature: 0.3
@@ -515,6 +529,32 @@ agent:
         Summarize the issue in 2-3 sentences and call out likely root causes.
 
         Issue: {{ inputs.issue }}
+"""
+
+EXAMPLE_FIXER_DEFINITION = """# Agent definition — proposes fixes for issues.
+# Referenced from workflow steps via `type: agent` + `agent: fixer`.
+agent:
+  id: fixer
+  version: v1
+  description: "Proposes actionable fixes for issues based on a summary and priority"
+  model: gpt-4o                 # LLM model (provider/model or just model name)
+  system: "You are a senior software engineer specializing in incident response."
+  strategy: single              # single | react | custom
+  output_key: next_steps        # key name for the agent's text output
+  tools:
+    - tools.echo
+  temperature: 0.4
+  max_tokens: 256
+  pipeline:
+    - id: main
+      type: model
+      prompt: |
+        Given this issue and its summary, propose concrete next steps to fix it.
+
+        Issue: {{ inputs.issue }}
+        Summary: {{ inputs.summary }}
+
+        Respond with a numbered list of actionable steps a developer should take.
 """
 
 
@@ -557,6 +597,14 @@ def _init_project(target_dir: str, *, model: Optional[str] = None) -> None:
     if not os.path.exists(example_agent_path):
         with open(example_agent_path, "w", encoding="utf-8") as f:
             f.write(agent_def)
+
+    fixer_def = EXAMPLE_FIXER_DEFINITION
+    if model:
+        fixer_def = fixer_def.replace("model: gpt-4o", f"model: {model}")
+    fixer_agent_path = os.path.join(agents_dir, "fixer.yaml")
+    if not os.path.exists(fixer_agent_path):
+        with open(fixer_agent_path, "w", encoding="utf-8") as f:
+            f.write(fixer_def)
 
     runtime_yaml_path = os.path.join(target_dir, "runtime.yaml")
     if not os.path.exists(runtime_yaml_path):

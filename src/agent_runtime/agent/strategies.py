@@ -294,7 +294,7 @@ async def _run_pipeline(
 
             # store model output in pipeline state under step id
             final = _parse_final_answer(response.text)
-            step_output = final if final else {"text": response.text}
+            step_output = final if final else {agent.output_key: response.text}
             pipeline_state[step.id] = step_output
             last_model_text = response.text
 
@@ -345,7 +345,7 @@ class SingleCallStrategy:
         last_step_id = agent.pipeline[-1].id
         step_output = pipeline_state.get(last_step_id, {})
         final = _parse_final_answer(last_text) if last_text else None
-        outputs = final if final else (step_output if isinstance(step_output, dict) else {"text": str(step_output)})
+        outputs = final if final else (step_output if isinstance(step_output, dict) else {agent.output_key: str(step_output)})
 
         return AgentResult(
             outputs=outputs,
@@ -407,7 +407,7 @@ class ReActStrategy:
                         if safe_eval(cond, pipeline_state):
                             last_step_id = agent.pipeline[-1].id
                             step_output = pipeline_state.get(last_step_id, {})
-                            outputs = step_output if isinstance(step_output, dict) else {"text": str(step_output)}
+                            outputs = step_output if isinstance(step_output, dict) else {agent.output_key: str(step_output)}
                             return AgentResult(
                                 outputs=outputs,
                                 trace=all_turns,
@@ -424,7 +424,7 @@ class ReActStrategy:
         # max iterations reached — return last response as output
         last_step_id = agent.pipeline[-1].id
         step_output = pipeline_state.get(last_step_id, {})
-        outputs = step_output if isinstance(step_output, dict) else {"text": str(step_output)}
+        outputs = step_output if isinstance(step_output, dict) else {agent.output_key: str(step_output)}
         return AgentResult(
             outputs=outputs,
             trace=all_turns,

@@ -116,6 +116,9 @@ class AgentDefinition:
     # Reasoning strategy
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
 
+    # Output key name for plain-text LLM responses (default "text")
+    output_key: str = "text"
+
     # LLM params
     temperature: float = 0.2
     max_tokens: int = 4096
@@ -169,6 +172,7 @@ class AgentDefinition:
                 },
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens,
+                "output_key": self.output_key,
             }
         }
         if self.strategy.custom_handler:
@@ -219,6 +223,7 @@ def _parse_agent(data: dict, path: str, raw: Optional[dict] = None) -> AgentDefi
         pipeline=pipeline,
         tools=tools,
         strategy=strategy,
+        output_key=data.get("output_key", "text"),
         temperature=float(data.get("temperature", 0.2)),
         max_tokens=int(data.get("max_tokens", 4096)),
         params=data.get("params", {}),
