@@ -4,16 +4,14 @@ Welcome! This guide is intentionally beginner-friendly. It will get you from zer
 
 **Install**
 
-Using conda (recommended):
-
+::::tabs
+:::tab Conda (recommended)
 ```bash
 conda activate agentic-runtime
 pip install -r requirements.txt
 pip install -e .
 ```
-
-Using venv:
-
+:::tab venv
 ```bash
 python -m venv .venv
 
@@ -26,6 +24,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
 ```
+::::
 
 **Quickstart (0 → 1)**
 

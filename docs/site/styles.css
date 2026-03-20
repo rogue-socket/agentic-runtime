@@ -424,3 +424,59 @@ h1 {
   cursor: pointer;
   font-weight: 700;
 }
+
+.tabs-container {
+  margin: 1.5em 0;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #334155;
+  background: #0f1420;
+}
+
+.tabs-header {
+  display: flex;
+  background: #0b111b;
+  border-bottom: 1px solid #334155;
+}
+
+.tab-button {
+  padding: 12px 20px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.tab-button:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tab-button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: rgba(110, 231, 183, 0.05);
+}
+
+.tab-pane {
+  display: none;
+  padding: 20px;
+}
+
+.tab-pane.active {
+  display: block;
+  animation: fadeIn 0.35s ease;
+}
+
+.tab-pane > .code-shell:first-child,
+.tab-pane > pre:first-child {
+  margin-top: 0;
+}
+.tab-pane > *:last-child {
+  margin-bottom: 0;
+}
