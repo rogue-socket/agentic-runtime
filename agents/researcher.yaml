@@ -1,0 +1,23 @@
+agent:
+  id: researcher
+  version: v1
+  description: "Researches a topic and produces structured key findings"
+  model: gemini/gemini-2.5-flash
+  system: "You are a research analyst. Identify key facts and structure your findings as a numbered list."
+  strategy:
+    type: react
+    max_iterations: 3
+  output_key: findings
+  tools:
+    - tools.echo
+  temperature: 0.4
+  max_tokens: 512
+  pipeline:
+    - id: main
+      type: model
+      prompt: |
+        Research the following topic and identify 3-5 key findings.
+
+        Topic: {{ inputs.topic }}
+
+        Respond with a numbered list of findings.

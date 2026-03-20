@@ -619,6 +619,420 @@ def _init_project(target_dir: str, *, model: Optional[str] = None) -> None:
         with open(runtime_yaml_path, "w", encoding="utf-8") as f:
             f.write(RUNTIME_YAML_TEMPLATE)
 
+    _scaffold_quickstart_samples(target_dir, model=model)
+
+
+# -- Quickstart sample files -----------------------------------------------
+
+_QS_TRIAGE_FUNCTIONS = '''\
+"""Triage functions for the branching quickstart workflow.
+
+Demonstrates deterministic classification and branching logic
+without LLM calls. Used by workflows/branching_triage.yaml.
+
+Signature: (inputs: dict) -> dict
+"""
+
+
+def classify_issue(inputs: dict) -> dict:
+    """Classify an issue by severity based on keywords."""
+    issue = (inputs.get("issue") or "").lower()
+    if any(w in issue for w in ("down", "outage", "crash", "500", "data loss")):
+        return {
+            "severity": "critical",
+            "reason": "Service impact detected",
+            "summary": f"CRITICAL: {inputs.get(\'issue\', \'\')}",
+        }
+    if any(w in issue for w in ("slow", "timeout", "latency", "401", "degraded")):
+        return {
+            "severity": "high",
+            "reason": "Performance degradation",
+            "summary": f"HIGH: {inputs.get(\'issue\', \'\')}",
+        }
+    return {
+        "severity": "low",
+        "reason": "No immediate impact",
+        "summary": f"LOW: {inputs.get(\'issue\', \'\')}",
+    }
+
+
+def handle_critical(inputs: dict) -> dict:
+    """Format an escalation alert for critical issues."""
+    issue = inputs.get("issue", "unknown issue")
+    reason = inputs.get("reason", "")
+    return {
+        "action": "page_oncall",
+        "message": f"ESCALATION: {issue} -- {reason}. Paging on-call engineer.",
+    }
+
+
+def handle_normal(inputs: dict) -> dict:
+    """Format a log entry for non-critical issues."""
+    issue = inputs.get("issue", "unknown issue")
+    severity = inputs.get("severity", "unknown")
+    return {
+        "action": "log_ticket",
+        "message": f"Logged: {issue} (severity: {severity}). Added to backlog.",
+    }
+'''
+
+_QS_PIPELINE_FUNCTIONS = '''\
+"""Data pipeline functions for the pipeline quickstart workflow.
+
+Demonstrates a chain of pure data transformations without LLM calls.
+Used by workflows/data_pipeline.yaml.
+
+Signature: (inputs: dict) -> dict
+"""
+
+
+def parse_csv_row(inputs: dict) -> dict:
+    """Parse a comma-separated string into named fields."""
+    raw = inputs.get("data", "")
+    parts = [p.strip() for p in raw.split(",")]
+    if len(parts) < 3:
+        parts.extend([""] * (3 - len(parts)))
+    return {
+        "name": parts[0],
+        "value": parts[1],
+        "category": parts[2],
+        "field_count": len(parts),
+    }
+
+
+def validate_record(inputs: dict) -> dict:
+    """Validate parsed fields and coerce the value to a number."""
+    errors = []
+    name = inputs.get("name", "")
+    value = inputs.get("value", "")
+    if not name:
+        errors.append("name is required")
+    if not value:
+        errors.append("value is required")
+    try:
+        numeric = float(value) if value else 0.0
+    except ValueError:
+        errors.append(f"value \\'{value}\\' is not numeric")
+        numeric = 0.0
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "numeric_value": numeric,
+        "name": name,
+    }
+
+
+def transform_record(inputs: dict) -> dict:
+    """Normalize the value and build a display label."""
+    name = inputs.get("name", "unknown")
+    value = inputs.get("numeric_value", 0)
+    category = inputs.get("category", "uncategorized")
+    normalized = round(value / 100, 4) if value else 0
+    label = f"{name} [{category}]"
+    return {"label": label, "normalized": normalized, "original": value}
+
+
+def format_report(inputs: dict) -> dict:
+    """Produce a formatted text report from pipeline results."""
+    label = inputs.get("label", "")
+    normalized = inputs.get("normalized", 0)
+    original = inputs.get("original", 0)
+    valid = inputs.get("valid", False)
+    status = "VALID" if valid else "INVALID"
+    report = (
+        "--- Data Pipeline Report ---\\n"
+        f"  Record:     {label}\\n"
+        f"  Original:   {original}\\n"
+        f"  Normalized: {normalized}\\n"
+        f"  Status:     {status}\\n"
+        "----------------------------"
+    )
+    return {"report": report}
+'''
+
+_QS_RESEARCH_FUNCTIONS = '''\
+"""Research helper functions for the multi-agent quickstart workflow.
+
+Used by workflows/research.yaml alongside the researcher and advisor agents.
+
+Signature: (inputs: dict) -> dict
+"""
+
+
+def format_brief(inputs: dict) -> dict:
+    """Combine findings and recommendation into a formatted brief."""
+    findings = inputs.get("findings", "No findings")
+    recommendation = inputs.get("recommendation", "No recommendation")
+    brief = (
+        "=== RESEARCH BRIEF ===\\n\\n"
+        f"FINDINGS:\\n{findings}\\n\\n"
+        f"RECOMMENDATION:\\n{recommendation}\\n\\n"
+        "======================"
+    )
+    return {"brief": brief}
+
+
+def extract_action_items(inputs: dict) -> dict:
+    """Count bullet/numbered items in the findings text."""
+    findings = inputs.get("findings", "")
+    lines = [line.strip() for line in findings.split("\\n") if line.strip()]
+    count = len([
+        line for line in lines
+        if line and (line[0].isdigit() or line.startswith("-") or line.startswith("*"))
+    ])
+    return {"action_count": count, "status": "reviewed"}
+'''
+
+_QS_BRANCHING_WORKFLOW = """\
+# Quickstart 2: Branching Triage
+# Demonstrates: conditional branching, multiple function steps, no LLM required.
+# Run: ai quickstart2
+#   or: ai run workflows/branching_triage.yaml
+#   or: ai run workflows/branching_triage.yaml -i issue="Server is slow under load"
+
+workflow:
+  id: branching_triage
+  version: v1
+
+inputs:
+  issue:
+    description: Issue text to triage
+    default: "Production database is down, all API requests returning 500 errors"
+
+on_error: fail_fast
+
+steps:
+  - id: classify
+    type: function
+    function: triage.classify_issue
+    inputs:
+      issue: inputs.issue
+    next:
+      - when: state.steps.classify.severity == "critical"
+        goto: handle_critical
+      - default: handle_normal
+
+  - id: handle_critical
+    type: function
+    function: triage.handle_critical
+    inputs:
+      issue: inputs.issue
+      reason: steps.classify.reason
+    next:
+      - default: echo_result
+
+  - id: handle_normal
+    type: function
+    function: triage.handle_normal
+    inputs:
+      issue: inputs.issue
+      severity: steps.classify.severity
+    next:
+      - default: echo_result
+
+  - id: echo_result
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.classify.summary
+"""
+
+_QS_RESEARCH_WORKFLOW = """\
+# Quickstart 3: Multi-Agent Research
+# Demonstrates: two LLM agents collaborating, react strategy, agent-function-tool chain.
+# Requires: LLM provider configured (run `ai setup` first).
+# Run: ai quickstart3
+#   or: ai run workflows/research.yaml
+#   or: ai run workflows/research.yaml -i topic="Microservices vs monoliths"
+
+workflow:
+  id: research_report
+  version: v1
+
+inputs:
+  topic:
+    description: Topic to research
+    default: "Impact of AI agents on software development productivity"
+
+on_error: fail_fast
+
+steps:
+  - id: research
+    type: agent
+    agent: researcher
+    inputs:
+      topic: inputs.topic
+
+  - id: advise
+    type: agent
+    agent: advisor
+    inputs:
+      findings: steps.research.findings
+
+  - id: count_actions
+    type: function
+    function: research.extract_action_items
+    inputs:
+      findings: steps.research.findings
+
+  - id: format
+    type: function
+    function: research.format_brief
+    inputs:
+      findings: steps.research.findings
+      recommendation: steps.advise.recommendation
+
+  - id: echo_brief
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.format.brief
+"""
+
+_QS_PIPELINE_WORKFLOW = """\
+# Quickstart 4: Data Pipeline
+# Demonstrates: pure function chain, data transformation, no LLM required.
+# Run: ai quickstart4
+#   or: ai run workflows/data_pipeline.yaml
+#   or: ai run workflows/data_pipeline.yaml -i data="humidity, 85.2, weather"
+
+workflow:
+  id: data_pipeline
+  version: v1
+
+inputs:
+  data:
+    description: "Comma-separated record: name, value, category"
+    default: "temperature, 72.5, sensor"
+
+on_error: fail_fast
+
+steps:
+  - id: parse
+    type: function
+    function: pipeline.parse_csv_row
+    inputs:
+      data: inputs.data
+
+  - id: validate
+    type: function
+    function: pipeline.validate_record
+    inputs:
+      name: steps.parse.name
+      value: steps.parse.value
+
+  - id: transform
+    type: function
+    function: pipeline.transform_record
+    inputs:
+      name: steps.validate.name
+      numeric_value: steps.validate.numeric_value
+      category: steps.parse.category
+
+  - id: report
+    type: function
+    function: pipeline.format_report
+    inputs:
+      label: steps.transform.label
+      normalized: steps.transform.normalized
+      original: steps.transform.original
+      valid: steps.validate.valid
+
+  - id: echo_report
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.report.report
+"""
+
+_QS_RESEARCHER_AGENT = """\
+agent:
+  id: researcher
+  version: v1
+  description: "Researches a topic and produces structured key findings"
+  model: gpt-4o
+  system: "You are a research analyst. Identify key facts and structure your findings as a numbered list."
+  strategy:
+    type: react
+    max_iterations: 3
+  output_key: findings
+  tools:
+    - tools.echo
+  temperature: 0.4
+  max_tokens: 512
+  pipeline:
+    - id: main
+      type: model
+      prompt: |
+        Research the following topic and identify 3-5 key findings.
+
+        Topic: {{ inputs.topic }}
+
+        Respond with a numbered list of findings.
+"""
+
+_QS_ADVISOR_AGENT = """\
+agent:
+  id: advisor
+  version: v1
+  description: "Provides a strategic recommendation based on research findings"
+  model: gpt-4o
+  system: "You are a strategic advisor. Based on research findings, provide a clear, actionable recommendation in 2-3 sentences."
+  strategy: single
+  output_key: recommendation
+  tools:
+    - tools.echo
+  temperature: 0.3
+  max_tokens: 256
+  pipeline:
+    - id: main
+      type: model
+      prompt: |
+        Based on these research findings, provide one strategic recommendation.
+
+        Findings: {{ inputs.findings }}
+
+        Be specific and actionable.
+"""
+
+
+def _scaffold_file(path: str, content: str, *, model: Optional[str] = None) -> None:
+    """Write *content* to *path* if the file does not already exist."""
+    if os.path.exists(path):
+        return
+    text = content
+    if model:
+        text = text.replace("model: gpt-4o", f"model: {model}")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def _scaffold_quickstart_samples(
+    target_dir: str, *, model: Optional[str] = None,
+) -> None:
+    """Create additional quickstart sample files (idempotent)."""
+    workflows_dir = os.path.join(target_dir, "workflows")
+    functions_dir = os.path.join(target_dir, "functions")
+    agents_dir = os.path.join(target_dir, "agents")
+
+    os.makedirs(workflows_dir, exist_ok=True)
+    os.makedirs(functions_dir, exist_ok=True)
+    os.makedirs(agents_dir, exist_ok=True)
+
+    # quickstart2 — branching triage (no LLM)
+    _scaffold_file(os.path.join(functions_dir, "triage.py"), _QS_TRIAGE_FUNCTIONS)
+    _scaffold_file(os.path.join(workflows_dir, "branching_triage.yaml"), _QS_BRANCHING_WORKFLOW)
+
+    # quickstart3 — multi-agent research (LLM)
+    _scaffold_file(os.path.join(functions_dir, "research.py"), _QS_RESEARCH_FUNCTIONS)
+    _scaffold_file(os.path.join(agents_dir, "researcher.yaml"), _QS_RESEARCHER_AGENT, model=model)
+    _scaffold_file(os.path.join(agents_dir, "advisor.yaml"), _QS_ADVISOR_AGENT, model=model)
+    _scaffold_file(os.path.join(workflows_dir, "research.yaml"), _QS_RESEARCH_WORKFLOW)
+
+    # quickstart4 — data pipeline (no LLM)
+    _scaffold_file(os.path.join(functions_dir, "pipeline.py"), _QS_PIPELINE_FUNCTIONS)
+    _scaffold_file(os.path.join(workflows_dir, "data_pipeline.yaml"), _QS_PIPELINE_WORKFLOW)
+
 
 def _update_workflow_model(path: str, model: Optional[str]) -> bool:
     if not model or not os.path.isfile(path):
@@ -1086,6 +1500,50 @@ def _run_quickstart(project_root: str) -> int:
         os.chdir(cwd)
 
 
+def _run_quickstart_sample(
+    project_root: str,
+    workflow_name: str,
+    label: str,
+    *,
+    needs_llm: bool = False,
+) -> int:
+    """Scaffold project, optionally configure LLM, and run a sample workflow."""
+    if not os.path.isdir(project_root):
+        raise SystemExit(f"Project path does not exist: {project_root}")
+
+    _load_dotenv(os.path.join(project_root, ".env"))
+
+    chosen_model: Optional[str] = None
+    if needs_llm:
+        setup_info = _run_setup_flow(
+            project_root,
+            provider=None, api_key_env=None, api_key=None, model=None,
+            base_url=None, temperature=None, max_tokens=None,
+            no_dotenv=False, no_default=False,
+        )
+        chosen_model = setup_info.get("model") if isinstance(setup_info, dict) else None
+
+    runtime_path = os.path.join(project_root, "runtime.yaml")
+    if not os.path.exists(runtime_path):
+        _init_project(project_root, model=chosen_model)
+        print(f"Initialized project at {project_root}")
+    else:
+        _scaffold_quickstart_samples(project_root, model=chosen_model)
+
+    workflow_path = os.path.join(project_root, "workflows", workflow_name)
+    if not os.path.exists(workflow_path):
+        print(f"Workflow not found: {workflow_path}")
+        return 1
+
+    print(f"\nRunning {label}: {workflow_path}\n")
+    cwd = os.getcwd()
+    try:
+        os.chdir(project_root)
+        return run_cli(["run", workflow_path])
+    finally:
+        os.chdir(cwd)
+
+
 def _run_home_screen(project_root: str) -> int:
     print("\nagentic-runtime")
     print("Choose an action:\n")
@@ -1141,6 +1599,24 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         help="Initialize, configure, and run a starter workflow",
     )
     quickstart_parser.add_argument("--path", default=".", help="Project root")
+
+    qs2_parser = subparsers.add_parser(
+        "quickstart2",
+        help="Branching triage workflow (no LLM required)",
+    )
+    qs2_parser.add_argument("--path", default=".", help="Project root")
+
+    qs3_parser = subparsers.add_parser(
+        "quickstart3",
+        help="Multi-agent research workflow (LLM required)",
+    )
+    qs3_parser.add_argument("--path", default=".", help="Project root")
+
+    qs4_parser = subparsers.add_parser(
+        "quickstart4",
+        help="Data pipeline workflow (no LLM required)",
+    )
+    qs4_parser.add_argument("--path", default=".", help="Project root")
 
     setup_parser = subparsers.add_parser("setup", help="Configure API keys and runtime settings")
     setup_parser.add_argument("--path", default=".", help="Project root (contains runtime.yaml)")
@@ -1223,6 +1699,30 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     if args.command == "quickstart":
         project_root = os.path.abspath(args.path)
         return _run_quickstart(project_root)
+
+    if args.command == "quickstart2":
+        project_root = os.path.abspath(args.path)
+        print("\nQuickstart 2: Branching Triage (no LLM required)\n")
+        return _run_quickstart_sample(
+            project_root, "branching_triage.yaml",
+            "branching triage", needs_llm=False,
+        )
+
+    if args.command == "quickstart3":
+        project_root = os.path.abspath(args.path)
+        print("\nQuickstart 3: Multi-Agent Research (LLM required)\n")
+        return _run_quickstart_sample(
+            project_root, "research.yaml",
+            "multi-agent research", needs_llm=True,
+        )
+
+    if args.command == "quickstart4":
+        project_root = os.path.abspath(args.path)
+        print("\nQuickstart 4: Data Pipeline (no LLM required)\n")
+        return _run_quickstart_sample(
+            project_root, "data_pipeline.yaml",
+            "data pipeline", needs_llm=False,
+        )
 
     if args.command == "setup":
         project_root = os.path.abspath(args.path)

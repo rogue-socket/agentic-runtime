@@ -1,0 +1,49 @@
+# Quickstart 3: Multi-Agent Research
+# Demonstrates: two LLM agents collaborating, react strategy, agent→function→tool chain.
+# Requires: LLM provider configured (run `ai setup` first).
+# Run: ai quickstart3
+#   or: ai run workflows/research.yaml
+#   or: ai run workflows/research.yaml -i topic="Microservices vs monoliths"
+
+workflow:
+  id: research_report
+  version: v1
+
+inputs:
+  topic:
+    description: Topic to research
+    default: "Impact of AI agents on software development productivity"
+
+on_error: fail_fast
+
+steps:
+  - id: research
+    type: agent
+    agent: researcher
+    inputs:
+      topic: inputs.topic
+
+  - id: advise
+    type: agent
+    agent: advisor
+    inputs:
+      findings: steps.research.findings
+
+  - id: count_actions
+    type: function
+    function: research.extract_action_items
+    inputs:
+      findings: steps.research.findings
+
+  - id: format
+    type: function
+    function: research.format_brief
+    inputs:
+      findings: steps.research.findings
+      recommendation: steps.advise.recommendation
+
+  - id: echo_brief
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.format.brief
