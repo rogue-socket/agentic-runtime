@@ -52,4 +52,4 @@ steps:
     type: tool
     tool: tools.echo
     inputs:
-      message: steps.propose_fix.fix_proposal
+      message: steps.propose_fix.next_steps

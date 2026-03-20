@@ -38,6 +38,10 @@ def functions_dir() -> str:
     return str(Path(__file__).resolve().parents[1] / "functions")
 
 
+# [Pain Point Solved] #N10 Non-Deterministic Testing Paralysis: FakeLLMClient,
+#   FakeTool, and FakeToolRegistry let you test the full execution pipeline with
+#   predictable outputs. Combined with functions/stubs.py, you can integration-test
+#   multi-step workflows without making a single LLM call.
 # ── Fake helpers for agent / LLM / tool tests ──────────────────────────
 
 

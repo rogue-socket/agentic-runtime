@@ -28,6 +28,9 @@ import copy
 
 from .logging import StructuredLogger
 
+# [Pain Point Solved] #N2 State Mutation Ordering Bugs: Overwrite policies catch
+#   the case where you refactor step order and a later step silently overwrites
+#   data from an earlier one. OVERWRITE_STRICT raises immediately; WARN logs it.
 # Overwrite policies
 OVERWRITE_WARN = "warn"     # log a warning but allow the write (default)
 OVERWRITE_STRICT = "strict" # raise on any overwrite attempt
@@ -233,6 +236,10 @@ class RuntimeState:
                 added.append(key)
         return {"added": added, "removed": removed, "changed": changed}
 
+    # [Pain Point Solved] #N2 State Mutation Ordering Bugs: diff_paths gives a
+    #   recursive "what changed" view. When you swap steps B and C and the
+    #   pipeline silently produces garbage, `ai state-diff <run_id>` shows
+    #   exactly which step wrote what — making silent dependency violations visible.
     @staticmethod
     def diff_paths(before: Dict[str, Any], after: Dict[str, Any]) -> list[Dict[str, Any]]:
         """Compute recursive path-level diffs for nested dictionaries.

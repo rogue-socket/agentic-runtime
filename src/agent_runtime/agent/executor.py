@@ -97,4 +97,5 @@ class AgentExecutor:
             params=agent.params,
             prompt_registry=agent.prompt_registry,
             definition_path=agent.definition_path,
+            output_key=agent.output_key,
         )

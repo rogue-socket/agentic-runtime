@@ -3,6 +3,9 @@
 These tests wire up real Executor instances and run complete workflows
 to verify the modern step types work through the full execution loop.
 """
+# [Pain Point Solved] #N7 "Works in Isolation" Trap: These E2E tests run agents,
+#   functions, and tools through the real Executor — catching interface mismatches
+#   between steps that unit tests on individual handlers would miss.
 
 from __future__ import annotations
 

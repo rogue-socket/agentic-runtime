@@ -173,6 +173,14 @@ def _format_observation(record: ToolCall) -> str:
     return f"Tool {record.tool_name} result: {json.dumps(obs, default=str)}"
 
 
+# [Pain Point Partial] #N3 Cost Accounting is Invisible: Token usage is captured
+#   per-provider and aggregated across agent turns. However, it is NOT persisted
+#   on StepExecution records, there are no cost calculations, and there is no
+#   run-level token/cost summary in the CLI.
+# TODO(Pain Point #N3 — Cost Accounting): Persist aggregated token usage on each
+#   StepExecution record. Add a pricing table per model and compute per-step and
+#   per-run cost. Surface it in `ai inspect` so developers know which step is
+#   the expensive one before the invoice arrives.
 def _aggregate_usage(turns: List[AgentTurn]) -> Dict[str, Any]:
     """Sum token usage across all LLM calls."""
     total: Dict[str, int] = {}

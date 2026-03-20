@@ -54,6 +54,13 @@ class RuntimeConfig:
     # Default LLM provider (used when model string has no provider/ prefix)
     default_llm_provider: str = ""
 
+    # TODO(Prod Pain Point #6 — Config Drift Between Environments): Dev uses
+    #   gemini/flash with temp=0.2, prod needs openai/gpt-4o with temp=0.0
+    #   and a different db_path. Add environment-aware config layering:
+    #   runtime.yaml as base, runtime.prod.yaml as overlay, plus env-var
+    #   interpolation in config values (e.g. db_path: "${DB_PATH}") so you
+    #   don't maintain separate configs that silently drift.
+
 
 # Keys in runtime.yaml that map to flat RuntimeConfig fields
 _FLAT_KEYS = {

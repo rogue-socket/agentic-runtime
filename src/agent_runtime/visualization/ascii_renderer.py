@@ -16,6 +16,12 @@ from .graph_builder import GraphView
 from .timeline_builder import TimelineView
 
 
+# TODO(Prod Pain Point #9 — Aggregate Observability): Visualization renders a
+#   single run. In production you need success rate over time, p95 latency per
+#   step across all runs, which agent fails most often, and error rate trends.
+#   All the data is in SQLite — add a metrics export layer (Prometheus, Datadog,
+#   or a built-in `ai dashboard` command) that aggregates across runs, not just
+#   within one.
 _STATUS_ICON = {
     "COMPLETED": "OK",
     "COMPLETED_WITH_ERRORS": "WARN",

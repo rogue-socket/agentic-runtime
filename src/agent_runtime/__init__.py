@@ -76,6 +76,33 @@ def run_workflow(
         RuntimeError: If called from within an already-running event loop.
             Use :func:`run_workflow_async` instead.
     """
+    # TODO(Pain Point — Export/Wire-Into-Product):
+    #   This function (and run_workflow_async) is already the embryo of an
+    #   embeddable API, but it's not enough for production integration.
+    #
+    #   Maybe this runtime can have 2 modes — a debugging mode and a runtime
+    #   mode. In the runtime mode it just runs, along with some feature to
+    #   join it to an existing application.
+    #
+    #   Concrete needs:
+    #   1. **Runtime mode vs. debug mode**: Debug mode keeps full state
+    #      snapshots, agent traces, and verbose logging. Runtime mode skips
+    #      the expensive observability overhead and just executes fast.
+    #   2. **Embeddable entrypoint**: A lightweight factory/builder that lets
+    #      you wire the runtime into a FastAPI route, Flask endpoint, Django
+    #      view, or Lambda handler without pulling in CLI or scaffolding code.
+    #      Something like:
+    #        runtime = AgenticRuntime.from_config("runtime.yaml")
+    #        result = await runtime.run("my_workflow", inputs={...})
+    #   3. **Event bridge**: First-class adapters for triggering workflows
+    #      from external events — GitHub webhooks, Slack commands, SQS
+    #      messages, cron schedules — not just `ai run` from the terminal.
+    #   4. **Lifecycle hooks**: on_start, on_complete, on_error callbacks
+    #      that integrate with the host application's logging, metrics, and
+    #      alerting (e.g. emit to Datadog, Sentry, or a custom dashboard).
+    #   5. **Response formatting**: The Run object is internal. Production
+    #      consumers need a clean serializable response — JSON, protobuf,
+    #      or a typed DTO — not a dataclass full of execution metadata.
     try:
         asyncio.get_running_loop()
     except RuntimeError:

@@ -9,6 +9,13 @@ SITE_DIR = Path(__file__).resolve().parent
 OUT_PATH = SITE_DIR / "content.js"
 
 
+# [Pain Point Partial] #N12 Workflow Drift from Documentation: This bundler
+#   auto-aggregates all markdown into the doc site, but it doesn't auto-generate
+#   documentation from workflow YAML definitions (inputs, steps, contracts).
+# TODO(Pain Point #N12 — Workflow Drift): Add an `ai docs` command or build step
+#   that auto-generates documentation from workflow YAML — listing inputs, steps,
+#   contracts, and branch conditions. When the workflow IS the documentation source,
+#   drift becomes impossible.
 def build() -> None:
     docs = {}
     for path in ROOT.rglob("*.md"):

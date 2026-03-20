@@ -105,6 +105,12 @@ class RunState:
         self._runtime_state.set_step_output(step_id, output, writer=step_id)
 
 
+# [Pain Point Solved] #8 Prompt-Data Coupling: input_contract and output_contract
+#   enforce explicit schema boundaries between steps. If a prompt changes its output
+#   format, the contract check catches the mismatch at runtime — not six steps later.
+# [Pain Point Solved] #N1 "Almost Correct" Output: output_contract validates both
+#   missing and extra keys, catching LLM responses that pass structural checks but
+#   silently drop or invent fields.
 @dataclass
 class StepDefinition:
     """Workflow step definition normalized for execution."""
@@ -133,6 +139,9 @@ class NextRule:
     is_default: bool = False
 
 
+# [Pain Point Solved] #7 Retries as Afterthought: First-class per-step retry with
+#   configurable attempts, backoff strategy, and initial delay — declared in YAML,
+#   not bolted on with try/except + sleep loops.
 @dataclass
 class RetryPolicy:
     """Retry/backoff configuration for one step."""
@@ -142,10 +151,20 @@ class RetryPolicy:
     initial_delay: float = 0.0
 
 
+# [Pain Point Solved] #2 State Management Nightmare: Every step captures state_before
+#   and state_after snapshots, persisted atomically to SQLite. If step 5 of 7 fails,
+#   you know exactly what the state was after step 4.
+# [Pain Point Solved] #4 Debugging is Blind: agent_trace, duration_ms, attempt_count,
+#   and last_error give per-step observability without adding print() statements.
 @dataclass
 class StepExecution:
     """Persisted execution record for one step attempt lifecycle."""
 
+    # TODO(Prod Pain Point #2 — Latency Budgets): duration_ms tracks how long
+    #   each step took, but there's no way to declare "this workflow must complete
+    #   in under 5s" and fail-fast when a step exceeds its budget. Add an optional
+    #   `timeout_ms` on StepDefinition and a `latency_budget_ms` on the workflow
+    #   so slow steps are caught in real-time, not discovered in post-mortem.
     step_id: str
     step_type: str
     status: str = StepStatus.PENDING
@@ -218,6 +237,9 @@ class Run:
         self.state.unfreeze()
 
 
+# [Pain Point Solved] #10 Rebuild Same Infra Every Project: The Executor handles
+#   orchestration, persistence, retries, branching, state management, and event
+#   callbacks — the 80% of infra work that's the same for every agent project.
 class Executor:
     """Execute workflow steps and persist deterministic run history."""
 
@@ -246,6 +268,11 @@ class Executor:
         self.agent_registry = agent_registry
         self.llm_client = llm_client
 
+    # TODO(Prod Pain Point #11 — Heartbeats for Long-Running Workflows): A react
+    #   agent iterating 5 times with tool calls can take 30+ seconds. Behind a
+    #   load balancer or API gateway, the connection times out. Add a WebSocket/SSE
+    #   adapter for `on_event` that streams STEP_START/STEP_COMPLETE/agent iteration
+    #   progress to clients in real-time — not just a final result.
     def _emit(self, event: str, payload: Dict[str, Any]) -> None:
         """Fire the on_event callback if registered."""
         if self.on_event is not None:
@@ -487,6 +514,10 @@ class Executor:
                     execution.attempt_count = attempt
 
                     try:
+                        # [Pain Point Solved] #6 Mixing Step Types: Three separate
+                        # dispatch paths — agent (LLM), function (deterministic),
+                        # tool (external I/O) — so a formatting function doesn't
+                        # need an LLM wrapper.
                         if step_def.step_type == "agent":
                             if not step_def.agent_id:
                                 raise StepExecutionError("Agent step missing agent_id.")
@@ -516,6 +547,18 @@ class Executor:
                             handler_duration_ms = int((time.monotonic() - call_start) * 1000)
                             output = agent_result.outputs
                             # store agent trace for observability
+                            # TODO(Prod Pain Point #5 — Secrets in Agent Traces):
+                            #   The trace below captures the full llm_request, which
+                            #   contains interpolated prompts with user PII, internal
+                            #   system details, and business logic. If storage is
+                            #   shared or inspect output is logged, you're leaking
+                            #   sensitive data. Add a trace sanitizer that redacts
+                            #   PII patterns and user content before persistence.
+                            # TODO(Prod Pain Point #4 — Hallucination Guardrails):
+                            #   The agent output is stored as-is. For extraction tasks,
+                            #   add an optional `grounding_validator` hook that cross-
+                            #   checks agent output against source input — catching
+                            #   invented data before it flows into your database.
                             execution.agent_trace = [
                                 {
                                     "iteration": t.iteration,
@@ -557,6 +600,11 @@ class Executor:
                         last_error = exc
                         execution.last_error = f"{type(exc).__name__}: {exc}"
                         if attempt < max_attempts:
+                            # TODO(Pain Point #N6 — Retry-Aware Observability): Emit a
+                            #   structured STEP_RETRY event here so logs distinguish
+                            #   transient failures (recovered by retry) from real
+                            #   failures. Without this, monitoring dashboards overcount
+                            #   errors — retries that succeed look like 75% error rates.
                             delay = _compute_backoff_delay(attempt, backoff, initial_delay)
                             if delay > 0:
                                 await asyncio.sleep(delay)
@@ -567,6 +615,12 @@ class Executor:
                 if output is None or not isinstance(output, dict):
                     raise StepExecutionError("Step handler must return a dict.")
                 if step_def.output_contract:
+                    # TODO(Prod Pain Point #1 — Structured Output Parsing): Output
+                    #   contracts enforce key presence but not value shape. An LLM
+                    #   can return {"severity": "it's pretty bad"} when downstream
+                    #   expects "P0"|"P1"|"P2". Add optional value-level schema
+                    #   validation (type, enum, regex) per output key so malformed
+                    #   values are caught here, not six steps later.
                     expected = set(step_def.output_contract)
                     actual = set(output.keys())
                     missing = expected - actual
@@ -584,6 +638,11 @@ class Executor:
                 # - Prevent modification of "inputs"
                 # - Prevent overwriting existing step outputs unless explicitly allowed
                 # - Add collision validation policy
+                # TODO(Prod Pain Point #7 — No Graceful Degradation): on_error is
+                #   workflow-level. But sometimes step 3 is a nice-to-have enrichment
+                #   that shouldn't kill the run. Add per-step `optional: true` with a
+                #   `default` output value, so failures use the fallback and continue
+                #   without marking the whole run as COMPLETED_WITH_ERRORS.
                 if "inputs" in output:
                     raise StepExecutionError("Step output cannot include reserved key: inputs")
                 if step_def.step_id in run.state.data.get("steps", {}):
@@ -765,7 +824,10 @@ class Executor:
 
     def _resolve_next_step(self, step_def: StepDefinition, state: StateDict) -> Optional[str]:
         """Resolve next step via branch rules or sequential fallback."""
-        # TODO(PM-3, parallel-execution): Steps currently execute sequentially.
+        # TODO(Pain Point #N5 — Fan-Out/Fan-In): Steps currently execute sequentially.
+        #   "Run this agent on each item in the list, then aggregate the results"
+        #   sounds simple but needs: partial failure handling, retry of individual
+        #   items, atomic result merging, and gap-tolerant aggregation.
         #   To enable parallel execution:
         #   1. Extend StepDefinition with a `parallel_group` field so adjacent
         #      steps in the same group can run concurrently via asyncio.gather.

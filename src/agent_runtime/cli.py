@@ -90,6 +90,8 @@ _DEFAULT_PROVIDER_BASE_URL = {
 }
 
 
+# [Pain Point Solved] #N11 .env File in the Repo: Secrets are redacted in all
+#   CLI output — inspect, state-history, and run displays never leak API keys.
 def _redact(obj: Any) -> Any:
     """Recursively redact values whose keys look like secrets."""
     if isinstance(obj, dict):
@@ -120,6 +122,9 @@ def _parse_env_line(line: str) -> Optional[tuple[str, str]]:
     return key, value
 
 
+# [Pain Point Solved] #N11 .env File in the Repo: .env is gitignored. This loader
+#   uses os.environ.setdefault so existing env vars take precedence — safe for CI
+#   where secrets come from the environment, not files.
 def _load_dotenv(path: str = ".env") -> None:
     """Load environment variables from a local .env file if present."""
     if not os.path.isfile(path):
@@ -558,6 +563,9 @@ agent:
 """
 
 
+# [Pain Point Solved] #10 Rebuild Same Infra Every Project: One command scaffolds
+#   the full project structure — workflows/, tools/, agents/, functions/, runtime.yaml.
+#   No more copy-pasting from the last project with its bugs.
 def _init_project(target_dir: str, *, model: Optional[str] = None) -> None:
     """Create workflow scaffold files in target directory.
 
@@ -1161,6 +1169,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                             metavar="KEY=VALUE",
                             help="Workflow input (repeatable, e.g. -i issue=\"bug report\")")
 
+    # [Pain Point Solved] #4 Debugging is Blind: inspect, state-diff, replay, and
+    #   visualize give full post-mortem observability without print() statements.
     inspect_parser = subparsers.add_parser("inspect", help="Inspect a run")
     inspect_parser.add_argument("run_id", help="Run ID")
     inspect_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")

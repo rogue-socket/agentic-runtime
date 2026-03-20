@@ -83,3 +83,9 @@ def validate_resume(run_status: str) -> None:
 
 # [TODO] Support step-level idempotency verification before resuming side-effecting steps.
 # [TODO] Support retry conditions (e.g., retry only on specific error types).
+# TODO(Prod Pain Point #12 — Selective Step Re-Execution): Resume works for
+#   failed runs. But what if a run succeeded and you want to re-run just step 4
+#   with a tweaked prompt — keeping steps 1-3's output and re-executing from
+#   step 4 onward? Add a `rerun_from(run_id, step_id, overrides={})` that forks
+#   a completed run's state at a given step and re-executes the tail. This saves
+#   massive time during prompt iteration on expensive multi-step pipelines.
