@@ -160,6 +160,11 @@ class RetryPolicy:
 class StepExecution:
     """Persisted execution record for one step attempt lifecycle."""
 
+    # TODO(Prod Pain Point #2 — Latency Budgets): duration_ms tracks how long
+    #   each step took, but there's no way to declare "this workflow must complete
+    #   in under 5s" and fail-fast when a step exceeds its budget. Add an optional
+    #   `timeout_ms` on StepDefinition and a `latency_budget_ms` on the workflow
+    #   so slow steps are caught in real-time, not discovered in post-mortem.
     step_id: str
     step_type: str
     status: str = StepStatus.PENDING
@@ -263,6 +268,11 @@ class Executor:
         self.agent_registry = agent_registry
         self.llm_client = llm_client
 
+    # TODO(Prod Pain Point #11 — Heartbeats for Long-Running Workflows): A react
+    #   agent iterating 5 times with tool calls can take 30+ seconds. Behind a
+    #   load balancer or API gateway, the connection times out. Add a WebSocket/SSE
+    #   adapter for `on_event` that streams STEP_START/STEP_COMPLETE/agent iteration
+    #   progress to clients in real-time — not just a final result.
     def _emit(self, event: str, payload: Dict[str, Any]) -> None:
         """Fire the on_event callback if registered."""
         if self.on_event is not None:
@@ -537,6 +547,18 @@ class Executor:
                             handler_duration_ms = int((time.monotonic() - call_start) * 1000)
                             output = agent_result.outputs
                             # store agent trace for observability
+                            # TODO(Prod Pain Point #5 — Secrets in Agent Traces):
+                            #   The trace below captures the full llm_request, which
+                            #   contains interpolated prompts with user PII, internal
+                            #   system details, and business logic. If storage is
+                            #   shared or inspect output is logged, you're leaking
+                            #   sensitive data. Add a trace sanitizer that redacts
+                            #   PII patterns and user content before persistence.
+                            # TODO(Prod Pain Point #4 — Hallucination Guardrails):
+                            #   The agent output is stored as-is. For extraction tasks,
+                            #   add an optional `grounding_validator` hook that cross-
+                            #   checks agent output against source input — catching
+                            #   invented data before it flows into your database.
                             execution.agent_trace = [
                                 {
                                     "iteration": t.iteration,
@@ -593,6 +615,12 @@ class Executor:
                 if output is None or not isinstance(output, dict):
                     raise StepExecutionError("Step handler must return a dict.")
                 if step_def.output_contract:
+                    # TODO(Prod Pain Point #1 — Structured Output Parsing): Output
+                    #   contracts enforce key presence but not value shape. An LLM
+                    #   can return {"severity": "it's pretty bad"} when downstream
+                    #   expects "P0"|"P1"|"P2". Add optional value-level schema
+                    #   validation (type, enum, regex) per output key so malformed
+                    #   values are caught here, not six steps later.
                     expected = set(step_def.output_contract)
                     actual = set(output.keys())
                     missing = expected - actual
@@ -610,6 +638,11 @@ class Executor:
                 # - Prevent modification of "inputs"
                 # - Prevent overwriting existing step outputs unless explicitly allowed
                 # - Add collision validation policy
+                # TODO(Prod Pain Point #7 — No Graceful Degradation): on_error is
+                #   workflow-level. But sometimes step 3 is a nice-to-have enrichment
+                #   that shouldn't kill the run. Add per-step `optional: true` with a
+                #   `default` output value, so failures use the fallback and continue
+                #   without marking the whole run as COMPLETED_WITH_ERRORS.
                 if "inputs" in output:
                     raise StepExecutionError("Step output cannot include reserved key: inputs")
                 if step_def.step_id in run.state.data.get("steps", {}):

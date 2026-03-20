@@ -13,6 +13,18 @@ from ..logging import StructuredLogger
 class LLMClient:
     """Client facade that resolves providers/models and executes calls."""
 
+    # TODO(Prod Pain Point #3 — Rate Limiting Across Concurrent Runs): One
+    #   workflow is fine. Fifty concurrent webhook-triggered runs all hit the
+    #   same provider and get rate-limited together. Add a global rate limiter
+    #   (token bucket or semaphore) at this client level so concurrent
+    #   Executor instances share a throttled request queue instead of each
+    #   independently hammering the API and triggering 429s.
+    # TODO(Prod Pain Point #10 — Model Regression Detection): When you swap
+    #   from gpt-4o-2024-05-13 to gpt-4o-2024-08-06, nothing breaks but
+    #   output quality subtly shifts. Add a `compare_models()` utility that
+    #   runs the same inputs through two model versions and diffs outputs
+    #   (semantic similarity, key presence, format adherence) to catch
+    #   regressions before they reach production.
     def __init__(
         self,
         registry: LLMRegistry,

@@ -38,6 +38,11 @@ class ReplayResult:
 # TODO(Pain Point #N9 — Cold-Path Amnesia): Add branch-coverage tracking across
 #   replays. Track which workflow branches have been exercised and warn when a
 #   path hasn't been tested since the workflow YAML was last modified.
+# TODO(Prod Pain Point #8 — Snapshot Testing for LLM Outputs): Replay works for
+#   full runs, but there's no test-fixture pattern for it. Add a `capture_golden`
+#   mode that records LLM responses as snapshots, and a `replay_golden` mode that
+#   replays from those snapshots in tests — so you can validate pipeline behavior
+#   against known-good LLM output without making live API calls or spending money.
 class RunReplayer:
     """Reconstruct run progression from persisted history."""
 
