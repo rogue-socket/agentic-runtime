@@ -46,7 +46,7 @@ class ShellTool:
         "properties": {
             "command": {
                 "type": "string",
-                "description": "Shell command to execute",
+                "description": "Command to execute",
             },
             "cwd": {
                 "type": "string",
@@ -55,6 +55,10 @@ class ShellTool:
             "timeout": {
                 "type": "number",
                 "description": "Timeout in seconds (default 60)",
+            },
+            "shell": {
+                "type": "boolean",
+                "description": "Pass command through the system shell (default false). Enable for pipes, globs, or shell builtins.",
             },
         },
         "required": ["command"],
@@ -129,21 +133,13 @@ class ShellTool:
 
         cwd = input.get("cwd")
         cmd_timeout = input.get("timeout", _DEFAULT_TIMEOUT)
+        use_shell = input.get("shell", False)
 
-        # TODO(Eng-2, shell-security): subprocess.run with shell=True passes
-        #   the command string through the system shell, which is vulnerable
-        #   to shell injection if command values ever include untrusted input.
-        #   Mitigation plan:
-        #   1. Switch to shell=False with shlex.split(command) as default.
-        #   2. Add an explicit `shell: true` flag in the tool input schema
-        #      that callers must opt into when shell features (pipes, globs)
-        #      are genuinely needed.
-        #   3. When shell=True is used, apply stricter sanitisation and
-        #      require that the command matches the allowlist.
         try:
+            cmd: Any = shlex.split(command) if not use_shell else command
             result = subprocess.run(
-                command,
-                shell=True,
+                cmd,
+                shell=use_shell,
                 capture_output=True,
                 timeout=cmd_timeout,
                 cwd=cwd,

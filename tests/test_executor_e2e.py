@@ -6,7 +6,6 @@ to verify the modern step types work through the full execution loop.
 
 from __future__ import annotations
 
-import tempfile
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -14,32 +13,12 @@ import pytest
 
 from agent_runtime.core import Executor, StepDefinition, StepStatus, NextRule
 from agent_runtime.errors import BranchResolutionError, StepExecutionError
-from agent_runtime.memory.base import MemoryManager
-from agent_runtime.memory.working import WorkingMemory
-from agent_runtime.memory.episodic import EpisodicMemory
-from agent_runtime.memory.semantic import SemanticMemory
-from agent_runtime.memory.procedural import ProceduralMemory
-from agent_runtime.storage.sqlite import SQLiteStorage
 from agent_runtime.tools.registry import ToolRegistry
 from agent_runtime.tools.base import RuntimeContext, ToolResult
 from agent_runtime.agent.definition import AgentDefinition, PipelineStep, StrategyConfig
 from agent_runtime.agent.registry import AgentRegistry
 from agent_runtime.llm.types import LLMResponse
-
-
-def _storage() -> SQLiteStorage:
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    tmp.close()
-    return SQLiteStorage(tmp.name)
-
-
-def _memory_manager() -> MemoryManager:
-    return MemoryManager(
-        working=WorkingMemory(),
-        episodic=EpisodicMemory(),
-        semantic=SemanticMemory(),
-        procedural=ProceduralMemory(),
-    )
+from conftest import make_storage, make_memory_manager
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +43,7 @@ class TestFunctionStepE2E:
                 input_spec={"issue": "inputs.issue"},
             )
         ]
-        executor = Executor(steps, _storage(), None, _memory_manager(), ToolRegistry())
+        executor = Executor(steps, make_storage(), None, make_memory_manager(), ToolRegistry())
         run = executor.run("wf", {"issue": "Login fails"})
 
         assert run.status == StepStatus.COMPLETED
@@ -80,7 +59,7 @@ class TestFunctionStepE2E:
                 function_callable=None,
             )
         ]
-        executor = Executor(steps, _storage(), None, _memory_manager(), ToolRegistry())
+        executor = Executor(steps, make_storage(), None, make_memory_manager(), ToolRegistry())
         run = executor.run("wf", {})
 
         assert run.status == StepStatus.FAILED
@@ -109,7 +88,7 @@ class TestFunctionStepE2E:
                 input_spec={"value": "steps.one.value"},
             ),
         ]
-        executor = Executor(steps, _storage(), None, _memory_manager(), ToolRegistry())
+        executor = Executor(steps, make_storage(), None, make_memory_manager(), ToolRegistry())
         run = executor.run("wf", {})
 
         assert run.status == StepStatus.COMPLETED
@@ -151,7 +130,7 @@ class TestFunctionStepE2E:
                 function_callable=handle_low,
             ),
         ]
-        executor = Executor(steps, _storage(), None, _memory_manager(), ToolRegistry())
+        executor = Executor(steps, make_storage(), None, make_memory_manager(), ToolRegistry())
         run = executor.run("wf", {})
 
         assert run.status == StepStatus.COMPLETED
@@ -216,9 +195,9 @@ class TestAgentStepE2E:
 
         executor = Executor(
             steps,
-            _storage(),
+            make_storage(),
             None,
-            _memory_manager(),
+            make_memory_manager(),
             ToolRegistry(),
             agent_registry=registry,
             llm_client=FakeLLMClient("The login system has a token validation bug."),
@@ -238,7 +217,7 @@ class TestAgentStepE2E:
             )
         ]
         executor = Executor(
-            steps, _storage(), None, _memory_manager(), ToolRegistry(),
+            steps, make_storage(), None, make_memory_manager(), ToolRegistry(),
             agent_registry=None,
         )
         run = executor.run("wf", {})
@@ -266,7 +245,7 @@ class TestAgentStepE2E:
             )
         ]
         executor = Executor(
-            steps, _storage(), None, _memory_manager(), ToolRegistry(),
+            steps, make_storage(), None, make_memory_manager(), ToolRegistry(),
             agent_registry=registry,
             llm_client=None,
         )
@@ -305,7 +284,7 @@ class TestCircularBranchDetection:
                 next_rules=[NextRule(when=None, goto="step_a", is_default=True)],
             ),
         ]
-        executor = Executor(steps, _storage(), None, _memory_manager(), ToolRegistry())
+        executor = Executor(steps, make_storage(), None, make_memory_manager(), ToolRegistry())
 
         with pytest.raises(BranchResolutionError, match="Circular branch detected"):
             executor.run("wf", {})
@@ -325,7 +304,7 @@ class TestCircularBranchDetection:
                 next_rules=[NextRule(when=None, goto="loop", is_default=True)],
             ),
         ]
-        executor = Executor(steps, _storage(), None, _memory_manager(), ToolRegistry())
+        executor = Executor(steps, make_storage(), None, make_memory_manager(), ToolRegistry())
 
         with pytest.raises(BranchResolutionError, match="Circular branch detected"):
             executor.run("wf", {})
@@ -341,7 +320,7 @@ class TestCircularBranchDetection:
             StepDefinition(step_id="b", step_type="function", function_ref="f", function_callable=step_fn),
             StepDefinition(step_id="c", step_type="function", function_ref="f", function_callable=step_fn),
         ]
-        executor = Executor(steps, _storage(), None, _memory_manager(), ToolRegistry())
+        executor = Executor(steps, make_storage(), None, make_memory_manager(), ToolRegistry())
         run = executor.run("wf", {})
 
         assert run.status == StepStatus.COMPLETED
@@ -373,7 +352,7 @@ class TestCircularBranchDetection:
             StepDefinition(step_id="fast", step_type="function", function_ref="fast", function_callable=fast),
             StepDefinition(step_id="slow", step_type="function", function_ref="slow", function_callable=slow),
         ]
-        executor = Executor(steps, _storage(), None, _memory_manager(), ToolRegistry())
+        executor = Executor(steps, make_storage(), None, make_memory_manager(), ToolRegistry())
         run = executor.run("wf", {})
 
         assert run.status == StepStatus.COMPLETED

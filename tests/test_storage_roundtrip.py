@@ -6,16 +6,10 @@ converted to NULL (the truthiness bug fixed in append_step).
 
 from __future__ import annotations
 
-import tempfile
 
 from agent_runtime.core import Run, StepExecution, StepStatus
 from agent_runtime.storage.sqlite import SQLiteStorage
-
-
-def _storage() -> SQLiteStorage:
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    tmp.close()
-    return SQLiteStorage(tmp.name)
+from conftest import make_storage
 
 
 def _ensure_run(storage: SQLiteStorage, run_id: str = "run1") -> None:
@@ -59,7 +53,7 @@ class TestAppendStepEmptyDict:
     """Empty dicts ({}) must survive the write→read roundtrip as dicts, not None."""
 
     def test_empty_input_roundtrips(self) -> None:
-        storage = _storage()
+        storage = make_storage()
         _ensure_run(storage)
         step = _make_step(input={})
         storage.append_step("run1", step)
@@ -69,7 +63,7 @@ class TestAppendStepEmptyDict:
         assert loaded[0].input == {}
 
     def test_empty_output_roundtrips(self) -> None:
-        storage = _storage()
+        storage = make_storage()
         _ensure_run(storage)
         step = _make_step(output={})
         storage.append_step("run1", step)
@@ -78,7 +72,7 @@ class TestAppendStepEmptyDict:
         assert loaded[0].output == {}
 
     def test_empty_state_before_roundtrips(self) -> None:
-        storage = _storage()
+        storage = make_storage()
         _ensure_run(storage)
         step = _make_step(state_before={})
         storage.append_step("run1", step)
@@ -87,7 +81,7 @@ class TestAppendStepEmptyDict:
         assert loaded[0].state_before == {}
 
     def test_empty_state_after_roundtrips(self) -> None:
-        storage = _storage()
+        storage = make_storage()
         _ensure_run(storage)
         step = _make_step(state_after={})
         storage.append_step("run1", step)
@@ -96,7 +90,7 @@ class TestAppendStepEmptyDict:
         assert loaded[0].state_after == {}
 
     def test_none_stays_none(self) -> None:
-        storage = _storage()
+        storage = make_storage()
         _ensure_run(storage)
         step = _make_step(input=None, output=None, state_before=None, state_after=None)
         storage.append_step("run1", step)
@@ -108,7 +102,7 @@ class TestAppendStepEmptyDict:
         assert loaded[0].state_after is None
 
     def test_populated_dict_roundtrips(self) -> None:
-        storage = _storage()
+        storage = make_storage()
         _ensure_run(storage)
         step = _make_step(
             input={"issue": "test"},
@@ -129,7 +123,7 @@ class TestAgentTraceRoundtrip:
     """Verify agent_trace field survives write→read roundtrip (C1 fix)."""
 
     def test_agent_trace_none_stays_none(self) -> None:
-        storage = _storage()
+        storage = make_storage()
         _ensure_run(storage)
         step = _make_step(agent_trace=None)
         storage.append_step("run1", step)
@@ -138,7 +132,7 @@ class TestAgentTraceRoundtrip:
         assert loaded[0].agent_trace is None
 
     def test_agent_trace_roundtrips(self) -> None:
-        storage = _storage()
+        storage = make_storage()
         _ensure_run(storage)
         trace = [
             {
@@ -170,7 +164,7 @@ class TestAgentTraceRoundtrip:
         assert loaded[0].agent_trace[1]["llm_response_text"] == "No further info needed."
 
     def test_empty_trace_list_roundtrips(self) -> None:
-        storage = _storage()
+        storage = make_storage()
         _ensure_run(storage)
         step = _make_step(agent_trace=[])
         storage.append_step("run1", step)

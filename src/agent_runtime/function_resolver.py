@@ -22,9 +22,7 @@ import importlib.util
 import os
 import sys
 from pathlib import Path
-# TODO(M12-medium): Unused imports — Dict and Optional are imported but never
-#   used in this module. Remove them.
-from typing import Callable, Dict, Optional
+from typing import Callable
 
 
 def resolve_function(ref: str, functions_dir: str) -> Callable:

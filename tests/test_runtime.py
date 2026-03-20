@@ -1,11 +1,3 @@
-# TODO(H3-high): This file contains 14 junk auto-generated docstrings
-#   that should be replaced with real descriptions or removed entirely.
-# TODO(M10-medium): _storage() and _memory_manager() helper functions are
-#   copy-pasted across 12 test files. Extract them into a shared conftest.py
-#   fixture. Affected files: test_branching, test_branch_resume, test_executor_e2e,
-#   test_replay, test_resume, test_retry_policy, test_runtime, test_step_contracts,
-#   test_storage_roundtrip, test_transaction_safety, test_visualization,
-#   test_workflow_versioning, test_workflow_lock.
 from __future__ import annotations
 
 """File: tests/test_runtime.py
@@ -20,7 +12,6 @@ tracking, and memory hook invocation behavior.
 
 import asyncio
 import sqlite3
-import tempfile
 from typing import Any, Dict
 
 import pytest
@@ -28,14 +19,10 @@ import pytest
 from agent_runtime.core import Executor, RetryPolicy, StepDefinition, StepStatus
 from agent_runtime.errors import WorkflowValidationError
 from agent_runtime.memory.base import MemoryManager
-from agent_runtime.storage.sqlite import SQLiteStorage
 from agent_runtime.tools.registry import ToolRegistry
 from agent_runtime.tools.base import ToolResult, RuntimeContext
 from agent_runtime.workflow import load_workflow
-from agent_runtime.memory.working import WorkingMemory
-from agent_runtime.memory.episodic import EpisodicMemory
-from agent_runtime.memory.semantic import SemanticMemory
-from agent_runtime.memory.procedural import ProceduralMemory
+from conftest import make_storage, make_memory_manager
 
 
 def generate_summary(inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -46,105 +33,20 @@ def generate_summary(inputs: Dict[str, Any]) -> Dict[str, Any]:
 
 
 class CounterMemory:
-    """Auto-generated documentation for this class.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> CounterMemory
-        >>> # Example 2
-        >>> CounterMemory
-    """
     def __init__(self) -> None:
-        """Auto-generated documentation for this callable.
-        
-        Describes purpose, expected inputs/outputs, and behavior in this module.
-        
-        Example:
-            >>> # Example 1
-            >>> __init__
-            >>> # Example 2
-            >>> __init__
-        """
         self.read_calls = 0
         self.write_calls = 0
 
     def read(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Auto-generated documentation for this callable.
-        
-        Describes purpose, expected inputs/outputs, and behavior in this module.
-        
-        Example:
-            >>> # Example 1
-            >>> read
-            >>> # Example 2
-            >>> read
-        """
         self.read_calls += 1
         return {}
 
     def write(self, payload: Dict[str, Any]) -> None:
-        """Auto-generated documentation for this callable.
-        
-        Describes purpose, expected inputs/outputs, and behavior in this module.
-        
-        Example:
-            >>> # Example 1
-            >>> write
-            >>> # Example 2
-            >>> write
-        """
         self.write_calls += 1
 
 
-def _storage() -> SQLiteStorage:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> _storage
-        >>> # Example 2
-        >>> _storage
-    """
-    tmp = tempfile.NamedTemporaryFile(delete=False)
-    tmp.close()
-    return SQLiteStorage(tmp.name)
-
-
-def _memory_manager() -> MemoryManager:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> _memory_manager
-        >>> # Example 2
-        >>> _memory_manager
-    """
-    return MemoryManager(
-        working=WorkingMemory(),
-        episodic=EpisodicMemory(),
-        semantic=SemanticMemory(),
-        procedural=ProceduralMemory(),
-    )
-
-
 def test_function_step_success() -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_model_step_success
-        >>> # Example 2
-        >>> test_model_step_success
-    """
-    storage = _storage()
+    storage = make_storage()
     tool_registry = ToolRegistry()
     logger = None
 
@@ -156,7 +58,7 @@ def test_function_step_success() -> None:
             input_spec={"issue": "inputs.issue"},
         )
     ]
-    executor = Executor(steps, storage, logger, _memory_manager(), tool_registry)
+    executor = Executor(steps, storage, logger, make_memory_manager(), tool_registry)
 
     run = executor.run("wf", {"issue": "Login API fails for invalid token"})
     assert run.status == StepStatus.COMPLETED
@@ -165,17 +67,7 @@ def test_function_step_success() -> None:
 
 
 def test_function_step_missing_issue() -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_model_step_missing_issue
-        >>> # Example 2
-        >>> test_model_step_missing_issue
-    """
-    storage = _storage()
+    storage = make_storage()
     tool_registry = ToolRegistry()
     logger = None
 
@@ -187,7 +79,7 @@ def test_function_step_missing_issue() -> None:
             input_spec={"issue": "inputs.issue"},
         )
     ]
-    executor = Executor(steps, storage, logger, _memory_manager(), tool_registry)
+    executor = Executor(steps, storage, logger, make_memory_manager(), tool_registry)
 
     run = executor.run("wf", {})
     assert run.status == StepStatus.FAILED
@@ -195,30 +87,10 @@ def test_function_step_missing_issue() -> None:
 
 
 def test_tool_step_success() -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_tool_step_success
-        >>> # Example 2
-        >>> test_tool_step_success
-    """
-    storage = _storage()
+    storage = make_storage()
     tool_registry = ToolRegistry()
 
     class EchoTool:
-        """Auto-generated documentation for this class.
-        
-        Describes purpose, expected inputs/outputs, and behavior in this module.
-        
-        Example:
-            >>> # Example 1
-            >>> EchoTool
-            >>> # Example 2
-            >>> EchoTool
-        """
         name = "tools.echo"
         description = "echo"
         input_schema = {"type": "object", "properties": {"x": {"type": "number"}}}
@@ -226,22 +98,12 @@ def test_tool_step_success() -> None:
         retries = None
 
         async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
-            """Auto-generated documentation for this callable.
-            
-            Describes purpose, expected inputs/outputs, and behavior in this module.
-            
-            Example:
-                >>> # Example 1
-                >>> execute
-                >>> # Example 2
-                >>> execute
-            """
             return ToolResult(success=True, output={"x": input["x"]}, error=None, metadata=None)
 
     tool_registry.register(EchoTool())
 
     steps = [StepDefinition(step_id="echo", step_type="tool", tool_name="tools.echo", raw_input={"x": 1})]
-    executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
 
     run = executor.run("wf", {"issue": "x"})
     assert run.status == StepStatus.COMPLETED
@@ -250,7 +112,7 @@ def test_tool_step_success() -> None:
 
 def test_run_async_executes_tool_step() -> None:
     """Ensure async execution path runs tool steps successfully."""
-    storage = _storage()
+    storage = make_storage()
     tool_registry = ToolRegistry()
 
     class EchoTool:
@@ -265,7 +127,7 @@ def test_run_async_executes_tool_step() -> None:
 
     tool_registry.register(EchoTool())
     steps = [StepDefinition(step_id="echo", step_type="tool", tool_name="tools.echo", raw_input={"x": 2})]
-    executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
 
     async def _run() -> None:
         run = await executor.run_async("wf", {"issue": "x"})
@@ -277,7 +139,7 @@ def test_run_async_executes_tool_step() -> None:
 
 def test_run_raises_inside_event_loop() -> None:
     """Sync run should refuse to execute inside a running event loop."""
-    storage = _storage()
+    storage = make_storage()
     tool_registry = ToolRegistry()
     steps = [
         StepDefinition(
@@ -287,7 +149,7 @@ def test_run_raises_inside_event_loop() -> None:
             input_spec={"issue": "inputs.issue"},
         )
     ]
-    executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
 
     async def _run() -> None:
         with pytest.raises(RuntimeError):
@@ -297,16 +159,6 @@ def test_run_raises_inside_event_loop() -> None:
 
 
 def test_workflow_yaml_validation(tmp_path) -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_workflow_yaml_validation
-        >>> # Example 2
-        >>> test_workflow_yaml_validation
-    """
     bad_yaml = tmp_path / "bad.yaml"
     bad_yaml.write_text("name: x\nsteps: {}\n", encoding="utf-8")
 
@@ -315,17 +167,7 @@ def test_workflow_yaml_validation(tmp_path) -> None:
 
 
 def test_state_versioning() -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_state_versioning
-        >>> # Example 2
-        >>> test_state_versioning
-    """
-    storage = _storage()
+    storage = make_storage()
     tool_registry = ToolRegistry()
 
     steps = [
@@ -336,7 +178,7 @@ def test_state_versioning() -> None:
             input_spec={"issue": "inputs.issue"},
         )
     ]
-    executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
 
     run = executor.run("wf", {"issue": "Login API fails for invalid token"})
     assert run.status == StepStatus.COMPLETED
@@ -349,17 +191,7 @@ def test_state_versioning() -> None:
 
 
 def test_memory_hooks_invoked() -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_memory_hooks_invoked
-        >>> # Example 2
-        >>> test_memory_hooks_invoked
-    """
-    storage = _storage()
+    storage = make_storage()
     tool_registry = ToolRegistry()
 
     working = CounterMemory()
@@ -392,33 +224,13 @@ def test_memory_hooks_invoked() -> None:
 
 
 def test_retry_policy_succeeds() -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_retry_policy_succeeds
-        >>> # Example 2
-        >>> test_retry_policy_succeeds
-    """
-    storage = _storage()
+    storage = make_storage()
     tool_registry = ToolRegistry()
     logger = None
 
     attempts = {"count": 0}
 
     def flaky_function(inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Auto-generated documentation for this callable.
-        
-        Describes purpose, expected inputs/outputs, and behavior in this module.
-        
-        Example:
-            >>> # Example 1
-            >>> flaky_handler
-            >>> # Example 2
-            >>> flaky_handler
-        """
         attempts["count"] += 1
         if attempts["count"] < 2:
             raise ValueError("transient")
@@ -432,7 +244,7 @@ def test_retry_policy_succeeds() -> None:
             retry=RetryPolicy(attempts=2, backoff="fixed", initial_delay=0),
         )
     ]
-    executor = Executor(steps, storage, logger, _memory_manager(), tool_registry)
+    executor = Executor(steps, storage, logger, make_memory_manager(), tool_registry)
 
     run = executor.run("wf", {"issue": "x"})
     assert run.status == StepStatus.COMPLETED
@@ -440,17 +252,7 @@ def test_retry_policy_succeeds() -> None:
 
 
 def test_state_snapshots_persisted() -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_state_snapshots_persisted
-        >>> # Example 2
-        >>> test_state_snapshots_persisted
-    """
-    storage = _storage()
+    storage = make_storage()
     tool_registry = ToolRegistry()
 
     steps = [
@@ -461,7 +263,7 @@ def test_state_snapshots_persisted() -> None:
             input_spec={"issue": "inputs.issue"},
         )
     ]
-    executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
 
     run = executor.run("wf", {"issue": "Login API fails for invalid token"})
     assert run.status == StepStatus.COMPLETED

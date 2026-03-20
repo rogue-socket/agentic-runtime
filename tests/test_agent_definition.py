@@ -1,6 +1,3 @@
-# TODO(M10-medium): FakeLLMClient, FakeTool, and FakeToolRegistry helper
-#   classes are defined in this file but could be shared with other test files.
-#   Consider extracting to conftest.py or a shared test_helpers module.
 """Tests for the agent definition layer (Phase 1 + Phase 2 pipeline).
 
 Covers: PromptRegistry, AgentDefinition, PipelineStep, AgentRegistry,
@@ -23,7 +20,6 @@ from agent_runtime.agent.definition import (
 )
 from agent_runtime.agent.registry import AgentRegistry
 from agent_runtime.agent.strategies import (
-    AgentContext,
     AgentResult,
     AgentTurn,
     SingleCallStrategy,
@@ -34,8 +30,7 @@ from agent_runtime.agent.strategies import (
 )
 from agent_runtime.agent.executor import AgentExecutor
 from agent_runtime.errors import AgentValidationError
-from agent_runtime.llm.types import LLMResponse
-from agent_runtime.tools.base import ToolResult, RuntimeContext
+from conftest import FakeLLMClient, FakeTool, FakeToolRegistry, fake_agent_context
 
 
 def _run(coro):
@@ -521,48 +516,8 @@ class TestResolveStrategy:
 # ── Strategies (with mock LLM) ──────────────────────────────────────────
 
 
-class FakeLLMClient:
-    """Fake LLM client that returns pre-configured responses."""
-
-    def __init__(self, responses):
-        self.responses = list(responses)
-        self.calls = []
-
-    def call(self, **kwargs):
-        self.calls.append(kwargs)
-        text = self.responses.pop(0) if self.responses else "empty"
-        return LLMResponse(
-            text=text, provider="fake", model="fake-model", usage={"tokens": 10}
-        )
-
-
-class FakeTool:
-    """Minimal tool that satisfies the Tool protocol."""
-
-    def __init__(self, name, output=None):
-        self.name = name
-        self.description = f"Fake {name}"
-        self.input_schema = {"type": "object", "properties": {}}
-        self.timeout = None
-        self.retries = None
-        self._output = output or {"result": "ok"}
-
-    async def execute(self, input, context):
-        return ToolResult(success=True, output=self._output)
-
-
-class FakeToolRegistry:
-    def __init__(self, tools=None):
-        self._tools = {t.name: t for t in (tools or [])}
-
-    def get(self, name):
-        if name not in self._tools:
-            raise KeyError(f"Tool '{name}' not found")
-        return self._tools[name]
-
-
 def _ctx():
-    return AgentContext(run_id="r1", step_id="s1", state={})
+    return fake_agent_context()
 
 
 class TestSingleCallStrategy:

@@ -22,20 +22,11 @@ Side Effects:
 - Imports module dependencies at package import time.
 """
 
-# TODO(sdk): Design and document a clean programmatic API surface for embedding
-#   the runtime in applications. Target experience:
-#     from agentic_runtime import Executor, run_workflow
-#     result = run_workflow("my_agent@v1", inputs={"issue": "..."})
-#   This should handle config loading, storage setup, and tool registration
-#   internally so callers don't need to wire 5 objects together.
-
 from __future__ import annotations
 
 import asyncio
 import os
-# TODO(M11-medium): Unused imports — Callable and List from typing are imported
-#   but never used in this module. Remove them.
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from .core import Executor, EventCallback, Run, RunState, StepDefinition, StepExecution, StepStatus
 from .config import RuntimeConfig, load_config, apply_cli_overrides
@@ -129,52 +120,55 @@ async def run_workflow_async(
         semantic=SemanticMemory(db_path=cfg.db_path),
         procedural=ProceduralMemory(db_path=cfg.db_path),
     )
-    tool_registry = ToolRegistry()
-    tool_registry.register(EchoTool())
-    tool_registry.register(HttpTool())
-    tool_registry.register(FileTool())
-    tool_registry.register(ShellTool(
-        allowlist=cfg.shell_allowlist or None,
-        denylist=cfg.shell_denylist or None,
-    ))
-    register_discovered_tools(tool_registry, cfg.tools_dir)
+    try:
+        tool_registry = ToolRegistry()
+        tool_registry.register(EchoTool())
+        tool_registry.register(HttpTool())
+        tool_registry.register(FileTool())
+        tool_registry.register(ShellTool(
+            allowlist=cfg.shell_allowlist or None,
+            denylist=cfg.shell_denylist or None,
+        ))
+        register_discovered_tools(tool_registry, cfg.tools_dir)
 
-    # Build agent registry and LLM client
-    llm_client = LLMClient(registry=cfg.llm_registry, logger=logger)
-    agent_registry = AgentRegistry()
-    agents_dir = getattr(cfg, "agents_dir", "agents")
-    if os.path.isdir(agents_dir):
-        agent_registry = AgentRegistry.from_directory(agents_dir)
-    functions_dir = getattr(cfg, "functions_dir", "functions")
-    functions_dir = functions_dir if os.path.isdir(functions_dir) else None
+        # Build agent registry and LLM client
+        llm_client = LLMClient(registry=cfg.llm_registry, logger=logger)
+        agent_registry = AgentRegistry()
+        agents_dir = getattr(cfg, "agents_dir", "agents")
+        if os.path.isdir(agents_dir):
+            agent_registry = AgentRegistry.from_directory(agents_dir)
+        functions_dir = getattr(cfg, "functions_dir", "functions")
+        functions_dir = functions_dir if os.path.isdir(functions_dir) else None
 
-    # Load and parse workflow
-    workflow = load_workflow(workflow_path, functions_dir=functions_dir)
+        # Load and parse workflow
+        workflow = load_workflow(workflow_path, functions_dir=functions_dir)
 
-    input_state = inputs or {}
+        input_state = inputs or {}
 
-    executor = Executor(
-        steps=workflow["steps"],
-        storage=storage,
-        logger=logger,
-        memory_manager=memory_manager,
-        tool_registry=tool_registry,
-        overwrite_policy=cfg.overwrite_policy,
-        on_event=on_event,
-        agent_registry=agent_registry,
-        llm_client=llm_client,
-    )
+        executor = Executor(
+            steps=workflow["steps"],
+            storage=storage,
+            logger=logger,
+            memory_manager=memory_manager,
+            tool_registry=tool_registry,
+            overwrite_policy=cfg.overwrite_policy,
+            on_event=on_event,
+            agent_registry=agent_registry,
+            llm_client=llm_client,
+        )
 
-    return await executor.run_async(
-        workflow_id=workflow["workflow_id"],
-        initial_state=input_state,
-        workflow_version=workflow.get("workflow_version"),
-        on_error=on_error,
-        workflow_hash=workflow.get("workflow_hash"),
-        workflow_yaml=workflow.get("workflow_yaml"),
-        workflow_steps=workflow.get("workflow_steps"),
-        input_hash=sha256_json(input_state),
-    )
+        return await executor.run_async(
+            workflow_id=workflow["workflow_id"],
+            initial_state=input_state,
+            workflow_version=workflow.get("workflow_version"),
+            on_error=on_error,
+            workflow_hash=workflow.get("workflow_hash"),
+            workflow_yaml=workflow.get("workflow_yaml"),
+            workflow_steps=workflow.get("workflow_steps"),
+            input_hash=sha256_json(input_state),
+        )
+    finally:
+        storage.close()
 
 __all__ = [
     "Executor",

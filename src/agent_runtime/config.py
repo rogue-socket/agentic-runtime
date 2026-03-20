@@ -6,12 +6,7 @@ and allows CLI flags to override any value.
 Precedence (highest wins):
     CLI flag  >  runtime.yaml  >  built-in default
 
-TODO(ux): For solo dev ICP, `ai init` should generate a runtime.yaml that
-  includes a commented-out but complete LLM provider config section, so new
-  users can see exactly what to fill in rather than reading docs.
-  STATUS: Done \u2014 RUNTIME_YAML_TEMPLATE now includes all config sections.
-TODO(packaging): Once pyproject.toml exists, version should be read from
-  package metadata (importlib.metadata) rather than hardcoded.
+
 """
 
 from __future__ import annotations
@@ -35,9 +30,7 @@ class RuntimeConfig:
     agents_dir: str = "agents"
     functions_dir: str = "functions"
 
-    # TODO(M4-medium): Stale comment — LLM integration is fully implemented
-    #   via llm_registry on the next line. Update or remove this comment.
-    # Model backend (placeholder for future LLM integration)
+    # Legacy model configuration (prefer llm_registry for new workflows)
     model: Dict[str, Any] = field(default_factory=dict)
 
     # LLM provider registry
@@ -61,8 +54,6 @@ class RuntimeConfig:
     # Default LLM provider (used when model string has no provider/ prefix)
     default_llm_provider: str = ""
 
-
-_DEFAULTS = RuntimeConfig()
 
 # Keys in runtime.yaml that map to flat RuntimeConfig fields
 _FLAT_KEYS = {

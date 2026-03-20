@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import logging
 import os
 import sys
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from .registry import ToolRegistry
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -110,10 +113,12 @@ def _discover_tool_instances(tools_dir: str) -> List[tuple]:
             try:
                 instance = attr()
                 results.append((instance.name, instance))
-            # TODO(L2-low): Silent exception swallowing — tool instantiation
-            #   failures are silently skipped. A tool class might import fine
-            #   but fail to construct. Log a warning so users can diagnose.
             except Exception:
+                logger.warning(
+                    "Failed to instantiate tool class %s.%s from %s",
+                    module_name, attr_name, filepath,
+                    exc_info=True,
+                )
                 continue
 
     return results

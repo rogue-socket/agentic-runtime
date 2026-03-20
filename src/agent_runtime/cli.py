@@ -57,7 +57,7 @@ from .tools.http import HttpTool
 from .tools.file import FileTool
 from .tools.shell import ShellTool
 from .tools.discovery import register_discovered_tools
-from .errors import WorkflowValidationError
+from .errors import WorkflowValidationError, RunNotFoundError
 from .workflow import load_workflow, load_workflow_from_text
 from .workflow_registry import WorkflowRegistry, parse_workflow_reference
 from .visualization import GraphBuilder, RunLoader, TimelineBuilder, render_ascii, render_html
@@ -1369,7 +1369,11 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "inspect":
         storage = SQLiteStorage(cfg.db_path)
-        run = storage.load_run(args.run_id)
+        try:
+            run = storage.load_run(args.run_id)
+        except ValueError:
+            print(f"Error: run not found: {args.run_id}")
+            return 1
         steps = storage.load_steps(args.run_id)
         latest_state = storage.load_latest_state(args.run_id)
 
@@ -1427,7 +1431,11 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "resume":
         storage = SQLiteStorage(cfg.db_path)
-        run = storage.load_run(args.run_id)
+        try:
+            run = storage.load_run(args.run_id)
+        except ValueError:
+            print(f"Error: run not found: {args.run_id}")
+            return 1
         validate_resume(run.status)
 
         llm_client_resume = _default_llm_client(cfg)
@@ -1508,17 +1516,25 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     if args.command == "replay":
         storage = SQLiteStorage(cfg.db_path)
         replayer = RunReplayer(storage=storage, printer=print)
-        replayer.replay(
-            run_id=args.run_id,
-            step_by_step=args.step_by_step,
-            until=args.until,
-            verify_state=args.verify_state,
-        )
+        try:
+            replayer.replay(
+                run_id=args.run_id,
+                step_by_step=args.step_by_step,
+                until=args.until,
+                verify_state=args.verify_state,
+            )
+        except (ValueError, RunNotFoundError):
+            print(f"Error: run not found: {args.run_id}")
+            return 1
         return 0
 
     if args.command == "state-diff":
         storage = SQLiteStorage(cfg.db_path)
-        run = storage.load_run(args.run_id)
+        try:
+            run = storage.load_run(args.run_id)
+        except ValueError:
+            print(f"Error: run not found: {args.run_id}")
+            return 1
         steps = storage.load_steps(args.run_id)
         if args.step:
             steps = [s for s in steps if s.step_id == args.step]
@@ -1548,7 +1564,11 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "visualize":
         storage = SQLiteStorage(cfg.db_path)
-        data = RunLoader(storage).load(args.run_id)
+        try:
+            data = RunLoader(storage).load(args.run_id)
+        except ValueError:
+            print(f"Error: run not found: {args.run_id}")
+            return 1
         graph = GraphBuilder().build(data)
         timeline = TimelineBuilder().build(data)
 

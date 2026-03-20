@@ -6,7 +6,9 @@ code, and headers.  Uses stdlib ``urllib`` — no additional dependencies.
 
 from __future__ import annotations
 
+import ipaddress
 import json
+import socket
 import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional
@@ -17,6 +19,34 @@ from .base import RuntimeContext, ToolResult
 
 _ALLOWED_SCHEMES = {"http", "https"}
 _MAX_RESPONSE_BYTES = 1_048_576  # 1 MB safety limit
+
+# SSRF protection: block requests to private / link-local / loopback networks
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("0.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("100.64.0.0/10"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.0.0.0/24"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+]
+
+
+def _is_private_host(hostname: str) -> bool:
+    """Resolve *hostname* and return True if any address is private/blocked."""
+    try:
+        infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        return False  # DNS failure will surface later as URLError
+    for _family, _type, _proto, _canon, sockaddr in infos:
+        addr = ipaddress.ip_address(sockaddr[0])
+        if any(addr in net for net in _BLOCKED_NETWORKS):
+            return True
+    return False
 
 
 class HttpTool:
@@ -64,6 +94,15 @@ class HttpTool:
                 success=False,
                 output=None,
                 error=f"URL scheme '{parsed.scheme}' is not allowed. Use http or https.",
+                metadata=None,
+            )
+
+        # SSRF protection: block private / loopback / link-local targets
+        if parsed.hostname and _is_private_host(parsed.hostname):
+            return ToolResult(
+                success=False,
+                output=None,
+                error="Requests to private or internal network addresses are blocked.",
                 metadata=None,
             )
 

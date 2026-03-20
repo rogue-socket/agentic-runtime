@@ -75,13 +75,23 @@ class ProceduralMemory:
         return {row["key"]: json.loads(row["value_json"]) for row in rows}
 
     def write(self, payload: Dict[str, Any]) -> None:
-        """Merge *payload* into procedural memory (upsert per key)."""
+        """Persist procedural rules from ``runtime.memory.procedural.store``."""
+        store = (
+            payload
+            .get("runtime", {})
+            .get("memory", {})
+            .get("procedural", {})
+            .get("store", {})
+        )
+        if not isinstance(store, dict) or not store:
+            return
+
         if self._conn is None:
-            self._store.update(payload)
+            self._store.update(store)
             return
 
         now = datetime.now(timezone.utc).isoformat()
-        for key, value in payload.items():
+        for key, value in store.items():
             self._conn.execute(
                 """
                 INSERT INTO procedural_rules (key, value_json, created_at, updated_at)

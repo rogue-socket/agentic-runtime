@@ -42,7 +42,7 @@ pip install -r requirements.txt
 - Tool discovery skips classes whose names start with `_` and base classes imported from other modules.
 - Built-in tools (`tools.echo`, `tools.http`, `tools.file`, `tools.shell`) are always available.
 
-**HandlerNotFoundError / unknown function**
+**Unknown function**
 
 - Confirm the function exists in `functions/` and uses the correct qualified name format: `module.function_name`.
 - Example: `stubs.generate_summary` resolves to `functions/stubs.py` → `generate_summary()`.

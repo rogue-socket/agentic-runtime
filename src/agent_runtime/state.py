@@ -73,7 +73,6 @@ class RuntimeState:
                 f"must be one of {sorted(_VALID_POLICIES)}"
             )
         self._data: Dict[str, Any] = copy.deepcopy(data) if data is not None else {}
-        self._meta: Dict[str, Dict[str, Any]] = {}
         self._overwrite_policy = overwrite_policy
         self._logger = logger or StructuredLogger()
         if enforce_structure:
@@ -161,8 +160,6 @@ class RuntimeState:
                     "new_value": repr(value),
                 })
         parent[leaf] = value
-        if step_name is not None:
-            self._meta[key] = {"written_by": step_name}
 
     def exists(self, key: str) -> bool:
         """Return True when dotted key path exists.
@@ -250,10 +247,6 @@ class RuntimeState:
         changes: list[Dict[str, Any]] = []
 
         def walk(b: Any, a: Any, prefix: str) -> None:
-            # TODO(H2-high): Replace this junk auto-generated docstring with a
-            #   real one, or remove it entirely. There are 81 instances of
-            #   "Auto-generated documentation for this callable" across 14 files
-            #   (13 test files + this one). All should be cleaned up (see H3).
             """Recursively walk two nested dicts and record differences."""
             if isinstance(b, dict) and isinstance(a, dict):
                 b_keys = set(b.keys())

@@ -471,14 +471,19 @@ class Executor:
                         if not isinstance(step_input, dict):
                             raise StepExecutionError("Step input must be a dict.")
                         step_input = copy.deepcopy(step_input)
-                        # TODO: Consider redacting prompts or secrets before persisting execution.input.
                         step_input["__llm__"] = copy.deepcopy(step_def.raw_input)
                         step_input["__llm_context__"] = {
                             "run_id": run.run_id,
                             "step_id": step_def.step_id,
                         }
                     step_input_state = RuntimeState(step_input, enforce_structure=False)
-                    execution.input = copy.deepcopy(step_input_state.to_dict())
+                    persisted_input = step_input_state.to_dict()
+                    # Strip internal LLM context before persisting — these may
+                    # contain raw prompts or interpolated secrets that should
+                    # not be stored in the execution record.
+                    persisted_input.pop("__llm__", None)
+                    persisted_input.pop("__llm_context__", None)
+                    execution.input = copy.deepcopy(persisted_input)
                     execution.attempt_count = attempt
 
                     try:

@@ -169,7 +169,6 @@ class TestInitProject:
             assert os.path.isfile(os.path.join(d, "tools", "example_tool.py"))
             assert os.path.isfile(os.path.join(d, "functions", "stubs.py"))
             assert os.path.isfile(os.path.join(d, "agents", "summarizer.yaml"))
-            assert os.path.isfile(os.path.join(d, "agents", "fixer.yaml"))
 
     def test_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as d:
@@ -189,10 +188,6 @@ class TestInitProject:
             with open(agent_path) as f:
                 content = f.read()
             assert "claude-3-opus" in content
-            fixer_path = os.path.join(d, "agents", "fixer.yaml")
-            with open(fixer_path) as f:
-                fixer_content = f.read()
-            assert "claude-3-opus" in fixer_content
 
 
 # ── run_cli dispatch ───────────────────────────────────────────────

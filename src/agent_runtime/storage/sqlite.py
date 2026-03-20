@@ -80,21 +80,28 @@ class SQLiteStorage(Storage):
         """Execute a single SQL statement on the persistent connection.
 
         If called outside a ``transaction()`` block the statement is wrapped in
-        an implicit BEGIN / COMMIT pair.  Inside a transaction block the
-        statement participates in the outer transaction.
+        an implicit BEGIN / COMMIT pair and serialised through ``_lock``.
+        Inside a transaction block the statement participates in the outer
+        transaction (the lock is already held by ``transaction()``).
         """
         auto = not self._in_transaction
         if auto:
-            self._conn.execute("BEGIN")
+            self._lock.acquire()
         try:
-            cursor = self._conn.execute(sql, params)
             if auto:
-                self._conn.execute("COMMIT")
-            return cursor
-        except BaseException:
+                self._conn.execute("BEGIN")
+            try:
+                cursor = self._conn.execute(sql, params)
+                if auto:
+                    self._conn.execute("COMMIT")
+                return cursor
+            except BaseException:
+                if auto:
+                    self._conn.execute("ROLLBACK")
+                raise
+        finally:
             if auto:
-                self._conn.execute("ROLLBACK")
-            raise
+                self._lock.release()
 
     @contextmanager
     def transaction(self) -> Generator[None, None, None]:
@@ -140,6 +147,12 @@ class SQLiteStorage(Storage):
             except Exception:  # noqa: BLE001 — best-effort cleanup
                 pass
             self._conn = None  # type: ignore[assignment]
+
+    def __enter__(self) -> "SQLiteStorage":
+        return self
+
+    def __exit__(self, *exc_info: Any) -> None:
+        self.close()
 
     # -- schema bootstrap -----------------------------------------------------
 

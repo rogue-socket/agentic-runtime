@@ -24,7 +24,6 @@ from agent_runtime.agent.definition import (
     load_agent_definition,
 )
 from agent_runtime.agent.strategies import (
-    AgentContext,
     AgentResult,
     SingleCallStrategy,
     ReActStrategy,
@@ -35,10 +34,10 @@ from agent_runtime.agent.executor import AgentExecutor
 from agent_runtime.agent.prompts import PromptEntry, PromptRegistry
 from agent_runtime.errors import AgentValidationError
 from agent_runtime.function_resolver import resolve_function
-from agent_runtime.llm.types import LLMResponse
-from agent_runtime.tools.base import ToolResult, RuntimeContext
+from agent_runtime.tools.base import ToolResult
 from agent_runtime.workflow import load_workflow_from_text, _validate_step
 from agent_runtime.errors import WorkflowValidationError
+from conftest import FakeLLMClient, FakeTool, FakeToolRegistry, fake_agent_context
 
 
 def _run(coro):
@@ -48,44 +47,8 @@ def _run(coro):
 # ── Fake helpers ─────────────────────────────────────────────────────────
 
 
-class FakeLLMClient:
-    def __init__(self, responses):
-        self.responses = list(responses)
-        self.calls = []
-
-    def call(self, **kwargs):
-        self.calls.append(kwargs)
-        text = self.responses.pop(0) if self.responses else "empty"
-        return LLMResponse(
-            text=text, provider="fake", model="fake-model", usage={"tokens": 10}
-        )
-
-
-class FakeTool:
-    def __init__(self, name, output=None):
-        self.name = name
-        self.description = f"Fake {name}"
-        self.input_schema = {"type": "object", "properties": {}}
-        self.timeout = None
-        self.retries = None
-        self._output = output or {"result": "ok"}
-
-    async def execute(self, input, context):
-        return ToolResult(success=True, output=self._output, error=None, metadata=None)
-
-
-class FakeToolRegistry:
-    def __init__(self, tools=None):
-        self._tools = {t.name: t for t in (tools or [])}
-
-    def get(self, name):
-        if name not in self._tools:
-            raise KeyError(f"Tool '{name}' not found")
-        return self._tools[name]
-
-
 def _ctx():
-    return AgentContext(run_id="r1", step_id="s1", state={})
+    return fake_agent_context()
 
 
 # ── PipelineStep Validation ─────────────────────────────────────────────

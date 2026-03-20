@@ -13,7 +13,6 @@ edges, and branch evaluation records for renderers.
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from ..state import RuntimeState
 from ..utils import safe_eval
 from .run_loader import RunVisualizationData
 
@@ -139,12 +138,3 @@ class GraphBuilder:
 
         nodes.sort(key=lambda n: ((n.execution_index is None), n.execution_index if n.execution_index is not None else 10**9, n.step_id))
         return GraphView(nodes=nodes, edges=edges, branch_decisions=branch_decisions)
-
-
-class StateDiffBuilder:
-    """Compatibility helper delegating to `RuntimeState.diff_paths`."""
-
-    @staticmethod
-    def diff(before: Dict[str, Any], after: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Return deep path-level diff for visualization consumers."""
-        return RuntimeState.diff_paths(before, after)

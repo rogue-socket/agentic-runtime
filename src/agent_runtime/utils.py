@@ -32,6 +32,7 @@ import json
 import hashlib
 import ast
 import re
+import string
 
 
 StateDict = Dict[str, Any]
@@ -78,18 +79,19 @@ def json_loads(raw: str) -> Any:
 
 
 def format_template(value: Any, state: Dict[str, Any]) -> Any:
-    """Recursively apply `str.format` to templated values.
+    """Recursively substitute ``$key`` / ``${key}`` placeholders in templated values.
 
-    Strings are formatted with the provided state mapping; dict/list
-    values are traversed recursively, while non-collection values pass
-    through unchanged.
+    Uses :class:`string.Template` with ``safe_substitute`` so that
+    missing keys are left as-is rather than raising ``KeyError``, and
+    Python format-string mini-language attacks (``{0.__class__}``) are
+    not possible.
 
     Example:
-        >>> format_template("Issue: {issue}", {"issue": "x"})
+        >>> format_template("Issue: $issue", {"issue": "x"})
         'Issue: x'
     """
     if isinstance(value, str):
-        return value.format(**state)
+        return string.Template(value).safe_substitute(state)
     if isinstance(value, dict):
         return {k: format_template(v, state) for k, v in value.items()}
     if isinstance(value, list):
@@ -218,15 +220,6 @@ class _DotDict:
             value = self._data[item]
             return _DotDict(value) if isinstance(value, dict) else value
         raise KeyError(item)
-
-    def to_dict(self) -> Any:
-        """Return the original wrapped object.
-
-        Example:
-            >>> _DotDict({"x": 1}).to_dict()
-            {'x': 1}
-        """
-        return self._data
 
 
 class _SafeExprValidator(ast.NodeVisitor):

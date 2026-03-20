@@ -1,5 +1,3 @@
-# TODO(H3-high): This file contains 8 junk auto-generated docstrings
-#   that should be replaced with real descriptions or removed entirely.
 from __future__ import annotations
 
 """File: tests/test_workflow_versioning.py
@@ -8,61 +6,15 @@ Purpose:
 Validate workflow id/version parsing, registry resolution, and persistence.
 """
 
-import tempfile
-from pathlib import Path
 
 import pytest
 
 from agent_runtime.core import Executor, StepDefinition
 from agent_runtime.errors import WorkflowValidationError
-from agent_runtime.memory.base import MemoryManager
-from agent_runtime.memory.episodic import EpisodicMemory
-from agent_runtime.memory.procedural import ProceduralMemory
-from agent_runtime.memory.semantic import SemanticMemory
-from agent_runtime.memory.working import WorkingMemory
-from agent_runtime.storage.sqlite import SQLiteStorage
 from agent_runtime.tools.registry import ToolRegistry
 from agent_runtime.workflow import load_workflow_from_text
 from agent_runtime.workflow_registry import WorkflowRegistry
-
-
-def _storage() -> SQLiteStorage:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> _storage
-        >>> # Example 2
-        >>> _storage
-    """
-    tmp = tempfile.NamedTemporaryFile(delete=False)
-    tmp.close()
-    return SQLiteStorage(tmp.name)
-
-
-def _memory_manager() -> MemoryManager:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> _memory_manager
-        >>> # Example 2
-        >>> _memory_manager
-    """
-    return MemoryManager(
-        working=WorkingMemory(),
-        episodic=EpisodicMemory(),
-        semantic=SemanticMemory(),
-        procedural=ProceduralMemory(),
-    )
-
-
-def _functions_dir() -> str:
-    return str(Path(__file__).resolve().parents[1] / "functions")
+from conftest import make_storage, make_memory_manager, functions_dir
 
 
 def _generate_summary(inputs: dict) -> dict:
@@ -71,16 +23,6 @@ def _generate_summary(inputs: dict) -> dict:
 
 
 def test_workflow_parses_id_and_version() -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_workflow_parses_id_and_version
-        >>> # Example 2
-        >>> test_workflow_parses_id_and_version
-    """
     raw = """
 workflow:
   id: code_review_agent
@@ -90,22 +32,12 @@ steps:
     type: function
     function: stubs.generate_summary
 """
-    workflow = load_workflow_from_text(raw, functions_dir=_functions_dir())
+    workflow = load_workflow_from_text(raw, functions_dir=functions_dir())
     assert workflow["workflow_id"] == "code_review_agent"
     assert workflow["workflow_version"] == "v2"
 
 
 def test_workflow_legacy_name_compatibility() -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_workflow_legacy_name_compatibility
-        >>> # Example 2
-        >>> test_workflow_legacy_name_compatibility
-    """
     raw = """
 name: legacy_workflow
 steps:
@@ -113,22 +45,12 @@ steps:
     type: function
     function: stubs.generate_summary
 """
-    workflow = load_workflow_from_text(raw, functions_dir=_functions_dir())
+    workflow = load_workflow_from_text(raw, functions_dir=functions_dir())
     assert workflow["workflow_id"] == "legacy_workflow"
     assert workflow["workflow_version"] is None
 
 
 def test_workflow_registry_latest_version_resolution(tmp_path) -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_workflow_registry_latest_version_resolution
-        >>> # Example 2
-        >>> test_workflow_registry_latest_version_resolution
-    """
     wf_dir = tmp_path / "workflows"
     wf_dir.mkdir()
 
@@ -167,16 +89,6 @@ steps:
 
 
 def test_workflow_registry_duplicate_version_rejected() -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_workflow_registry_duplicate_version_rejected
-        >>> # Example 2
-        >>> test_workflow_registry_duplicate_version_rejected
-    """
     registry = WorkflowRegistry()
     workflow = {
         "workflow_id": "agent",
@@ -189,17 +101,7 @@ def test_workflow_registry_duplicate_version_rejected() -> None:
 
 
 def test_run_persists_workflow_version() -> None:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> test_run_persists_workflow_version
-        >>> # Example 2
-        >>> test_run_persists_workflow_version
-    """
-    storage = _storage()
+    storage = make_storage()
     executor = Executor(
         steps=[
             StepDefinition(
@@ -211,7 +113,7 @@ def test_run_persists_workflow_version() -> None:
         ],
         storage=storage,
         logger=None,
-        memory_manager=_memory_manager(),
+        memory_manager=make_memory_manager(),
         tool_registry=ToolRegistry(),
     )
 

@@ -41,9 +41,6 @@ class MemoryTier(Protocol):
         ...
 
 
-_TIER_NAMES = ("working", "episodic", "semantic", "procedural")
-
-
 def _deep_merge(target: Dict[str, Any], source: Dict[str, Any]) -> None:
     """Recursively merge *source* into *target* in place.
 

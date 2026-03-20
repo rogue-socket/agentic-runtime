@@ -173,14 +173,14 @@ class TestFileTool:
 class TestShellTool:
     def test_echo_command(self) -> None:
         tool = ShellTool()
-        result = _run(tool.execute({"command": "echo hello"}, _ctx()))
+        result = _run(tool.execute({"command": "echo hello", "shell": True}, _ctx()))
         assert result.success
         assert "hello" in result.output["stdout"]
         assert result.output["returncode"] == 0
 
     def test_failed_command(self) -> None:
         tool = ShellTool()
-        result = _run(tool.execute({"command": "exit 1"}, _ctx()))
+        result = _run(tool.execute({"command": "exit 1", "shell": True}, _ctx()))
         assert not result.success
         assert result.output["returncode"] == 1
 
