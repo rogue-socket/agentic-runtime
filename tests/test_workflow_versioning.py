@@ -9,6 +9,7 @@ Validate workflow id/version parsing, registry resolution, and persistence.
 """
 
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -19,7 +20,6 @@ from agent_runtime.memory.episodic import EpisodicMemory
 from agent_runtime.memory.procedural import ProceduralMemory
 from agent_runtime.memory.semantic import SemanticMemory
 from agent_runtime.memory.working import WorkingMemory
-from agent_runtime.steps import StepHandlerRegistry, generate_summary
 from agent_runtime.storage.sqlite import SQLiteStorage
 from agent_runtime.tools.registry import ToolRegistry
 from agent_runtime.workflow import load_workflow_from_text
@@ -61,20 +61,13 @@ def _memory_manager() -> MemoryManager:
     )
 
 
-def _handler_registry() -> StepHandlerRegistry:
-    """Auto-generated documentation for this callable.
-    
-    Describes purpose, expected inputs/outputs, and behavior in this module.
-    
-    Example:
-        >>> # Example 1
-        >>> _handler_registry
-        >>> # Example 2
-        >>> _handler_registry
-    """
-    registry = StepHandlerRegistry()
-    registry.register("generate_summary", generate_summary)
-    return registry
+def _functions_dir() -> str:
+    return str(Path(__file__).resolve().parents[1] / "functions")
+
+
+def _generate_summary(inputs: dict) -> dict:
+    issue = inputs.get("issue", "")
+    return {"summary": f"Summary of issue: {issue}"}
 
 
 def test_workflow_parses_id_and_version() -> None:
@@ -94,10 +87,10 @@ workflow:
   version: v2
 steps:
   - id: generate_summary
-    type: model
-    handler: generate_summary
+    type: function
+    function: stubs.generate_summary
 """
-    workflow = load_workflow_from_text(raw, _handler_registry())
+    workflow = load_workflow_from_text(raw, functions_dir=_functions_dir())
     assert workflow["workflow_id"] == "code_review_agent"
     assert workflow["workflow_version"] == "v2"
 
@@ -117,10 +110,10 @@ def test_workflow_legacy_name_compatibility() -> None:
 name: legacy_workflow
 steps:
   - id: generate_summary
-    type: model
-    handler: generate_summary
+    type: function
+    function: stubs.generate_summary
 """
-    workflow = load_workflow_from_text(raw, _handler_registry())
+    workflow = load_workflow_from_text(raw, functions_dir=_functions_dir())
     assert workflow["workflow_id"] == "legacy_workflow"
     assert workflow["workflow_version"] is None
 
@@ -146,8 +139,8 @@ workflow:
   version: v1
 steps:
   - id: generate_summary
-    type: model
-    handler: generate_summary
+    type: function
+    function: stubs.generate_summary
 """,
         encoding="utf-8",
     )
@@ -158,13 +151,13 @@ workflow:
   version: v2
 steps:
   - id: generate_summary
-    type: model
-    handler: generate_summary
+    type: function
+    function: stubs.generate_summary
 """,
         encoding="utf-8",
     )
 
-    registry = WorkflowRegistry.from_directory(str(wf_dir), _handler_registry())
+    registry = WorkflowRegistry.from_directory(str(wf_dir))
 
     latest = registry.get("triage")
     assert latest["workflow_version"] == "v2"
@@ -211,8 +204,8 @@ def test_run_persists_workflow_version() -> None:
         steps=[
             StepDefinition(
                 step_id="generate_summary",
-                step_type="model",
-                handler=generate_summary,
+                step_type="function",
+                function_callable=_generate_summary,
                 input_spec={"issue": "inputs.issue"},
             )
         ],

@@ -60,10 +60,7 @@ class WorkflowRegistry:
         self._workflows: Dict[str, Dict[str, Dict[str, object]]] = {}
 
     @classmethod
-    def from_directory(cls, root: str, handler_registry=None) -> "WorkflowRegistry":
-        # TODO(M6-medium): handler_registry parameter is accepted but never
-        #   forwarded to load_workflow() or parse_workflow(). Dead parameter.
-        #   Remove once model steps are fully deprecated (see M1, M7).
+    def from_directory(cls, root: str) -> "WorkflowRegistry":
         """Load versioned workflows from a directory tree.
 
         Files lacking `workflow.version` are skipped to avoid ambiguity.

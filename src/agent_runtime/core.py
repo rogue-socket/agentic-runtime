@@ -6,7 +6,7 @@ Purpose:
 Implement runtime execution engine, run/step datamodels, and control flow.
 
 Description:
-Defines the `Executor` that runs workflow steps with retry, tool/model
+Defines the `Executor` that runs workflow steps with retry and agent/function/tool
 dispatch, branch routing, state persistence, and terminal status updates.
 
 Key Components:
@@ -32,8 +32,6 @@ import copy
 import uuid
 import time
 import asyncio
-import inspect
-import warnings
 
 from .errors import BranchResolutionError, StepExecutionError, WorkflowIntegrityError
 from .logging import StructuredLogger
@@ -44,8 +42,6 @@ from .tools.base import RuntimeContext, ToolResult
 from .tools.registry import ToolRegistry
 from .tools.validation import validate_input
 from .utils import StateDict, build_step_input, format_template, safe_eval, utc_now
-
-StepHandler = Callable[[RuntimeState], StateDict]
 
 # Lifecycle event callback signature.
 # Receives an event name (e.g. "STEP_START") and a payload dict.
@@ -115,7 +111,6 @@ class StepDefinition:
 
     step_id: str
     step_type: str  # "agent" | "function" | "tool"
-    handler: Optional[StepHandler] = None  # legacy — kept for backward compat in tests
     tool_name: Optional[str] = None
     agent_id: Optional[str] = None
     agent_version: Optional[str] = None
@@ -540,18 +535,6 @@ class Executor:
                             call_start = time.monotonic()
                             output = step_def.function_callable(func_input)
                             handler_duration_ms = int((time.monotonic() - call_start) * 1000)
-                        elif step_def.step_type == "model":
-                            warnings.warn(
-                                "Step type 'model' is deprecated. "
-                                "Use type 'agent' or 'function' instead.",
-                                DeprecationWarning,
-                                stacklevel=2,
-                            )
-                            if step_def.handler is None:
-                                raise StepExecutionError("Missing model handler.")
-                            call_start = time.monotonic()
-                            output = _invoke_handler(step_def.handler, step_input_state, snapshot)
-                            handler_duration_ms = int((time.monotonic() - call_start) * 1000)
                         elif step_def.step_type == "tool":
                             if not step_def.tool_name:
                                 raise StepExecutionError("Missing tool name.")
@@ -787,7 +770,7 @@ class Executor:
         #      group, not per step) to preserve replay determinism.
         #   4. Update visualization to render parallel branches side-by-side.
         # [TODO(roadmap)] Multi-agent composition: allow a step to invoke
-        #   a sub-workflow or delegate to another agent manifest. This is
+        #   a sub-workflow or delegate to another agent definition. This is
         #   the foundation for orchestrator-specialist agent patterns.
         if not step_def.next_rules:
             idx = self.step_order.index(step_def.step_id)
@@ -820,26 +803,3 @@ def _compute_backoff_delay(attempt: int, backoff: str, initial_delay: float) -> 
     if backoff == "exponential":
         return initial_delay * (2 ** (attempt - 2))
     raise StepExecutionError(f"Unsupported backoff strategy: {backoff}")
-
-
-def _handler_accepts_context(handler: StepHandler) -> bool:
-    """Return True if handler accepts a second positional argument."""
-    try:
-        sig = inspect.signature(handler)
-    except (TypeError, ValueError):
-        return False
-
-    positional = [
-        p for p in sig.parameters.values()
-        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
-    ]
-    if len(positional) >= 2:
-        return True
-    return any(p.kind == p.VAR_POSITIONAL for p in sig.parameters.values())
-
-
-def _invoke_handler(handler: StepHandler, state: RuntimeState, snapshot: StateDict) -> StateDict:
-    """Invoke handler with optional full-state context when supported."""
-    if _handler_accepts_context(handler):
-        return handler(state, snapshot)  # type: ignore[misc]
-    return handler(state)

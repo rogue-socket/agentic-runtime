@@ -202,7 +202,7 @@ def test_replay_step_limit() -> None:
     tool_registry = ToolRegistry()
     tool_registry.register(CountingTool())
 
-    def model_step(state: Dict[str, Any]) -> Dict[str, Any]:
+    def model_step(inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Auto-generated documentation for this callable.
         
         Describes purpose, expected inputs/outputs, and behavior in this module.
@@ -216,7 +216,7 @@ def test_replay_step_limit() -> None:
         return {"summary": "ok"}
 
     steps = [
-        StepDefinition(step_id="summarize", step_type="model", handler=model_step),
+        StepDefinition(step_id="summarize", step_type="function", function_callable=model_step),
         StepDefinition(step_id="echo", step_type="tool", tool_name="tools.counting", raw_input={"message": "x"}),
     ]
     executor = Executor(steps, storage, None, _memory_manager(), tool_registry)

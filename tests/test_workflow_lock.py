@@ -38,15 +38,15 @@ def test_resume_blocked_when_workflow_hash_differs() -> None:
     storage = _storage()
     tool_registry = ToolRegistry()
 
-    def step_one(state: Dict[str, Any]) -> Dict[str, Any]:
+    def step_one(inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {"one": True}
 
-    def step_two_fail(state: Dict[str, Any]) -> Dict[str, Any]:
+    def step_two_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("boom")
 
     steps = [
-        StepDefinition(step_id="s1", step_type="model", handler=step_one),
-        StepDefinition(step_id="s2", step_type="model", handler=step_two_fail),
+        StepDefinition(step_id="s1", step_type="function", function_callable=step_one),
+        StepDefinition(step_id="s2", step_type="function", function_callable=step_two_fail),
     ]
 
     executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
@@ -54,12 +54,12 @@ def test_resume_blocked_when_workflow_hash_differs() -> None:
     assert run.status == StepStatus.FAILED
 
     # Try resuming with a different workflow hash
-    def step_two_ok(state: Dict[str, Any]) -> Dict[str, Any]:
+    def step_two_ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {"two": True}
 
     resume_steps = [
-        StepDefinition(step_id="s1", step_type="model", handler=step_one),
-        StepDefinition(step_id="s2", step_type="model", handler=step_two_ok),
+        StepDefinition(step_id="s1", step_type="function", function_callable=step_one),
+        StepDefinition(step_id="s2", step_type="function", function_callable=step_two_ok),
     ]
     resume_executor = Executor(resume_steps, storage, None, _memory_manager(), tool_registry)
     state = storage.load_latest_state(run.run_id)
@@ -81,27 +81,27 @@ def test_resume_allowed_when_workflow_hash_matches() -> None:
     storage = _storage()
     tool_registry = ToolRegistry()
 
-    def step_one(state: Dict[str, Any]) -> Dict[str, Any]:
+    def step_one(inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {"one": True}
 
-    def step_two_fail(state: Dict[str, Any]) -> Dict[str, Any]:
+    def step_two_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("boom")
 
     steps = [
-        StepDefinition(step_id="s1", step_type="model", handler=step_one),
-        StepDefinition(step_id="s2", step_type="model", handler=step_two_fail),
+        StepDefinition(step_id="s1", step_type="function", function_callable=step_one),
+        StepDefinition(step_id="s2", step_type="function", function_callable=step_two_fail),
     ]
 
     executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
     run = executor.run("wf", {"issue": "x"}, workflow_hash="hash_v1")
     assert run.status == StepStatus.FAILED
 
-    def step_two_ok(state: Dict[str, Any]) -> Dict[str, Any]:
+    def step_two_ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {"two": True}
 
     resume_steps = [
-        StepDefinition(step_id="s1", step_type="model", handler=step_one),
-        StepDefinition(step_id="s2", step_type="model", handler=step_two_ok),
+        StepDefinition(step_id="s1", step_type="function", function_callable=step_one),
+        StepDefinition(step_id="s2", step_type="function", function_callable=step_two_ok),
     ]
     resume_executor = Executor(resume_steps, storage, None, _memory_manager(), tool_registry)
     state = storage.load_latest_state(run.run_id)
@@ -123,15 +123,15 @@ def test_resume_allowed_when_no_hash_stored() -> None:
     storage = _storage()
     tool_registry = ToolRegistry()
 
-    def step_one(state: Dict[str, Any]) -> Dict[str, Any]:
+    def step_one(inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {"one": True}
 
-    def step_two_fail(state: Dict[str, Any]) -> Dict[str, Any]:
+    def step_two_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("boom")
 
     steps = [
-        StepDefinition(step_id="s1", step_type="model", handler=step_one),
-        StepDefinition(step_id="s2", step_type="model", handler=step_two_fail),
+        StepDefinition(step_id="s1", step_type="function", function_callable=step_one),
+        StepDefinition(step_id="s2", step_type="function", function_callable=step_two_fail),
     ]
 
     executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
@@ -139,12 +139,12 @@ def test_resume_allowed_when_no_hash_stored() -> None:
     run = executor.run("wf", {"issue": "x"})
     assert run.status == StepStatus.FAILED
 
-    def step_two_ok(state: Dict[str, Any]) -> Dict[str, Any]:
+    def step_two_ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
         return {"two": True}
 
     resume_steps = [
-        StepDefinition(step_id="s1", step_type="model", handler=step_one),
-        StepDefinition(step_id="s2", step_type="model", handler=step_two_ok),
+        StepDefinition(step_id="s1", step_type="function", function_callable=step_one),
+        StepDefinition(step_id="s2", step_type="function", function_callable=step_two_ok),
     ]
     resume_executor = Executor(resume_steps, storage, None, _memory_manager(), tool_registry)
     state = storage.load_latest_state(run.run_id)

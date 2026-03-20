@@ -37,7 +37,7 @@ def _ensure_run(storage: SQLiteStorage, run_id: str = "run1") -> None:
 def _make_step(**overrides) -> StepExecution:
     defaults = dict(
         step_id="s1",
-        step_type="model",
+        step_type="function",
         status=StepStatus.COMPLETED,
         started_at="2026-01-01T00:00:00Z",
         finished_at="2026-01-01T00:00:01Z",

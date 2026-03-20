@@ -54,7 +54,6 @@ from .tools.file import FileTool
 from .tools.shell import ShellTool
 from .tools.discovery import register_discovered_tools
 from .logging import StructuredLogger
-from .llm.handler import make_llm_handler
 from .utils import sha256_json
 
 

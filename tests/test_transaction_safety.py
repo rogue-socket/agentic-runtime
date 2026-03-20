@@ -29,7 +29,6 @@ from agent_runtime.memory.episodic import EpisodicMemory
 from agent_runtime.memory.procedural import ProceduralMemory
 from agent_runtime.memory.semantic import SemanticMemory
 from agent_runtime.memory.working import WorkingMemory
-from agent_runtime.state import RuntimeState
 from agent_runtime.storage.sqlite import SQLiteStorage
 from agent_runtime.tools.registry import ToolRegistry
 
@@ -55,7 +54,7 @@ def _memory_manager() -> MemoryManager:
 def _make_step(**overrides) -> StepExecution:
     defaults = dict(
         step_id="s1",
-        step_type="model",
+        step_type="function",
         status=StepStatus.COMPLETED,
         started_at="2026-01-01T00:00:00Z",
         finished_at="2026-01-01T00:00:01Z",
@@ -241,11 +240,11 @@ class TestStorageClose:
 # -- Executor integration tests -----------------------------------------------
 
 
-def _echo_handler(state: RuntimeState) -> Dict[str, Any]:
-    return {"echo": state.get("text") or "default"}
+def _echo_handler(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    return {"echo": inputs.get("text") or "default"}
 
 
-def _failing_handler(state: RuntimeState) -> Dict[str, Any]:
+def _failing_handler(inputs: Dict[str, Any]) -> Dict[str, Any]:
     raise RuntimeError("step deliberately failed")
 
 
@@ -257,8 +256,8 @@ class TestExecutorAtomicPersist:
         step_defs = [
             StepDefinition(
                 step_id="echo",
-                step_type="model",
-                handler=_echo_handler,
+                step_type="function",
+                function_callable=_echo_handler,
                 input_spec={"text": "inputs.msg"},
             ),
         ]
@@ -293,8 +292,8 @@ class TestExecutorAtomicPersist:
         step_defs = [
             StepDefinition(
                 step_id="fail",
-                step_type="model",
-                handler=_failing_handler,
+                step_type="function",
+                function_callable=_failing_handler,
             ),
         ]
         executor = Executor(
@@ -332,8 +331,8 @@ class TestExecutorAtomicPersist:
         step_defs = [
             StepDefinition(
                 step_id="echo",
-                step_type="model",
-                handler=_echo_handler,
+                step_type="function",
+                function_callable=_echo_handler,
                 input_spec={"text": "inputs.msg"},
             ),
         ]
@@ -361,15 +360,15 @@ class TestExecutorAtomicPersist:
         step_defs = [
             StepDefinition(
                 step_id="s1",
-                step_type="model",
-                handler=_echo_handler,
+                step_type="function",
+                function_callable=_echo_handler,
                 input_spec={"text": "inputs.msg"},
                 output_contract=["echo"],
             ),
             StepDefinition(
                 step_id="s2",
-                step_type="model",
-                handler=_echo_handler,
+                step_type="function",
+                function_callable=_echo_handler,
                 input_spec={"text": "steps.s1.echo"},
                 output_contract=["echo"],
             ),

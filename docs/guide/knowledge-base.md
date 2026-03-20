@@ -1,9 +1,6 @@
 **Knowledge Base**
 
-<!-- TODO(H4-high): Replace "handlers" below with "functions and agents".
-     Handlers were removed in the Phase 2 rewrite. The three step types are
-     now: function, agent, and tool. -->
-This page explains what the runtime is, what workflows, handlers, and tools are, and how they fit together.
+This page explains what the runtime is, what workflows, agents, functions, and tools are, and how they fit together.
 
 **What This Is**
 

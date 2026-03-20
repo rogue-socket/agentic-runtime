@@ -29,7 +29,6 @@ from agent_runtime.core import Executor, RetryPolicy, StepDefinition, StepStatus
 from agent_runtime.errors import WorkflowValidationError
 from agent_runtime.memory.base import MemoryManager
 from agent_runtime.storage.sqlite import SQLiteStorage
-from agent_runtime.steps import StepHandlerRegistry, generate_summary
 from agent_runtime.tools.registry import ToolRegistry
 from agent_runtime.tools.base import ToolResult, RuntimeContext
 from agent_runtime.workflow import load_workflow
@@ -37,6 +36,13 @@ from agent_runtime.memory.working import WorkingMemory
 from agent_runtime.memory.episodic import EpisodicMemory
 from agent_runtime.memory.semantic import SemanticMemory
 from agent_runtime.memory.procedural import ProceduralMemory
+
+
+def generate_summary(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    issue = inputs.get("issue", "")
+    if not issue:
+        raise KeyError("Missing required key: issue")
+    return {"summary": f"Issue related to {issue}."}
 
 
 class CounterMemory:
@@ -127,7 +133,7 @@ def _memory_manager() -> MemoryManager:
     )
 
 
-def test_model_step_success() -> None:
+def test_function_step_success() -> None:
     """Auto-generated documentation for this callable.
     
     Describes purpose, expected inputs/outputs, and behavior in this module.
@@ -145,8 +151,8 @@ def test_model_step_success() -> None:
     steps = [
         StepDefinition(
             step_id="generate_summary",
-            step_type="model",
-            handler=generate_summary,
+            step_type="function",
+            function_callable=generate_summary,
             input_spec={"issue": "inputs.issue"},
         )
     ]
@@ -158,7 +164,7 @@ def test_model_step_success() -> None:
     assert "summary" in run.state.data["steps"]["generate_summary"]
 
 
-def test_model_step_missing_issue() -> None:
+def test_function_step_missing_issue() -> None:
     """Auto-generated documentation for this callable.
     
     Describes purpose, expected inputs/outputs, and behavior in this module.
@@ -176,8 +182,8 @@ def test_model_step_missing_issue() -> None:
     steps = [
         StepDefinition(
             step_id="generate_summary",
-            step_type="model",
-            handler=generate_summary,
+            step_type="function",
+            function_callable=generate_summary,
             input_spec={"issue": "inputs.issue"},
         )
     ]
@@ -276,8 +282,8 @@ def test_run_raises_inside_event_loop() -> None:
     steps = [
         StepDefinition(
             step_id="generate_summary",
-            step_type="model",
-            handler=generate_summary,
+            step_type="function",
+            function_callable=generate_summary,
             input_spec={"issue": "inputs.issue"},
         )
     ]
@@ -304,11 +310,8 @@ def test_workflow_yaml_validation(tmp_path) -> None:
     bad_yaml = tmp_path / "bad.yaml"
     bad_yaml.write_text("name: x\nsteps: {}\n", encoding="utf-8")
 
-    registry = StepHandlerRegistry()
-    registry.register("generate_summary", generate_summary)
-
     with pytest.raises(WorkflowValidationError):
-        load_workflow(str(bad_yaml), registry)
+        load_workflow(str(bad_yaml))
 
 
 def test_state_versioning() -> None:
@@ -328,8 +331,8 @@ def test_state_versioning() -> None:
     steps = [
         StepDefinition(
             step_id="generate_summary",
-            step_type="model",
-            handler=generate_summary,
+            step_type="function",
+            function_callable=generate_summary,
             input_spec={"issue": "inputs.issue"},
         )
     ]
@@ -368,8 +371,8 @@ def test_memory_hooks_invoked() -> None:
     steps = [
         StepDefinition(
             step_id="generate_summary",
-            step_type="model",
-            handler=generate_summary,
+            step_type="function",
+            function_callable=generate_summary,
             input_spec={"issue": "inputs.issue"},
         )
     ]
@@ -405,7 +408,7 @@ def test_retry_policy_succeeds() -> None:
 
     attempts = {"count": 0}
 
-    def flaky_handler(state: Dict[str, Any]) -> Dict[str, Any]:
+    def flaky_function(inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Auto-generated documentation for this callable.
         
         Describes purpose, expected inputs/outputs, and behavior in this module.
@@ -424,8 +427,8 @@ def test_retry_policy_succeeds() -> None:
     steps = [
         StepDefinition(
             step_id="flaky",
-            step_type="model",
-            handler=flaky_handler,
+            step_type="function",
+            function_callable=flaky_function,
             retry=RetryPolicy(attempts=2, backoff="fixed", initial_delay=0),
         )
     ]
@@ -453,8 +456,8 @@ def test_state_snapshots_persisted() -> None:
     steps = [
         StepDefinition(
             step_id="generate_summary",
-            step_type="model",
-            handler=generate_summary,
+            step_type="function",
+            function_callable=generate_summary,
             input_spec={"issue": "inputs.issue"},
         )
     ]

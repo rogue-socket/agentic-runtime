@@ -9,7 +9,7 @@ This guide is command-first and scenario-oriented. If you are brand new, start w
 Use the shared conda environment and install the CLI in editable mode so `ai` is on your PATH:
 
 ```bash
-conda activate agent_runtime
+conda activate agentic-runtime
 pip install -r requirements.txt
 pip install -e .
 ```
@@ -46,9 +46,10 @@ Creates a project structure:
 ├── workflows/
 │   └── example.yaml           # example workflow definition
 ├── agents/
-│   └── example_agent.yaml     # example agent definition
+│   ├── summarizer.yaml        # example agent definition
+│   └── fixer.yaml             # example agent definition
 ├── functions/
-│   └── example_functions.py   # example function step implementations
+│   └── stubs.py               # example function step implementations
 ├── tools/
 │   └── example_tool.py        # example tool implementation
 └── runtime.yaml               # runtime configuration
@@ -508,33 +509,7 @@ HTML visualization with explicit HTML mode (also auto-opens browser):
 ai visualize <run_id> --html
 ```
 
-## 15. Validate, export, import, and list
-
-### Validate an agent manifest
-
-```bash
-ai validate agents/my_agent.yaml
-```
-
-Pre-flight checks: file existence (workflow, tools), provider credentials, required env vars, model configs.
-
-### Export an agent as a portable archive
-
-```bash
-ai export agents/my_agent.yaml -o my_agent.tar.gz
-```
-
-Bundles the agent manifest, workflow, functions, and tools into a self-contained `.tar.gz` archive. Does not include `runtime.yaml` or API keys.
-
-### Import an agent from an archive
-
-```bash
-ai import my_agent.tar.gz --path .
-```
-
-Extracts into the project tree and places the manifest in `agents/`. Post-import validation reports missing providers and env vars.
-
-### List agents
+## 15. List agents
 
 ```bash
 ai list

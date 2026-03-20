@@ -10,6 +10,7 @@ Validate branch-rule workflow parsing and branch-path execution behavior.
 """
 
 import pytest
+from pathlib import Path
 
 from agent_runtime.core import Executor
 from agent_runtime.errors import WorkflowValidationError
@@ -19,7 +20,6 @@ from agent_runtime.memory.procedural import ProceduralMemory
 from agent_runtime.memory.semantic import SemanticMemory
 from agent_runtime.memory.working import WorkingMemory
 from agent_runtime.storage.sqlite import SQLiteStorage
-from agent_runtime.steps import StepHandlerRegistry, generate_summary
 from agent_runtime.tools.registry import ToolRegistry
 from agent_runtime.tools.base import ToolResult, RuntimeContext
 from agent_runtime.workflow import load_workflow_from_text
@@ -59,6 +59,10 @@ def _storage() -> SQLiteStorage:
     tmp = tempfile.NamedTemporaryFile(delete=False)
     tmp.close()
     return SQLiteStorage(tmp.name)
+
+
+def _functions_dir() -> str:
+    return str(Path(__file__).resolve().parents[1] / "functions")
 
 
 class EchoTool:
@@ -107,8 +111,8 @@ def test_branch_bug_path() -> None:
 name: triage
 steps:
   - id: classify
-    type: model
-    handler: generate_summary
+    type: function
+    function: stubs.generate_summary
     inputs:
       issue: inputs.issue
     next:
@@ -122,9 +126,7 @@ steps:
     type: tool
     tool: tools.echo
 """
-    reg = StepHandlerRegistry()
-    reg.register("generate_summary", generate_summary)
-    wf = load_workflow_from_text(yaml_text, reg)
+    wf = load_workflow_from_text(yaml_text, functions_dir=_functions_dir())
 
     tool_registry = ToolRegistry()
     tool_registry.register(EchoTool())
@@ -149,8 +151,8 @@ def test_branch_default_path() -> None:
 name: triage
 steps:
   - id: classify
-    type: model
-    handler: generate_summary
+    type: function
+    function: stubs.generate_summary
     inputs:
       issue: inputs.issue
     next:
@@ -164,9 +166,7 @@ steps:
     type: tool
     tool: tools.echo
 """
-    reg = StepHandlerRegistry()
-    reg.register("generate_summary", generate_summary)
-    wf = load_workflow_from_text(yaml_text, reg)
+    wf = load_workflow_from_text(yaml_text, functions_dir=_functions_dir())
 
     tool_registry = ToolRegistry()
     tool_registry.register(EchoTool())
@@ -191,15 +191,13 @@ def test_invalid_branch_target() -> None:
 name: triage
 steps:
   - id: classify
-    type: model
-    handler: generate_summary
+    type: function
+    function: stubs.generate_summary
     inputs:
       issue: inputs.issue
     next:
       - when: state.inputs.issue == \"bug\"
         goto: missing
 """
-    reg = StepHandlerRegistry()
-    reg.register("generate_summary", generate_summary)
     with pytest.raises(WorkflowValidationError):
-        load_workflow_from_text(yaml_text, reg)
+        load_workflow_from_text(yaml_text, functions_dir=_functions_dir())

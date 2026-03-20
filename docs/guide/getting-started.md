@@ -7,7 +7,7 @@ Welcome! This guide is intentionally beginner-friendly. It will get you from zer
 Using conda (recommended):
 
 ```bash
-conda activate agent_runtime
+conda activate agentic-runtime
 pip install -r requirements.txt
 pip install -e .
 ```
@@ -37,7 +37,7 @@ ai quickstart
 
 `ai quickstart` does three things:
 1. Initializes a project scaffold (`workflows/`, `agents/`, `functions/`, `tools/`, `runtime.yaml`).
-2. Writes example files: a workflow definition (`workflows/example.yaml`), an agent definition (`agents/example_agent.yaml`), example functions (`functions/`), and example tools (`tools/example_tool.py`).
+2. Writes example files: a workflow definition (`workflows/example.yaml`), agent definitions (`agents/summarizer.yaml`, `agents/fixer.yaml`), example functions (`functions/`), and example tools (`tools/example_tool.py`).
 3. Runs the setup flow to configure an LLM provider and optional API key, then executes the workflow so you see a successful run immediately.
 
 **Run Again With Different Input**

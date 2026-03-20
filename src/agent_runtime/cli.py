@@ -62,10 +62,8 @@ from .workflow import load_workflow, load_workflow_from_text
 from .workflow_registry import WorkflowRegistry, parse_workflow_reference
 from .visualization import GraphBuilder, RunLoader, TimelineBuilder, render_ascii, render_html
 from .utils import sha256_json
-from .agent import AgentManifest, load_agent_manifest, validate_agent, export_agent, import_agent
 from .agent import AgentDefinition, AgentRegistry, load_agent_definition
 from .llm import LLMClient
-from .llm.handler import make_llm_handler
 
 _SECRET_KEY_RE = re.compile(
     r"(api[_-]?key|secret|token|password|credential|auth|bearer)",
@@ -689,12 +687,11 @@ def _coerce_value(raw: str) -> Any:
 def _try_resolve_agent(
     ref: str,
     agents_dir: str = "agents",
-) -> Optional[AgentManifest | AgentDefinition]:
+) -> Optional[AgentDefinition]:
     """Try to resolve *ref* as an agent id from the agents/ directory.
 
-    Returns an ``AgentDefinition`` or ``AgentManifest`` if found, ``None``
-    otherwise (falls back to workflow resolution).
-    Tries the definition format first (canonical), then legacy manifest.
+    Returns an ``AgentDefinition`` if found, ``None`` otherwise
+    (falls back to workflow resolution).
     """
     if not os.path.isdir(agents_dir):
         return None
@@ -724,18 +721,6 @@ def _try_resolve_agent(
             _logging.getLogger("agent_runtime").debug(
                 "Could not load %s as definition: %s", filepath, exc,
             )
-        # Fall back to legacy manifest
-        try:
-            m = load_agent_manifest(filepath)
-        except Exception as exc:
-            import logging as _logging
-            _logging.getLogger("agent_runtime").debug(
-                "Could not load %s as manifest: %s", filepath, exc,
-            )
-            continue
-        if m.agent_id == agent_id:
-            if version is None or m.version == version:
-                return m
     return None
 
 
@@ -1159,17 +1144,6 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     visualize_parser.add_argument("--timeline", action="store_true", help="Render timeline-focused text view")
     visualize_parser.add_argument("--no-open", action="store_true", help="Do not auto-open HTML in browser")
 
-    validate_parser = subparsers.add_parser("validate", help="Validate an agent manifest")
-    validate_parser.add_argument("manifest", help="Path to agent.yaml manifest")
-
-    export_parser = subparsers.add_parser("export", help="Export an agent as a portable archive")
-    export_parser.add_argument("manifest", help="Path to agent.yaml manifest")
-    export_parser.add_argument("-o", "--output", default=None, help="Output archive path (default: <agent_id>_<version>.tar.gz)")
-
-    import_parser = subparsers.add_parser("import", help="Import an agent archive into the project")
-    import_parser.add_argument("archive", help="Path to agent .tar.gz archive")
-    import_parser.add_argument("--path", default=".", help="Project root to import into")
-
     list_parser = subparsers.add_parser("list", help="List available agents")
     list_parser.add_argument("--agents-dir", default="agents", help="Agents directory")
 
@@ -1251,98 +1225,6 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     cfg = load_config()
     cfg = apply_cli_overrides(cfg, args)
 
-    if args.command == "validate":
-        # Try definition format first (canonical), fall back to manifest
-        agent_def = None
-        try:
-            agent_def = load_agent_definition(args.manifest)
-        except Exception:
-            pass
-
-        if agent_def is not None:
-            # Validate definition-format agent
-            all_ok = True
-            checks = [
-                ("identity", "agent.id", bool(agent_def.agent_id)),
-                ("identity", "agent.version", bool(agent_def.version)),
-                ("model", "agent.model", bool(agent_def.model)),
-                ("pipeline", "pipeline steps", len(agent_def.pipeline) > 0),
-            ]
-            # Check that model is configured in LLM registry
-            if agent_def.model and cfg.llm_registry:
-                provider = agent_def.model.split("/")[0] if "/" in agent_def.model else None
-                has_provider = provider and cfg.llm_registry.get_provider(provider) is not None if provider else True
-                checks.append(("provider", agent_def.model, has_provider))
-            for category, name, ok in checks:
-                icon = "\u2713" if ok else "\u2717"
-                if ok:
-                    print(f"  {icon} {category}: {name}")
-                else:
-                    print(f"  {icon} {category}: {name} \u2014 missing or invalid")
-                    all_ok = False
-            if all_ok:
-                print(f"\nAgent {agent_def.agent_id}@{agent_def.version} is valid.")
-                return 0
-            else:
-                print(f"\nAgent {agent_def.agent_id}@{agent_def.version} has validation errors.")
-                return 1
-
-        manifest = load_agent_manifest(args.manifest)
-        results = validate_agent(manifest, project_root=".", llm_registry=cfg.llm_registry)
-        all_ok = True
-        for r in results:
-            icon = "\u2713" if r.ok else "\u2717"
-            label = f"{r.category}: {r.name}"
-            if r.ok:
-                print(f"  {icon} {label}")
-            else:
-                print(f"  {icon} {label} \u2014 {r.message}")
-                all_ok = False
-        if all_ok:
-            print(f"\nAgent {manifest.agent_id}@{manifest.version} is valid.")
-            return 0
-        else:
-            print(f"\nAgent {manifest.agent_id}@{manifest.version} has validation errors.")
-            return 1
-
-    if args.command == "export":
-        # Try definition format first; fall back to manifest
-        agent_def = None
-        try:
-            agent_def = load_agent_definition(args.manifest)
-        except Exception:
-            pass
-
-        if agent_def is not None:
-            # Definition-format agents are self-contained — pack the YAML directly
-            output = args.output or f"{agent_def.agent_id}_{agent_def.version}.tar.gz"
-            import tarfile
-            os.makedirs(os.path.dirname(os.path.abspath(output)) or ".", exist_ok=True)
-            with tarfile.open(output, "w:gz") as tar:
-                tar.add(agent_def.definition_path, arcname="agent.yaml")
-            print(f"Exported {agent_def.agent_id}@{agent_def.version} -> {os.path.abspath(output)}")
-            return 0
-
-        manifest = load_agent_manifest(args.manifest)
-        output = args.output or f"{manifest.agent_id}_{manifest.version}.tar.gz"
-        archive_path = export_agent(manifest, output, project_root=".")
-        print(f"Exported {manifest.agent_id}@{manifest.version} -> {archive_path}")
-        return 0
-
-    if args.command == "import":
-        imported = import_agent(args.archive, project_root=args.path)
-        if isinstance(imported, AgentDefinition):
-            print(f"Imported {imported.agent_id}@{imported.version}")
-        else:
-            print(f"Imported {imported.agent_id}@{imported.version}")
-            results = validate_agent(imported, project_root=args.path, llm_registry=cfg.llm_registry)
-            failures = [r for r in results if not r.ok]
-            if failures:
-                print("Post-import validation warnings:")
-                for r in failures:
-                    print(f"  \u2717 {r.category}: {r.name} \u2014 {r.message}")
-        return 0
-
     if args.command == "list":
         agents_dir = args.agents_dir
         if not os.path.isdir(agents_dir):
@@ -1353,23 +1235,14 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             if not filename.endswith((".yaml", ".yml")):
                 continue
             filepath = os.path.join(agents_dir, filename)
-            # Try new AgentDefinition format first, fall back to legacy manifest
             try:
                 defn = load_agent_definition(filepath)
-                desc = f" \u2014 {defn.description}" if defn.description else ""
-                strategy = defn.strategy.type if defn.strategy else "single"
-                print(f"  {defn.agent_id}@{defn.version} [{strategy}] {defn.model}{desc}")
-                found = True
-                continue
-            except Exception:
-                pass
-            try:
-                m = load_agent_manifest(filepath)
-                desc = f" \u2014 {m.description}" if m.description else ""
-                print(f"  {m.agent_id}@{m.version}{desc}")
-                found = True
             except Exception:
                 continue
+            desc = f" \u2014 {defn.description}" if defn.description else ""
+            strategy = defn.strategy.type if defn.strategy else "single"
+            print(f"  {defn.agent_id}@{defn.version} [{strategy}] {defn.model}{desc}")
+            found = True
         if not found:
             print("No agents found.")
         return 0
@@ -1406,8 +1279,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     if args.command == "run":
         logger = StructuredLogger(stream=sys.stderr)
         llm_client = _default_llm_client(cfg, logger)
-        # Try agent-aware resolution: check agents/ for a definition or
-        # manifest matching the workflow arg as an agent_id (with optional @version).
+        # Try agent-aware resolution: check agents/ for a definition
+        # matching the workflow arg as an agent_id (with optional @version).
         resolved_agent = _try_resolve_agent(args.workflow)
 
         functions_dir = cfg.functions_dir if os.path.isdir(cfg.functions_dir) else None
@@ -1417,22 +1290,6 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                 # Definition-format agent: synthesize a workflow wrapper
                 input_state = _build_input_state(args.input, {})
                 workflow = _workflow_from_definition(resolved_agent, input_keys=list(input_state.keys()))
-            elif isinstance(resolved_agent, AgentManifest):
-                workflow = _load_workflow_for_run(
-                    resolved_agent.workflow, cfg.workflows_dir,
-                    functions_dir=functions_dir,
-                )
-                # Merge defaults: agent defaults < CLI -i overrides
-                merged_inputs = list(args.input)
-                if resolved_agent.defaults:
-                    provided_keys = set()
-                    for item in args.input:
-                        if "=" in item:
-                            provided_keys.add(item.partition("=")[0].strip())
-                    for key, value in resolved_agent.defaults.items():
-                        if key not in provided_keys:
-                            merged_inputs.append(f"{key}={value}")
-                input_state = _build_input_state(merged_inputs, workflow.get("inputs", {}))
             else:
                 workflow = _load_workflow_for_run(
                     args.workflow, cfg.workflows_dir,

@@ -8,6 +8,8 @@ Purpose:
 Ensure resume-point detection preserves failed branch path semantics.
 """
 
+from pathlib import Path
+
 from agent_runtime.core import Executor
 from agent_runtime.memory.base import MemoryManager
 from agent_runtime.memory.episodic import EpisodicMemory
@@ -15,7 +17,6 @@ from agent_runtime.memory.procedural import ProceduralMemory
 from agent_runtime.memory.semantic import SemanticMemory
 from agent_runtime.memory.working import WorkingMemory
 from agent_runtime.storage.sqlite import SQLiteStorage
-from agent_runtime.steps import StepHandlerRegistry, generate_summary
 from agent_runtime.tools.registry import ToolRegistry
 from agent_runtime.tools.base import ToolResult, RuntimeContext
 from agent_runtime.workflow import load_workflow_from_text
@@ -56,6 +57,10 @@ def _storage() -> SQLiteStorage:
     tmp = tempfile.NamedTemporaryFile(delete=False)
     tmp.close()
     return SQLiteStorage(tmp.name)
+
+
+def _functions_dir() -> str:
+    return str(Path(__file__).resolve().parents[1] / "functions")
 
 
 class FlakyTool:
@@ -104,8 +109,8 @@ def test_resume_after_branch_follows_same_path() -> None:
 name: triage
 steps:
   - id: classify
-    type: model
-    handler: generate_summary
+    type: function
+    function: stubs.generate_summary
     inputs:
       issue: inputs.issue
     next:
@@ -119,9 +124,7 @@ steps:
     type: tool
     tool: tools.echo
 """
-    reg = StepHandlerRegistry()
-    reg.register("generate_summary", generate_summary)
-    wf = load_workflow_from_text(yaml_text, reg)
+    wf = load_workflow_from_text(yaml_text, functions_dir=_functions_dir())
 
     storage = _storage()
     tool_registry = ToolRegistry()

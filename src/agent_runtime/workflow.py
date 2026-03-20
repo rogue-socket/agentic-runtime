@@ -15,7 +15,7 @@ Key Components:
 - identity extraction and load helpers
 
 Dependencies:
-- `yaml`, core dataclasses, handler registry
+- `yaml`, core dataclasses
 
 Inputs/Outputs:
 - Input: workflow file path or raw YAML text
@@ -28,15 +28,12 @@ Side Effects:
 from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
-import warnings
-
 from .core import NextRule, RetryPolicy, StepDefinition
 from .errors import WorkflowValidationError
 from .utils import sha256_text
 
 # Valid step types for workflow steps
-# "model" is deprecated — use "agent" or "function" instead.
-VALID_STEP_TYPES = {"agent", "function", "tool", "model"}
+VALID_STEP_TYPES = {"agent", "function", "tool"}
 
 
 def _validate_step(step: Dict[str, Any]) -> None:
@@ -66,9 +63,6 @@ def _validate_step(step: Dict[str, Any]) -> None:
         raise WorkflowValidationError("Function step 'function' must be a string.")
     if step["type"] == "tool" and "tool" not in step:
         raise WorkflowValidationError("Tool steps must include tool.")
-    # Deprecated: model steps require a handler reference.
-    if step["type"] == "model" and "handler" not in step:
-        raise WorkflowValidationError("Model steps must include handler (deprecated — use agent or function).")
     if "inputs" in step and not isinstance(step["inputs"], (dict, list)):
         raise WorkflowValidationError("Step inputs must be a mapping or list.")
     if "inputs" in step and isinstance(step["inputs"], list):
@@ -175,7 +169,7 @@ def _infer_inputs(raw_steps: List[Dict[str, Any]]) -> set:
 
 def _parse_workflow(
     raw_text: str,
-    handler_registry=None,  # deprecated — used only for legacy model steps
+    *,
     functions_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Parse raw workflow YAML into runtime execution metadata.
@@ -349,31 +343,6 @@ def _parse_workflow(
                     next_rules=next_rules,
                 )
             )
-        elif step_type == "model":
-            warnings.warn(
-                "Workflow step type 'model' is deprecated. "
-                "Use type 'agent' or 'function' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            handler_ref = step.get("handler")
-            handler_callable = handler_ref
-            if handler_registry is not None and handler_ref:
-                resolved = handler_registry.get(handler_ref)
-                if resolved is not None:
-                    handler_callable = resolved
-            steps.append(
-                StepDefinition(
-                    step_id=step["id"],
-                    step_type="model",
-                    handler=handler_callable,
-                    retry=retry,
-                    input_spec=input_spec if isinstance(input_spec, dict) else None,
-                    input_contract=input_contract,
-                    output_contract=output_contract,
-                    next_rules=next_rules,
-                )
-            )
         else:  # tool
             steps.append(
                 StepDefinition(
@@ -409,11 +378,6 @@ def _parse_workflow(
 
 def load_workflow(
     path: str,
-    # TODO(M7-medium): handler_registry parameter is dead — only used for
-    #   deprecated `type: model` steps. It's threaded through parse_workflow()
-    #   at L178 and L430 but ignored by all current step types. Remove once
-    #   model steps are fully deprecated (see M1, M6).
-    handler_registry=None,  # deprecated — ignored, kept for backward compat
     *,
     functions_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -425,12 +389,11 @@ def load_workflow(
     """
     with open(path, "r", encoding="utf-8") as f:
         raw_text = f.read()
-    return _parse_workflow(raw_text, handler_registry=handler_registry, functions_dir=functions_dir)
+    return _parse_workflow(raw_text, functions_dir=functions_dir)
 
 
 def load_workflow_from_text(
     raw_text: str,
-    handler_registry=None,  # deprecated — ignored, kept for backward compat
     *,
     functions_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -443,4 +406,4 @@ def load_workflow_from_text(
         >>> load_workflow_from_text("name: w\\nsteps:\\n  - id: a\\n    type: tool\\n    tool: tools.echo\\n")["workflow_id"]
         'w'
     """
-    return _parse_workflow(raw_text, handler_registry=handler_registry, functions_dir=functions_dir)
+    return _parse_workflow(raw_text, functions_dir=functions_dir)

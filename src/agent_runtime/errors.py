@@ -73,19 +73,6 @@ class ToolNotFoundError(RuntimeErrorBase):
     """
 
 
-class HandlerNotFoundError(RuntimeErrorBase):
-    """Deprecated: raised when a model step handler key is not registered.
-
-    Only used by the deprecated ``steps.py`` module.  Will be removed
-    when ``steps.py`` is fully retired.
-
-    Example:
-        >>> raise HandlerNotFoundError("handler missing")
-        >>> isinstance(HandlerNotFoundError("x"), RuntimeErrorBase)
-        True
-    """
-
-
 class BranchResolutionError(RuntimeErrorBase):
     """Raised when no branch rule matches and no default exists.
 
@@ -134,4 +121,4 @@ class WorkflowIntegrityError(RuntimeErrorBase):
 
 
 class AgentValidationError(RuntimeErrorBase):
-    """Raised when an agent manifest is invalid or missing dependencies."""
+    """Raised when an agent definition is invalid."""

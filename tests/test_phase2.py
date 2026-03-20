@@ -38,7 +38,6 @@ from agent_runtime.function_resolver import resolve_function
 from agent_runtime.llm.types import LLMResponse
 from agent_runtime.tools.base import ToolResult, RuntimeContext
 from agent_runtime.workflow import load_workflow_from_text, _validate_step
-from agent_runtime.steps import StepHandlerRegistry
 from agent_runtime.errors import WorkflowValidationError
 
 
@@ -545,8 +544,7 @@ class TestWorkflowParsing:
                   diff: inputs.pr_diff
                 outputs: [summary, issues]
         """)
-        reg = StepHandlerRegistry()
-        wf = load_workflow_from_text(yaml_text, reg)
+        wf = load_workflow_from_text(yaml_text)
         step = wf["steps"][0]
         assert step.step_type == "agent"
         assert step.agent_id == "code_reviewer"
@@ -560,8 +558,7 @@ class TestWorkflowParsing:
                 type: agent
                 agent: code_reviewer@v2
         """)
-        reg = StepHandlerRegistry()
-        wf = load_workflow_from_text(yaml_text, reg)
+        wf = load_workflow_from_text(yaml_text)
         step = wf["steps"][0]
         assert step.agent_id == "code_reviewer"
         assert step.agent_version == "v2"
@@ -578,8 +575,7 @@ class TestWorkflowParsing:
                   text: inputs.raw
                 outputs: [report]
         """)
-        reg = StepHandlerRegistry()
-        wf = load_workflow_from_text(yaml_text, reg)
+        wf = load_workflow_from_text(yaml_text)
         step = wf["steps"][0]
         assert step.step_type == "function"
         assert step.function_ref == "format_markdown"
@@ -597,8 +593,7 @@ class TestWorkflowParsing:
                     type: function
                     function: formatters.format_markdown
             """)
-            reg = StepHandlerRegistry()
-            wf = load_workflow_from_text(yaml_text, reg, functions_dir=d)
+            wf = load_workflow_from_text(yaml_text, functions_dir=d)
             step = wf["steps"][0]
             assert step.function_callable is not None
             assert step.function_callable({"text": "hi"}) == {"report": "hi"}
@@ -617,7 +612,6 @@ class TestWorkflowParsing:
                 inputs:
                   message: steps.review.summary
         """)
-        reg = StepHandlerRegistry()
-        wf = load_workflow_from_text(yaml_text, reg)
+        wf = load_workflow_from_text(yaml_text)
         assert wf["steps"][0].step_type == "agent"
         assert wf["steps"][1].step_type == "tool"

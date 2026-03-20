@@ -74,7 +74,7 @@ def test_resume_from_failed_step() -> None:
     storage = _storage()
     tool_registry = ToolRegistry()
 
-    def step_one(state: Dict[str, Any]) -> Dict[str, Any]:
+    def step_one(inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Auto-generated documentation for this callable.
         
         Describes purpose, expected inputs/outputs, and behavior in this module.
@@ -87,7 +87,7 @@ def test_resume_from_failed_step() -> None:
         """
         return {"one": True}
 
-    def step_two_fail(state: Dict[str, Any]) -> Dict[str, Any]:
+    def step_two_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Auto-generated documentation for this callable.
         
         Describes purpose, expected inputs/outputs, and behavior in this module.
@@ -101,8 +101,8 @@ def test_resume_from_failed_step() -> None:
         raise ValueError("boom")
 
     steps = [
-        StepDefinition(step_id="step_one", step_type="model", handler=step_one),
-        StepDefinition(step_id="step_two", step_type="model", handler=step_two_fail),
+        StepDefinition(step_id="step_one", step_type="function", function_callable=step_one),
+        StepDefinition(step_id="step_two", step_type="function", function_callable=step_two_fail),
     ]
 
     executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
@@ -113,7 +113,7 @@ def test_resume_from_failed_step() -> None:
     resume_step = determine_resume_step(steps, executions)
     assert resume_step == "step_two"
 
-    def step_two_ok(state: Dict[str, Any]) -> Dict[str, Any]:
+    def step_two_ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Auto-generated documentation for this callable.
         
         Describes purpose, expected inputs/outputs, and behavior in this module.
@@ -127,8 +127,8 @@ def test_resume_from_failed_step() -> None:
         return {"two": True}
 
     resume_steps = [
-        StepDefinition(step_id="step_one", step_type="model", handler=step_one),
-        StepDefinition(step_id="step_two", step_type="model", handler=step_two_ok),
+        StepDefinition(step_id="step_one", step_type="function", function_callable=step_one),
+        StepDefinition(step_id="step_two", step_type="function", function_callable=step_two_ok),
     ]
 
     resume_executor = Executor(resume_steps, storage, None, _memory_manager(), tool_registry)

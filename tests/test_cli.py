@@ -169,6 +169,7 @@ class TestInitProject:
             assert os.path.isfile(os.path.join(d, "tools", "example_tool.py"))
             assert os.path.isfile(os.path.join(d, "functions", "stubs.py"))
             assert os.path.isfile(os.path.join(d, "agents", "summarizer.yaml"))
+            assert os.path.isfile(os.path.join(d, "agents", "fixer.yaml"))
 
     def test_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as d:
@@ -188,6 +189,10 @@ class TestInitProject:
             with open(agent_path) as f:
                 content = f.read()
             assert "claude-3-opus" in content
+            fixer_path = os.path.join(d, "agents", "fixer.yaml")
+            with open(fixer_path) as f:
+                fixer_content = f.read()
+            assert "claude-3-opus" in fixer_content
 
 
 # ── run_cli dispatch ───────────────────────────────────────────────
@@ -214,38 +219,3 @@ class TestRunCLIList:
             assert "No agents found" in capsys.readouterr().out
 
 
-class TestRunCLIValidate:
-    def test_validate_missing_manifest(self) -> None:
-        from agent_runtime.errors import AgentValidationError
-        with pytest.raises((SystemExit, AgentValidationError)):
-            run_cli(["validate", "/nonexistent_manifest.yaml"])
-
-    def test_validate_valid_manifest(self, capsys) -> None:
-        with tempfile.TemporaryDirectory() as d:
-            # Create a minimal workflow file
-            wf_path = os.path.join(d, "workflow.yaml")
-            with open(wf_path, "w") as f:
-                f.write(
-                    "id: test_wf\nversion: '1'\nsteps:\n"
-                    "  - id: s1\n    type: function\n"
-                    "    callable: stubs.noop\n"
-                )
-
-            # Create a valid manifest with agent block
-            manifest_path = os.path.join(d, "agent.yaml")
-            with open(manifest_path, "w") as f:
-                f.write(
-                    "agent:\n"
-                    "  id: test_agent\n"
-                    "  version: '1'\n"
-                    f"workflow: {wf_path}\n"
-                )
-
-            old_cwd = os.getcwd()
-            os.chdir(d)
-            try:
-                code = run_cli(["validate", manifest_path])
-            finally:
-                os.chdir(old_cwd)
-            # 0 = valid, 1 = validation warnings (e.g. missing env) — both ok
-            assert code in (0, 1)

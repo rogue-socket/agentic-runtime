@@ -18,7 +18,6 @@ from agent_runtime.memory.procedural import ProceduralMemory
 from agent_runtime.memory.semantic import SemanticMemory
 from agent_runtime.memory.working import WorkingMemory
 from agent_runtime.storage.sqlite import SQLiteStorage
-from agent_runtime.steps import generate_summary
 from agent_runtime.tools.base import RuntimeContext, ToolResult
 from agent_runtime.tools.registry import ToolRegistry
 from agent_runtime.visualization import GraphBuilder, RunLoader, TimelineBuilder, render_ascii, render_html
@@ -90,6 +89,11 @@ def _memory_manager() -> MemoryManager:
     )
 
 
+def _generate_summary(inputs: dict) -> dict:
+    issue = inputs.get("issue", "")
+    return {"summary": f"Summary of issue: {issue}"}
+
+
 def test_ascii_visualization_contains_sections() -> None:
     """Auto-generated documentation for this callable.
     
@@ -108,8 +112,8 @@ def test_ascii_visualization_contains_sections() -> None:
     steps = [
         StepDefinition(
             step_id="generate_summary",
-            step_type="model",
-            handler=generate_summary,
+            step_type="function",
+            function_callable=_generate_summary,
             input_spec={"issue": "inputs.issue"},
         ),
         StepDefinition(
@@ -152,8 +156,8 @@ def test_html_visualization_writes_file() -> None:
     steps = [
         StepDefinition(
             step_id="generate_summary",
-            step_type="model",
-            handler=generate_summary,
+            step_type="function",
+            function_callable=_generate_summary,
             input_spec={"issue": "inputs.issue"},
         )
     ]

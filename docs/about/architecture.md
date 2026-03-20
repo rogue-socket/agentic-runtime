@@ -3,23 +3,6 @@ File: docs/about/architecture.md
 Purpose: Defines the runtime's architectural model and execution contracts.
 Description: Documents entities, control flow, state model, persistence, replay, and extension points.
 Dependencies: Mirrors behavior implemented in src/agent_runtime.
-
-TODO(H5-high): This file still has ~15 stale "handler" references from the
-  pre-Phase-2 architecture.  The handler concept was replaced by the three
-  step types (function, agent, tool).  Specific locations to fix:
-  - L155: "Calls a handler function" (model step section — OK as deprecated note)
-  - L192: "strategy.handler" should be "strategy: custom" or dotted import path
-  - L354: "giving handlers context about prior runs" should say "giving steps…"
-  - L407: "step handler or tool failure" should say "step function, agent, or tool failure"
-  - L409: HandlerNotFoundError — deprecated; document it as legacy
-  - L463: "does not call handlers/tools/models" → "does not call functions/tools/agents"
-  - L545/L555: "handler_duration_ms" — field name is correct (DB column) but description
-    should clarify it maps to function-step or model-step timing
-  - L625-626: "handler: llm" / "make_llm_handler()" — the LLM handler is a legacy
-    integration path; document it as deprecated in favor of agent steps
-  - L639-640: "Built-in llm handler" — same, mark as deprecated path
-  - L670: "handlers, tools, providers" → "functions, tools, providers" (manifest section)
-  - L720: "handlers + tools" → "functions + tools" (export section)
 Inputs/Outputs: Input for developers; output is shared architecture understanding.
 Side Effects: None.
 -->
@@ -168,10 +151,6 @@ The Executor dispatches each step based on its `step_type`:
 3. Call `tool.execute(input, context)` with runtime context.
 4. Write output to `steps.<step_id>` in state.
 
-**Model steps** (`type: model`, deprecated):
-Kept for backward compatibility with existing tests. Calls a handler function
-(`Callable[[RuntimeState], dict]`) resolved during workflow parsing.
-
 ### Agent definitions
 
 Agent YAML files live in `agents/` and describe LLM-backed reasoning units:
@@ -206,7 +185,7 @@ Key classes (module `agent/`):
 Strategies:
 - `SingleCallStrategy` — run pipeline once linearly
 - `ReActStrategy` — observe→think→act loop with max iterations
-- Custom strategies via dotted import path (`strategy.handler`)
+- Custom strategies via dotted import path (`strategy: custom` + `custom_handler`)
 
 ### Function resolution
 
@@ -368,7 +347,7 @@ Query API:
 - `recall_all(limit)` — most recent across all workflows
 
 `read()` hydrates `runtime.memory.episodic` with past episodes for the current workflow,
-giving handlers context about prior runs.
+giving steps and agents context about prior runs.
 
 When no `db_path` is provided, `EpisodicMemory` operates as an in-memory stub
 (backward compatible with tests and default CLI).
@@ -421,9 +400,8 @@ Module: `workflow_registry.py`
 All runtime exceptions inherit from `RuntimeErrorBase(Exception)`:
 
 - `WorkflowValidationError` — invalid workflow YAML (bad step ids, missing targets, invalid retry)
-- `StepExecutionError` — step handler or tool failure during execution
+- `StepExecutionError` — step function, agent, or tool failure during execution
 - `ToolNotFoundError` — tool name not registered in `ToolRegistry`
-- `HandlerNotFoundError` — handler name not registered in `StepHandlerRegistry`
 - `BranchResolutionError` — no matching `when` rule and no `default`
 - `RunNotFoundError` — run id not found in storage
 - `ReplayDataMissingError` — incomplete step/state data for replay
@@ -477,7 +455,7 @@ Determinism principle:
 Replay engine:
 - loads run + step history + initial state
 - replays step timeline by injecting recorded state transitions
-- does not call handlers/tools/models
+- does not call agents/functions/tools
 - optional `--verify-state` checks reconstructed state against `state_before`
 
 Use this for postmortems and reproducibility checks.
@@ -569,7 +547,7 @@ Usage: pass `on_event` to `Executor.__init__()` or to `run_workflow()`.
 
 Per-step timing captures both total step duration and call-specific latency:
 - `duration_ms` — total time from state_before snapshot to state_after persistence
-- `handler_duration_ms` — time spent inside the handler callable (model steps)
+- `handler_duration_ms` — time spent inside agent/function execution (LLM call or function call)
 - `tool_duration_ms` — time spent inside the tool's `execute()` method (tool steps)
 
 Run-level duration is derived from `started_at` / `completed_at` timestamps.
@@ -636,11 +614,12 @@ and is available for agents and the LLM client to determine which model to use.
 
 ### LLM call pipeline
 
-`LLMClient` routes requests through provider-specific adapters:
+Agent pipeline model steps route requests through the `LLMClient`, which delegates
+to provider-specific adapters:
 
 ```
-workflow YAML (handler: llm, model, prompt)
-  → make_llm_handler() → LLMClient.call()
+agent pipeline step (type: model)
+  → LLMClient.call()
     → resolve provider/model
     → adapter.call() (HTTP to provider API)
     → LLMResponse (text, usage, raw)
@@ -653,23 +632,12 @@ Adapters:
 
 All adapters use stdlib `urllib` (zero additional dependencies) with exponential-backoff retry on 429/5xx errors.
 
-Built-in `llm` handler:
-- Registered as `handler: llm` in workflow YAML
-- Reads `model`, `prompt`, `system`, `provider`, `temperature`, `max_tokens` from step definition
-- Supports `{{ path }}` template syntax in prompts
-- Returns response text under configurable key (default: `text`)
-- Optional `include_metadata: true` captures provider, model, and token usage in output
-
 > **Status: Implemented** — registry, config loading, credential resolution,
-> OpenAI adapter, Anthropic adapter, Gemini adapter, LLM client, and built-in handler are
+> OpenAI adapter, Anthropic adapter, Gemini adapter, and LLM client are
 > functional.  All adapters are synchronous (stdlib `urllib`) with exponential-backoff
 > retry on 429/5xx errors.  Streaming is a future enhancement.
 
 ## 20.5. Agent system
-
-The runtime has two agent subsystems:
-
-### Agent definitions (current)
 
 Agent definitions (`agents/*.yaml`) describe LLM-backed reasoning units with
 model, strategy, pipeline, tools, and prompt configuration. They are referenced
@@ -680,46 +648,6 @@ Key classes (module `agent/`):
 - `AgentRegistry` — discovers and resolves agents from directory
 - `AgentExecutor` — runs agent pipeline with configured strategy
 - `PromptRegistry` — manages versioned prompts for A/B testing
-
-### Agent manifests (legacy)
-
-Agent manifests (`agent.yaml`) are the legacy portable unit that declares
-a workflow plus its handlers, tools, providers, and environment variables.
-Still supported for `ai validate`, `ai export`, and `ai import` commands.
-
-Key classes (module `agent/`):
-- `AgentManifest` — parsed manifest dataclass
-- `ValidationResult` — pre-flight check result
-
-### Manifest schema (legacy)
-
-```yaml
-agent:
-  id: triage_agent
-  version: v2
-  description: "Triages incoming issues by severity"
-  runtime: ">=0.1"
-
-workflow: workflows/triage.yaml
-
-tools:
-  - tools/github_tool.py
-
-providers:
-  - name: openai
-    models: [gpt-4, gpt-4o-mini]
-
-env:
-  - GITHUB_TOKEN
-
-defaults:
-  issue: "unspecified"
-```
-
-### CLI commands
-
-- `ai validate <manifest>` — pre-flight checks (files, providers, env vars)
-- `ai export <manifest> [-o output.tar.gz]` — bundle into portable archive
 - `ai import <archive> [--path .]` — extract into project, place manifest in `agents/`
 - `ai list` — list all agents in `agents/`
 - `ai run <agent_id>[@version]` — resolves from `agents/`, merges defaults with `-i` overrides

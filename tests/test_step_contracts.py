@@ -9,6 +9,7 @@ Validate workflow contract parsing and runtime output enforcement rules.
 """
 
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -19,7 +20,6 @@ from agent_runtime.memory.episodic import EpisodicMemory
 from agent_runtime.memory.procedural import ProceduralMemory
 from agent_runtime.memory.semantic import SemanticMemory
 from agent_runtime.memory.working import WorkingMemory
-from agent_runtime.steps import StepHandlerRegistry
 from agent_runtime.storage.sqlite import SQLiteStorage
 from agent_runtime.tools.registry import ToolRegistry
 from agent_runtime.workflow import load_workflow_from_text
@@ -60,6 +60,10 @@ def _storage() -> SQLiteStorage:
     return SQLiteStorage(tmp.name)
 
 
+def _functions_dir() -> str:
+    return str(Path(__file__).resolve().parents[1] / "functions")
+
+
 def test_contract_future_read_rejected() -> None:
     """Auto-generated documentation for this callable.
     
@@ -76,21 +80,18 @@ name: contracts
 inputs_contract: [issue]
 steps:
   - id: classify
-    type: model
-    handler: step_classify
+    type: function
+    function: stubs.classify_severity
     inputs: [summary]
     outputs: [category]
   - id: summarize
-    type: model
-    handler: step_summarize
+    type: function
+    function: stubs.generate_summary
     inputs: [issue]
     outputs: [summary]
 """
-    reg = StepHandlerRegistry()
-    reg.register("step_classify", lambda s: {"category": "bug"})
-    reg.register("step_summarize", lambda s: {"summary": "x"})
     with pytest.raises(WorkflowValidationError):
-        load_workflow_from_text(raw, reg)
+        load_workflow_from_text(raw, functions_dir=_functions_dir())
 
 
 def test_contract_output_collision_rejected() -> None:
@@ -109,21 +110,18 @@ name: contracts
 inputs_contract: [issue]
 steps:
   - id: s1
-    type: model
-    handler: step_one
+    type: function
+    function: stubs.generate_summary
     inputs: [issue]
     outputs: [summary]
   - id: s2
-    type: model
-    handler: step_two
+    type: function
+    function: stubs.generate_summary
     inputs: [issue]
     outputs: [summary]
 """
-    reg = StepHandlerRegistry()
-    reg.register("step_one", lambda s: {"summary": "a"})
-    reg.register("step_two", lambda s: {"summary": "b"})
     with pytest.raises(WorkflowValidationError):
-        load_workflow_from_text(raw, reg)
+        load_workflow_from_text(raw, functions_dir=_functions_dir())
 
 
 def test_runtime_output_contract_enforced() -> None:
@@ -140,7 +138,7 @@ def test_runtime_output_contract_enforced() -> None:
     storage = _storage()
     tool_registry = ToolRegistry()
 
-    def bad_handler(state):
+    def bad_function(inputs):
         """Auto-generated documentation for this callable.
         
         Describes purpose, expected inputs/outputs, and behavior in this module.
@@ -156,8 +154,8 @@ def test_runtime_output_contract_enforced() -> None:
     steps = [
         StepDefinition(
             step_id="bad_step",
-            step_type="model",
-            handler=bad_handler,
+            step_type="function",
+            function_callable=bad_function,
             input_spec={"issue": "inputs.issue"},
             output_contract=["summary"],
         )
@@ -185,31 +183,15 @@ name: contracts
 inputs_contract: [issue]
 steps:
   - id: summarize
-    type: model
-    handler: step_summarize
+    type: function
+    function: stubs.generate_summary
     inputs: [issue]
     outputs: [summary]
 """
-    reg = StepHandlerRegistry()
-
-    def summarize(state):
-        """Auto-generated documentation for this callable.
-        
-        Describes purpose, expected inputs/outputs, and behavior in this module.
-        
-        Example:
-            >>> # Example 1
-            >>> summarize
-            >>> # Example 2
-            >>> summarize
-        """
-        return {"summary": f"sum:{state.get('issue')}"}
-
-    reg.register("step_summarize", summarize)
-    wf = load_workflow_from_text(raw, reg)
+    wf = load_workflow_from_text(raw, functions_dir=_functions_dir())
 
     storage = _storage()
     executor = Executor(wf["steps"], storage, None, _memory_manager(), ToolRegistry())
     run = executor.run("wf", {"issue": "hello"})
     assert run.status == "COMPLETED"
-    assert run.state.data["steps"]["summarize"]["summary"] == "sum:hello"
+    assert run.state.data["steps"]["summarize"]["summary"] == "Summary of issue: hello"

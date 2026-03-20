@@ -9,6 +9,7 @@ Test retry policy semantics across successful and exhausted attempts.
 """
 
 import tempfile
+from pathlib import Path
 from typing import Any, Dict
 
 import pytest
@@ -75,7 +76,7 @@ def test_retry_success_attempt_count() -> None:
 
     attempts = {"count": 0}
 
-    def flaky_handler(state: Dict[str, Any]) -> Dict[str, Any]:
+    def flaky_function(inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Auto-generated documentation for this callable.
         
         Describes purpose, expected inputs/outputs, and behavior in this module.
@@ -94,8 +95,8 @@ def test_retry_success_attempt_count() -> None:
     steps = [
         StepDefinition(
             step_id="flaky",
-            step_type="model",
-            handler=flaky_handler,
+            step_type="function",
+            function_callable=flaky_function,
             input_spec={"issue": "inputs.issue"},
             retry=RetryPolicy(attempts=2, backoff="fixed", initial_delay=0),
         )
@@ -123,7 +124,7 @@ def test_retry_exhaustion_marks_failed() -> None:
     storage = _storage()
     tool_registry = ToolRegistry()
 
-    def always_fail(state: Dict[str, Any]) -> Dict[str, Any]:
+    def always_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Auto-generated documentation for this callable.
         
         Describes purpose, expected inputs/outputs, and behavior in this module.
@@ -139,8 +140,8 @@ def test_retry_exhaustion_marks_failed() -> None:
     steps = [
         StepDefinition(
             step_id="failer",
-            step_type="model",
-            handler=always_fail,
+            step_type="function",
+            function_callable=always_fail,
             input_spec={"issue": "inputs.issue"},
             retry=RetryPolicy(attempts=3, backoff="fixed", initial_delay=0),
         )
@@ -168,7 +169,7 @@ def test_no_retry_defaults_to_one_attempt() -> None:
     storage = _storage()
     tool_registry = ToolRegistry()
 
-    def ok(state: Dict[str, Any]) -> Dict[str, Any]:
+    def ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
         """Auto-generated documentation for this callable.
         
         Describes purpose, expected inputs/outputs, and behavior in this module.
@@ -181,7 +182,7 @@ def test_no_retry_defaults_to_one_attempt() -> None:
         """
         return {"ok": True}
 
-    steps = [StepDefinition(step_id="ok", step_type="model", handler=ok, input_spec={"issue": "inputs.issue"})]
+    steps = [StepDefinition(step_id="ok", step_type="function", function_callable=ok, input_spec={"issue": "inputs.issue"})]
     executor = Executor(steps, storage, None, _memory_manager(), tool_registry)
     run = executor.run("wf", {"issue": "x"})
 
@@ -202,14 +203,11 @@ def test_workflow_retry_validation(tmp_path) -> None:
     """
     bad_yaml = tmp_path / "bad.yaml"
     bad_yaml.write_text(
-        "name: wf\nsteps:\n  - id: a\n    type: model\n    handler: generate_summary\n    retry:\n      attempts: 0\n",
+        "name: wf\nsteps:\n  - id: a\n    type: function\n    function: stubs.generate_summary\n    retry:\n      attempts: 0\n",
         encoding="utf-8",
     )
 
-    from agent_runtime.steps import StepHandlerRegistry, generate_summary
-
-    reg = StepHandlerRegistry()
-    reg.register("generate_summary", generate_summary)
+    functions_dir = str(Path(__file__).resolve().parents[1] / "functions")
 
     with pytest.raises(Exception):
-        load_workflow(str(bad_yaml), reg)
+        load_workflow(str(bad_yaml), functions_dir=functions_dir)
