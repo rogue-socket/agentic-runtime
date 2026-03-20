@@ -154,4 +154,4 @@ ai run issue_triage@v2
 - Used a file path instead of a reference: `function: my_functions.summarize` not `function: functions/my_functions.py`.
 - Referenced `steps.x` before it runs: only read outputs from earlier steps.
 
-For deeper function, agent, and tool coverage, see [Functions and Agents](functions-and-agents.md) and [Tools](tools.md).
+For deeper function, agent, and tool coverage, see [Writing Agents](writing-agents.md), [Writing Functions](writing-functions.md), and [Writing Tools](writing-tools.md).

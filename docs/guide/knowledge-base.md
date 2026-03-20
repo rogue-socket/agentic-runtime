@@ -1,6 +1,6 @@
 # **Knowledge Base**
 
-Welcome to the **Agentic Runtime** Knowledge Base. This page explains the core architecture, the building blocks of the system, and how they interact to provide a deterministic, observable execution environment for AI agents.
+This page is a **conceptual overview** of the Agentic Runtime — the architecture, the building blocks, and how they fit together. Nothing here tells you *how* to write code; for that, head to the [Manual](manual.md).
 
 ---
 
@@ -72,21 +72,12 @@ Located in `agents/`.
 
 ---
 
-## **Data Flow Patterns**
-
-The runtime uses a strict, injectable data flow model:
-
-- **Inputs**: Accessed via `inputs.<name>`.
-- **Step Results**: Accessed via `steps.<step_id>.<field>`.
-- **Global Context**: Shared metadata accessible to all blocks.
-
-> [!TIP]
-> Use the `-i` flag in the CLI to override any input at runtime, or use environmental variables for sensitive API keys.
-
----
-
 ## **Next Steps**
 
+Now that you understand the architecture, move on to a hands-on page:
+
+- [Manual](manual.md) — CLI commands, YAML syntax, code examples, and error reference.
 - [Getting Started](getting-started.md) — From zero to your first run.
-- [Manual](manual.md) — Deep dive into all CLI commands.
-- [Tools](tools.md) — Learn how to build your own external bridges.
+- [Writing Agents](writing-agents.md) — How to define LLM-backed agents.
+- [Writing Functions](writing-functions.md) — Deterministic Python logic steps.
+- [Writing Tools](writing-tools.md) — External action steps.

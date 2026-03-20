@@ -1,30 +1,8 @@
 **Agentic Runtime Manual**
 
-Welcome. This manual is written for first-time users and for people who want a complete reference in one place. If you only read one document, read this one.
-
-**Mental Model**
+This is the **practical reference** — CLI commands, YAML syntax, code examples, and troubleshooting. For a conceptual overview of the architecture and how the pieces fit together, see the [Knowledge Base](knowledge-base.md).
 
 A workflow is a recipe. Each step reads the current state, does some work, then writes new fields back to the state. The runtime records every step, every state change, and every error, so runs can be inspected, resumed, or replayed later.
-
-**Core Concepts**
-
-- Workflow: a YAML file that describes inputs and steps.
-- Step: a unit of work in the workflow.
-- State: the structured data passed between steps.
-- Agent: an LLM-backed definition with a reasoning strategy and pipeline, used by `agent` steps.
-- Function: a plain Python callable used by `function` steps for deterministic logic.
-- Tool: a Python class used by `tool` steps for external actions.
-- Agent definition: a YAML file in `agents/` that describes an agent's model, strategy, tools, and pipeline.
-- Run: a persisted execution record stored in SQLite.
-
-**Workflow Definitions vs Agent Definitions**
-
-- Workflow definitions live in `workflows/` and describe inputs + steps.
-- Agent definitions live in `agents/` and describe LLM agents (model, strategy, pipeline).
-
-A workflow orchestrates agents, functions, and tools. An agent definition describes a single LLM-backed reasoning unit.
-
-Use a workflow when you run `ai run workflows/my_workflow.yaml`. Use an agent definition when a workflow step references it via `type: agent`.
 
 **Quickstart**
 
