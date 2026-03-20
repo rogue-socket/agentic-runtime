@@ -124,10 +124,10 @@
     }
 
     output = escapeHtml(output);
-    placeholders.forEach((html, index) => {
-      const marker = tokenId(index);
-      output = output.split(marker).join(html);
-    });
+    for (let i = placeholders.length - 1; i >= 0; i--) {
+      const marker = tokenId(i);
+      output = output.split(marker).join(placeholders[i]);
+    }
 
     return output;
   };
@@ -140,6 +140,8 @@
     let paragraph = [];
     let codeBuffer = [];
     let codeLang = "";
+    let inTabs = false;
+    let tabsData = null;
 
     const flushParagraph = () => {
       if (!paragraph.length) {
@@ -158,6 +160,41 @@
     };
 
     for (const line of lines) {
+      if (inTabs) {
+        if (line.trim() === "::::") {
+          inTabs = false;
+          let tabsHtml = `<div class="tabs-container"><div class="tabs-header">`;
+          tabsData.tabs.forEach((tab, index) => {
+            tabsHtml += `<button class="tab-button ${index === 0 ? 'active' : ''}" data-tab-id="${index}">${escapeHtml(tab.name)}</button>`;
+          });
+          tabsHtml += `</div><div class="tabs-content">`;
+          tabsData.tabs.forEach((tab, index) => {
+            const tabContentHtml = renderMarkdown(tab.contentLines.join("\n"), currentDoc);
+            tabsHtml += `<div class="tab-pane ${index === 0 ? 'active' : ''}" data-tab-id="${index}">${tabContentHtml}</div>`;
+          });
+          tabsHtml += `</div></div>`;
+          html += tabsHtml;
+          tabsData = null;
+          continue;
+        }
+        if (line.trim().startsWith(":::tab ")) {
+          tabsData.tabs.push({ name: line.trim().slice(":::tab ".length).trim(), contentLines: [] });
+          continue;
+        }
+        if (tabsData.tabs.length > 0) {
+          tabsData.tabs[tabsData.tabs.length - 1].contentLines.push(line);
+        }
+        continue;
+      }
+
+      if (line.trim() === "::::tabs") {
+        flushParagraph();
+        closeList();
+        inTabs = true;
+        tabsData = { tabs: [] };
+        continue;
+      }
+
       if (line.trim().startsWith("```")) {
         if (inCode) {
           const rawCode = codeBuffer.join("\n");
@@ -276,6 +313,18 @@
           const navItem = navItems.find((item) => item.dataset.doc === target);
           loadDoc(target, navItem ? navItem.dataset.title : target);
         }
+      });
+    });
+
+    docContent.querySelectorAll(".tabs-container").forEach((container) => {
+      const buttons = container.querySelectorAll(".tab-button");
+      const panes = container.querySelectorAll(".tab-pane");
+      buttons.forEach(btn => {
+        btn.addEventListener("click", () => {
+          const tabId = btn.getAttribute("data-tab-id");
+          buttons.forEach(b => b.classList.toggle("active", b === btn));
+          panes.forEach(p => p.classList.toggle("active", p.getAttribute("data-tab-id") === tabId));
+        });
       });
     });
   };
