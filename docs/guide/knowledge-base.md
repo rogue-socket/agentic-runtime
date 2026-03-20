@@ -37,7 +37,7 @@ Every solution in the runtime is built using these five essential primitives:
 | [[i!Workflow]] | The YAML "Recipe" | Describes the sequence of operations. |
 | [[i!Agent]] | LLM-backed Intel | Powers complex reasoning and decision making. |
 | [[b!Function]] | Python Logic | Executes pre-defined, deterministic code blocks. |
-| [[Tool]] | External Bridge | Connects the runtime to APIs, databases, or local files. |
+| [[pill!Tool]] | External Bridge | Connects the runtime to APIs, databases, or local files. |
 | [[b!State]] | Memory Layer | The thread of data that weaves through every step. |
 
 ---
@@ -63,11 +63,11 @@ Located in `agents/`.
 ## **How They Tie Together**
 
 1. **Initialization**: You provide a [[i!Workflow]] and initial inputs.
-2. **Registry Building**: The runtime loads the YAML and builds a registry of all referenced [[b!Function]]s and [[Tool]]s.
+2. **Registry Building**: The runtime loads the YAML and builds a registry of all referenced [[b!Function]]s and [[pill!Tool]]s.
 3. **Step Execution**: 
    - For an `agent` step, the runtime resolves the [[i!Agent]] definition and triggers its LLM pipeline.
    - For a `function` step, it triggers a direct Python call.
-   - For a `tool` step, it executes the tool's `execute()` method with the provided context.
+   - For a `tool` step, it executes the [[pill!Tool]]'s `execute()` method with the provided context.
 4. **State Persistence**: After every successful step, the [[b!State]] is updated and a snapshot is saved to the [[i!Run]] record in SQLite.
 
 ---

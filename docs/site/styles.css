@@ -273,13 +273,15 @@ h1 {
   vertical-align: middle;
 }
 
-.pill-blue {
+.pill-blue,
+.pill.info {
   background: rgba(56, 189, 248, 0.1);
   color: var(--accent-2);
   border-color: rgba(56, 189, 248, 0.2);
 }
 
-.pill-indigo {
+.pill-indigo,
+.pill.warning {
   background: rgba(129, 140, 248, 0.1);
   color: var(--accent-3);
   border-color: rgba(129, 140, 248, 0.2);
@@ -366,7 +368,21 @@ h1 {
 }
 
 .doc a {
-  color: var(--accent-2);
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: rgba(52, 211, 153, 0.4);
+  text-underline-offset: 2px;
+  transition: text-decoration-color 0.2s ease;
+}
+
+.doc a:hover {
+  text-decoration-color: var(--accent);
+}
+
+.doc hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2em 0;
 }
 
 .callout {

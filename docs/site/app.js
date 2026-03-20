@@ -147,6 +147,7 @@
     let tabsData = null;
     let inTable = false;
     let tableBuffer = [];
+    let blockquoteBuffer = [];
 
     const flushParagraph = () => {
       if (!paragraph.length) {
@@ -185,10 +186,35 @@
       }
     };
 
+    const flushBlockquote = () => {
+      if (!blockquoteBuffer.length) return;
+      const firstLine = blockquoteBuffer[0];
+      const ghCallout = firstLine.match(/^\[!(Tip|Note|Idea|Warning|Caution)\]\s*$/i);
+      const classicCallout = firstLine.match(/^(\*\*?)?(Tip|Note|Idea|Warning|Caution)\**?:?\s*(.*)$/i);
+      if (ghCallout) {
+        const raw = ghCallout[1];
+        const label = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+        const text = blockquoteBuffer.slice(1).join(" ");
+        const cls = `callout callout-${label.toLowerCase()}`;
+        html += `<blockquote class="${cls}"><strong>${label}:</strong> ${formatInline(text, currentDoc)}</blockquote>`;
+      } else if (classicCallout) {
+        const label = classicCallout[2];
+        const restOfFirst = classicCallout[3] || "";
+        const text = [restOfFirst, ...blockquoteBuffer.slice(1)].filter(Boolean).join(" ");
+        const cls = `callout callout-${label.toLowerCase()}`;
+        html += `<blockquote class="${cls}"><strong>${label}:</strong> ${formatInline(text, currentDoc)}</blockquote>`;
+      } else {
+        const text = blockquoteBuffer.join(" ");
+        html += `<blockquote class="callout callout-note">${formatInline(text, currentDoc)}</blockquote>`;
+      }
+      blockquoteBuffer = [];
+    };
+
     const flushAll = () => {
       flushParagraph();
       closeList();
       flushTable();
+      flushBlockquote();
     };
 
     for (const line of lines) {
@@ -197,7 +223,7 @@
           inTabs = false;
           let tabsHtml = `<div class="tabs-container"><div class="tabs-header">`;
           tabsData.tabs.forEach((tab, index) => {
-            tabsHtml += `<button class="tab-button ${index === 0 ? 'active' : ''}" data-tab-id="${index}">${escapeHtml(tab.name)}</button>`;
+            tabsHtml += `<button class="tab-button ${index === 0 ? 'active' : ''}" data-tab-id="${index}">${formatInline(tab.name, currentDoc)}</button>`;
           });
           tabsHtml += `</div><div class="tabs-content">`;
           tabsData.tabs.forEach((tab, index) => {
@@ -278,19 +304,22 @@
         continue;
       }
 
-      if (line.startsWith(">")) {
+      if (/^-{3,}$/.test(line.trim()) || /^\*{3,}$/.test(line.trim()) || /^_{3,}$/.test(line.trim())) {
         flushAll();
-        const quote = line.replace(/^>\s?/, "");
-        const calloutMatch = quote.match(/^(\*\*?)?(Tip|Note|Idea|Warning|Caution)\**?:?\s*(.*)$/i);
-        if (calloutMatch) {
-          const label = calloutMatch[2];
-          const text = calloutMatch[3] || "";
-          const cls = `callout callout-${label.toLowerCase()}`;
-          html += `<blockquote class="${cls}"><strong>${label}:</strong> ${formatInline(text, currentDoc)}</blockquote>`;
-        } else {
-          html += `<blockquote class="callout callout-note">${formatInline(quote, currentDoc)}</blockquote>`;
-        }
+        html += `<hr />`;
         continue;
+      }
+
+      if (line.startsWith(">")) {
+        flushParagraph();
+        closeList();
+        flushTable();
+        const quote = line.replace(/^>\s?/, "");
+        blockquoteBuffer.push(quote);
+        continue;
+      }
+      if (blockquoteBuffer.length) {
+        flushBlockquote();
       }
 
       const ul = line.match(/^\s*[-*]\s+(.*)$/);
