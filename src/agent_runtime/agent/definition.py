@@ -101,7 +101,7 @@ class AgentDefinition:
 
     agent_id: str
     version: str
-    model: str  # "provider/model" or just "model"
+    model: str = ""  # resolved from runtime config when empty
     description: str = ""
 
     # System prompt — inline text OR a prompt-registry reference ("prompts.xyz@v2")
@@ -161,7 +161,7 @@ class AgentDefinition:
                 "id": self.agent_id,
                 "version": self.version,
                 "description": self.description,
-                "model": self.model,
+                **({"model": self.model} if self.model else {}),
                 "system": self.system,
                 "tools": self.tools,
                 "pipeline": pipeline_data,
@@ -198,7 +198,7 @@ def load_agent_definition(path: str) -> AgentDefinition:
 
 def _parse_agent(data: dict, path: str, raw: Optional[dict] = None) -> AgentDefinition:
     """Parse the ``agent:`` block into an AgentDefinition."""
-    for key in ("id", "version", "model"):
+    for key in ("id", "version"):
         if key not in data:
             raise AgentValidationError(
                 f"{path}: agent missing required field '{key}'"
@@ -217,7 +217,7 @@ def _parse_agent(data: dict, path: str, raw: Optional[dict] = None) -> AgentDefi
     return AgentDefinition(
         agent_id=data["id"],
         version=str(data["version"]),
-        model=data["model"],
+        model=data.get("model", ""),
         description=data.get("description", ""),
         system=data.get("system", ""),
         pipeline=pipeline,

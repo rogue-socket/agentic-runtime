@@ -4,6 +4,7 @@ tools_dir: tools
 agents_dir: agents
 functions_dir: functions
 default_llm_provider: gemini
+default_model: gemini-2.5-flash
 llm:
   providers:
     gemini:

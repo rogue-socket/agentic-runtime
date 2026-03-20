@@ -284,14 +284,13 @@ When this step runs, the runtime:
 
 ### Writing an agent definition
 
-An agent definition describes an LLM-backed reasoning unit. It lives in `agents/` as a YAML file.
+An agent definition describes an LLM-backed reasoning unit. It lives in `agents/` as a YAML file. The model is resolved from `default_model` in `runtime.yaml`.
 
 ```yaml
 # agents/reviewer.yaml
 agent:
   id: reviewer
   version: v1
-  model: gemini/gemini-2.5-flash
   system: "You are a senior code reviewer."
   output_key: review              # downstream steps read via steps.review.review
   strategy:

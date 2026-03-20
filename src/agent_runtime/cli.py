@@ -69,7 +69,6 @@ _SECRET_KEY_RE = re.compile(
     r"(api[_-]?key|secret|token|password|credential|auth|bearer)",
     re.IGNORECASE,
 )
-_MODEL_LINE_RE = re.compile(r"^(\s*model:\s*)([^#\s]+)(\s*(#.*)?)$")
 
 _DEFAULT_PROVIDER_ENV = {
     "openai": "OPENAI_API_KEY",
@@ -455,6 +454,7 @@ functions_dir: functions
 # Uncomment and configure providers you intend to use.
 #
 # default_llm_provider: openai    # used when model has no provider/ prefix
+# default_model: gpt-4o           # used by agent steps that don't specify a model
 #
 # llm:
 #   providers:
@@ -519,7 +519,6 @@ agent:
   id: summarizer
   version: v1
   description: "Summarizes an issue and calls out likely root causes"
-  model: gpt-4o                 # LLM model (provider/model or just model name)
   system: "You are a senior support engineer. Be concise and actionable."
   strategy: single              # single | react | custom
   output_key: summary           # key name for the agent's text output
@@ -542,7 +541,6 @@ agent:
   id: fixer
   version: v1
   description: "Proposes actionable fixes for issues based on a summary and priority"
-  model: gpt-4o                 # LLM model (provider/model or just model name)
   system: "You are a senior software engineer specializing in incident response."
   strategy: single              # single | react | custom
   output_key: next_steps        # key name for the agent's text output
@@ -566,7 +564,7 @@ agent:
 # [Pain Point Solved] #10 Rebuild Same Infra Every Project: One command scaffolds
 #   the full project structure — workflows/, tools/, agents/, functions/, runtime.yaml.
 #   No more copy-pasting from the last project with its bugs.
-def _init_project(target_dir: str, *, model: Optional[str] = None) -> None:
+def _init_project(target_dir: str) -> None:
     """Create workflow scaffold files in target directory.
 
     The scaffolded example workflow includes an ``agent`` step that makes
@@ -598,28 +596,12 @@ def _init_project(target_dir: str, *, model: Optional[str] = None) -> None:
         with open(example_tool_path, "w", encoding="utf-8") as f:
             f.write(EXAMPLE_TOOL)
 
-    agent_def = EXAMPLE_AGENT_DEFINITION
-    if model:
-        agent_def = agent_def.replace("model: gpt-4o", f"model: {model}")
-    example_agent_path = os.path.join(agents_dir, "summarizer.yaml")
-    if not os.path.exists(example_agent_path):
-        with open(example_agent_path, "w", encoding="utf-8") as f:
-            f.write(agent_def)
-
-    fixer_def = EXAMPLE_FIXER_DEFINITION
-    if model:
-        fixer_def = fixer_def.replace("model: gpt-4o", f"model: {model}")
-    fixer_agent_path = os.path.join(agents_dir, "fixer.yaml")
-    if not os.path.exists(fixer_agent_path):
-        with open(fixer_agent_path, "w", encoding="utf-8") as f:
-            f.write(fixer_def)
-
     runtime_yaml_path = os.path.join(target_dir, "runtime.yaml")
     if not os.path.exists(runtime_yaml_path):
         with open(runtime_yaml_path, "w", encoding="utf-8") as f:
             f.write(RUNTIME_YAML_TEMPLATE)
 
-    _scaffold_quickstart_samples(target_dir, model=model)
+    _scaffold_quickstart_samples(target_dir)
 
 
 # -- Quickstart sample files -----------------------------------------------
@@ -950,7 +932,6 @@ agent:
   id: researcher
   version: v1
   description: "Researches a topic and produces structured key findings"
-  model: gpt-4o
   system: "You are a research analyst. Identify key facts and structure your findings as a numbered list."
   strategy:
     type: react
@@ -976,7 +957,6 @@ agent:
   id: advisor
   version: v1
   description: "Provides a strategic recommendation based on research findings"
-  model: gpt-4o
   system: "You are a strategic advisor. Based on research findings, provide a clear, actionable recommendation in 2-3 sentences."
   strategy: single
   output_key: recommendation
@@ -996,20 +976,15 @@ agent:
 """
 
 
-def _scaffold_file(path: str, content: str, *, model: Optional[str] = None) -> None:
+def _scaffold_file(path: str, content: str) -> None:
     """Write *content* to *path* if the file does not already exist."""
     if os.path.exists(path):
         return
-    text = content
-    if model:
-        text = text.replace("model: gpt-4o", f"model: {model}")
     with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
+        f.write(content)
 
 
-def _scaffold_quickstart_samples(
-    target_dir: str, *, model: Optional[str] = None,
-) -> None:
+def _scaffold_quickstart_samples(target_dir: str) -> None:
     """Create additional quickstart sample files (idempotent)."""
     workflows_dir = os.path.join(target_dir, "workflows")
     functions_dir = os.path.join(target_dir, "functions")
@@ -1019,45 +994,22 @@ def _scaffold_quickstart_samples(
     os.makedirs(functions_dir, exist_ok=True)
     os.makedirs(agents_dir, exist_ok=True)
 
+    _scaffold_file(os.path.join(agents_dir, "summarizer.yaml"), EXAMPLE_AGENT_DEFINITION)
+    _scaffold_file(os.path.join(agents_dir, "fixer.yaml"), EXAMPLE_FIXER_DEFINITION)
+
     # quickstart2 — branching triage (no LLM)
     _scaffold_file(os.path.join(functions_dir, "triage.py"), _QS_TRIAGE_FUNCTIONS)
     _scaffold_file(os.path.join(workflows_dir, "branching_triage.yaml"), _QS_BRANCHING_WORKFLOW)
 
     # quickstart3 — multi-agent research (LLM)
     _scaffold_file(os.path.join(functions_dir, "research.py"), _QS_RESEARCH_FUNCTIONS)
-    _scaffold_file(os.path.join(agents_dir, "researcher.yaml"), _QS_RESEARCHER_AGENT, model=model)
-    _scaffold_file(os.path.join(agents_dir, "advisor.yaml"), _QS_ADVISOR_AGENT, model=model)
+    _scaffold_file(os.path.join(agents_dir, "researcher.yaml"), _QS_RESEARCHER_AGENT)
+    _scaffold_file(os.path.join(agents_dir, "advisor.yaml"), _QS_ADVISOR_AGENT)
     _scaffold_file(os.path.join(workflows_dir, "research.yaml"), _QS_RESEARCH_WORKFLOW)
 
     # quickstart4 — data pipeline (no LLM)
     _scaffold_file(os.path.join(functions_dir, "pipeline.py"), _QS_PIPELINE_FUNCTIONS)
     _scaffold_file(os.path.join(workflows_dir, "data_pipeline.yaml"), _QS_PIPELINE_WORKFLOW)
-
-
-def _update_workflow_model(path: str, model: Optional[str]) -> bool:
-    if not model or not os.path.isfile(path):
-        return False
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-    except OSError:
-        return False
-    changed = False
-    for idx, line in enumerate(lines):
-        match = _MODEL_LINE_RE.match(line)
-        if not match:
-            continue
-        current = match.group(2)
-        if current == model:
-            continue
-        suffix = match.group(3) or ""
-        newline = "\n" if line.endswith("\n") else ""
-        lines[idx] = f"{match.group(1)}{model}{suffix}{newline}"
-        changed = True
-    if changed:
-        with open(path, "w", encoding="utf-8") as f:
-            f.writelines(lines)
-    return changed
 
 
 def _default_tool_registry(
@@ -1382,6 +1334,9 @@ def _run_setup_flow(
         llm_block["default_provider"] = chosen_provider
     raw["llm"] = llm_block
 
+    if not no_default and chosen_model:
+        raw["default_model"] = chosen_model
+
     with open(runtime_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(raw, f, sort_keys=False)
 
@@ -1475,23 +1430,11 @@ def _run_quickstart(project_root: str) -> int:
         no_default=False,
     )
 
-    chosen_model = setup_info.get("model") if isinstance(setup_info, dict) else None
-
     if needs_init:
-        _init_project(project_root, model=chosen_model)
+        _init_project(project_root)
         print(f"Initialized project at {project_root}")
     else:
-        _update_workflow_model(example_workflow, chosen_model)
-
-    # Update model in all agent YAMLs so they match the chosen provider/model.
-    if chosen_model:
-        agents_dir = os.path.join(project_root, "agents")
-        if os.path.isdir(agents_dir):
-            for fname in os.listdir(agents_dir):
-                if fname.endswith((".yaml", ".yml")):
-                    _update_workflow_model(
-                        os.path.join(agents_dir, fname), chosen_model,
-                    )
+        _scaffold_quickstart_samples(project_root)
 
     if not os.path.exists(example_workflow):
         fallback = os.path.join(project_root, "workflows", "samples", "01_linear_issue_summary.yaml")
@@ -1523,32 +1466,20 @@ def _run_quickstart_sample(
 
     _load_dotenv(os.path.join(project_root, ".env"))
 
-    chosen_model: Optional[str] = None
     if needs_llm:
-        setup_info = _run_setup_flow(
+        _run_setup_flow(
             project_root,
             provider=None, api_key_env=None, api_key=None, model=None,
             base_url=None, temperature=None, max_tokens=None,
             no_dotenv=False, no_default=False,
         )
-        chosen_model = setup_info.get("model") if isinstance(setup_info, dict) else None
 
     runtime_path = os.path.join(project_root, "runtime.yaml")
     if not os.path.exists(runtime_path):
-        _init_project(project_root, model=chosen_model)
+        _init_project(project_root)
         print(f"Initialized project at {project_root}")
     else:
-        _scaffold_quickstart_samples(project_root, model=chosen_model)
-
-    # Update model in all agent YAMLs so they match the chosen provider/model.
-    if chosen_model:
-        agents_dir = os.path.join(project_root, "agents")
-        if os.path.isdir(agents_dir):
-            for fname in os.listdir(agents_dir):
-                if fname.endswith((".yaml", ".yml")):
-                    _update_workflow_model(
-                        os.path.join(agents_dir, fname), chosen_model,
-                    )
+        _scaffold_quickstart_samples(project_root)
 
     workflow_path = os.path.join(project_root, "workflows", workflow_name)
     if not os.path.exists(workflow_path):

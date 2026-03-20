@@ -1,9 +1,9 @@
 **Writing Agents (Explained Simply)**
 
-An agent is an LLM-backed reasoning unit. It wraps a model, a system prompt, a strategy, and a pipeline into a reusable definition that workflow steps can call.
+An agent is an LLM-backed reasoning unit. It wraps a system prompt, a strategy, and a pipeline into a reusable definition that workflow steps can call.
 
 If you are new, remember one sentence:
-**An agent is a YAML file that tells the runtime which model to call and how.**
+**An agent is a YAML file that tells the runtime how to use an LLM — the model itself comes from runtime config.**
 
 ---
 
@@ -35,7 +35,6 @@ agent:
   id: summarizer                    # unique agent id
   version: v1                       # version tag
   description: "Summarizes issues"  # human-readable description
-  model: gemini/gemini-2.5-flash    # LLM provider/model
   system: "You are a concise summarizer."  # system prompt
   strategy: single                  # reasoning strategy
   output_key: summary               # key name for the agent's text output
@@ -55,7 +54,6 @@ agent:
 | :--- | :--- | :--- |
 | `id` | Yes | Unique identifier. Workflow steps reference this. |
 | `version` | Yes | Version tag (e.g. `v1`, `v2`). |
-| `model` | Yes | LLM model in `provider/model` format. |
 | `system` | No | System prompt string, or a `prompts.<id>` reference. |
 | `strategy` | Yes | Reasoning strategy: `single`, `react`, or custom. |
 | `output_key` | No | Key name for the agent's text output (default: `text`). |
@@ -63,6 +61,7 @@ agent:
 | `temperature` | No | LLM sampling temperature. |
 | `max_tokens` | No | Maximum response tokens. |
 | `pipeline` | Yes | Ordered list of pipeline steps. |
+| `model` | No | Override the runtime default model for this agent only. |
 
 ---
 
@@ -218,7 +217,6 @@ agent:
   id: code_reviewer
   version: v1
   description: "Reviews code diffs for bugs, security, and style"
-  model: gemini/gemini-2.5-flash
   system: prompts.code_review_system@v2
   tools:
     - tools.file

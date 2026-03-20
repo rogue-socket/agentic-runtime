@@ -2,7 +2,6 @@ agent:
   id: researcher
   version: v1
   description: "Researches a topic and produces structured key findings"
-  model: gemini/gemini-2.5-flash
   system: "You are a research analyst. Identify key facts and structure your findings as a numbered list."
   strategy:
     type: react

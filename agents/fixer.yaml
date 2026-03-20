@@ -2,7 +2,6 @@ agent:
   id: fixer
   version: v1
   description: "Proposes actionable fixes for issues based on a summary and priority"
-  model: gemini/gemini-2.5-flash
   system: prompts.fixer_system
   tools:
     - tools.echo

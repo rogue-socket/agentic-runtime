@@ -2,7 +2,6 @@ agent:
   id: code_reviewer
   version: v1
   description: "Reviews code diffs for bugs, security, and style issues"
-  model: gemini/gemini-2.5-flash
   system: prompts.code_review_system@v2
   tools:
     - tools.file

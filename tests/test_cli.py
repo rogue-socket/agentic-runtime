@@ -182,17 +182,15 @@ class TestInitProject:
             with open(marker) as f:
                 assert f.read() == "custom"
 
-    def test_model_option(self) -> None:
+    def test_model_not_in_agent_yaml(self) -> None:
+        """Agent definitions should not contain a model field — model comes from runtime config."""
         with tempfile.TemporaryDirectory() as d:
-            _init_project(d, model="claude-3-opus")
-            agent_path = os.path.join(d, "agents", "summarizer.yaml")
-            with open(agent_path) as f:
-                content = f.read()
-            assert "claude-3-opus" in content
-            fixer_path = os.path.join(d, "agents", "fixer.yaml")
-            with open(fixer_path) as f:
-                fixer_content = f.read()
-            assert "claude-3-opus" in fixer_content
+            _init_project(d)
+            for name in ("summarizer.yaml", "fixer.yaml"):
+                path = os.path.join(d, "agents", name)
+                with open(path) as f:
+                    content = f.read()
+                assert "model:" not in content
 
 
 # ── run_cli dispatch ───────────────────────────────────────────────

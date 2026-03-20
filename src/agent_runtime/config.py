@@ -54,6 +54,9 @@ class RuntimeConfig:
     # Default LLM provider (used when model string has no provider/ prefix)
     default_llm_provider: str = ""
 
+    # Default model for agent steps that don't specify one
+    default_model: str = ""
+
     # TODO(Prod Pain Point #6 — Config Drift Between Environments): Dev uses
     #   gemini/flash with temp=0.2, prod needs openai/gpt-4o with temp=0.0
     #   and a different db_path. Add environment-aware config layering:
@@ -66,7 +69,7 @@ class RuntimeConfig:
 _FLAT_KEYS = {
     "db_path", "workflows_dir", "tools_dir",
     "agents_dir", "functions_dir",
-    "overwrite_policy", "default_llm_provider",
+    "overwrite_policy", "default_llm_provider", "default_model",
 }
 
 

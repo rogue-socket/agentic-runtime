@@ -240,11 +240,11 @@ class TestAgentDefinition:
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
-            f.write("agent:\n  id: x\n  version: v1\n")
+            f.write("agent:\n  id: x\n")
             f.flush()
             path = f.name
         try:
-            with pytest.raises(AgentValidationError, match="missing required field 'model'"):
+            with pytest.raises(AgentValidationError, match="missing required field 'version'"):
                 load_agent_definition(path)
         finally:
             os.unlink(path)

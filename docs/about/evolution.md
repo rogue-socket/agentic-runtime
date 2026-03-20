@@ -66,7 +66,7 @@ The old runtime had one computational step type: `type: model`, dispatching to a
 ### Agent steps (`type: agent`)
 
 Agent steps delegate to an **agent definition** — a YAML file in `agents/` that describes an LLM-backed reasoning unit. An agent definition specifies:
-- **Model**: which LLM provider and model to use (`gemini/gemini-2.5-flash`, `openai/gpt-4o`).
+- **Model**: which LLM provider and model to use — set once in `runtime.yaml` as `default_model`, inherited by all agents.
 - **System prompt**: the agent's persona and instructions.
 - **Strategy**: the reasoning pattern — `single` (one pass), `react` (observe→think→act loop), or custom (via dotted import path).
 - **Pipeline**: ordered sub-steps the agent executes internally, each with its own prompt template.
@@ -88,7 +88,6 @@ Agents have their own internal pipelines, which means the LLM-specific concerns 
 agent:
   id: code_reviewer
   version: v1
-  model: gemini/gemini-2.5-flash
   system: "You are a senior code reviewer."
   strategy:
     type: react
@@ -247,7 +246,7 @@ The `handlers/` directory is gone. There is a one-to-one correspondence between 
 
 The codebase contains two agent-related subsystems, and the distinction matters:
 
-**Agent definitions** (current, primary) live in `agents/*.yaml` and describe a single LLM-backed reasoning unit: model, system prompt, strategy, pipeline, tools. They are referenced from workflow steps via `type: agent`. They are the building blocks of workflows.
+**Agent definitions** (current, primary) live in `agents/*.yaml` and describe a single LLM-backed reasoning unit: system prompt, strategy, pipeline, tools. They are referenced from workflow steps via `type: agent`. They are the building blocks of workflows.
 
 **Agent manifests** (legacy, still supported) live in `agent.yaml` and describe a *deployable package*: which workflow to run, which handlers/tools to include, which providers are required, which env vars are needed, and what default inputs to use. They are used for `ai validate`, `ai export`, and `ai import`.
 

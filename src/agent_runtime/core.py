@@ -530,6 +530,11 @@ class Executor:
                             agent_def = self.agent_registry.get(
                                 step_def.agent_id, step_def.agent_version
                             )
+                            # Inject default model from runtime config when the
+                            # agent definition doesn't specify one.
+                            if not agent_def.model and self.config.default_model:
+                                agent_def = copy.copy(agent_def)
+                                agent_def.model = self.config.default_model
                             agent_executor = AgentExecutor(
                                 self.llm_client, self.tool_registry, self.logger
                             )

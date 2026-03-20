@@ -2,7 +2,6 @@ agent:
   id: advisor
   version: v1
   description: "Provides a strategic recommendation based on research findings"
-  model: gemini/gemini-2.5-flash
   system: "You are a strategic advisor. Based on research findings, provide a clear, actionable recommendation in 2-3 sentences."
   strategy: single
   output_key: recommendation

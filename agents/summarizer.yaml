@@ -2,7 +2,6 @@ agent:
   id: summarizer
   version: v1
   description: "Summarizes issues into concise reports with root-cause analysis"
-  model: gemini/gemini-2.5-flash
   system: prompts.summarizer_system
   tools:
     - tools.echo
