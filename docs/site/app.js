@@ -70,6 +70,9 @@
       const resolved = resolveDocPath(currentDoc, href);
       return `<a href="../${resolved}" target="_blank" rel="noopener">${text}</a>`;
     });
+    result = result.replace(/\[\[pill!(.*?)\]\]/g, '<span class="pill primary">$1</span>');
+    result = result.replace(/\[\[i!(.*?)\]\]/g, '<span class="pill info">$1</span>');
+    result = result.replace(/\[\[b!(.*?)\]\]/g, '<span class="pill warning">$1</span>');
     return result;
   };
 
@@ -142,6 +145,8 @@
     let codeLang = "";
     let inTabs = false;
     let tabsData = null;
+    let inTable = false;
+    let tableBuffer = [];
 
     const flushParagraph = () => {
       if (!paragraph.length) {
@@ -157,6 +162,33 @@
       }
       html += `</${listType}>`;
       listType = null;
+    };
+
+    const flushTable = () => {
+      if (inTable && tableBuffer.length > 0) {
+        html += `<div class="table-wrapper"><table>`;
+        tableBuffer.forEach((row, idx) => {
+          let cols = row.split('|').map(c => c.trim());
+          if (cols[0] === '') cols.shift();
+          if (cols[cols.length - 1] === '') cols.pop();
+          if (idx === 0) {
+            html += `<thead><tr>${cols.map(c => `<th>${formatInline(c, currentDoc)}</th>`).join('')}</tr></thead><tbody>`;
+          } else if (idx === 1 && /^[-\s:]+$/.test(row.replace(/\|/g, ''))) {
+            // separator
+          } else {
+            html += `<tr>${cols.map(c => `<td>${formatInline(c, currentDoc)}</td>`).join('')}</tr>`;
+          }
+        });
+        html += `</tbody></table></div>`;
+        inTable = false;
+        tableBuffer = [];
+      }
+    };
+
+    const flushAll = () => {
+      flushParagraph();
+      closeList();
+      flushTable();
     };
 
     for (const line of lines) {
@@ -188,28 +220,40 @@
       }
 
       if (line.trim() === "::::tabs") {
-        flushParagraph();
-        closeList();
+        flushAll();
         inTabs = true;
         tabsData = { tabs: [] };
         continue;
+      }
+
+      if (line.trim().startsWith("|") && line.trim().endsWith("|")) {
+        flushParagraph();
+        closeList();
+        inTable = true;
+        tableBuffer.push(line.trim());
+        continue;
+      } else if (inTable) {
+        flushTable();
       }
 
       if (line.trim().startsWith("```")) {
         if (inCode) {
           const rawCode = codeBuffer.join("\n");
           const lang = codeLang || "text";
-          const highlighted = highlightCode(rawCode, codeLang);
-          html += `<div class="code-shell">` +
-                  `<div class="code-head"><span class="code-lang">${escapeHtml(lang)}</span></div>` +
-                  `<pre><code class="lang-${escapeHtml(lang)}">${highlighted}</code></pre>` +
-                  `</div>`;
+          if (lang === "mermaid") {
+            html += `<div class="mermaid-container" data-mermaid="${escapeHtml(rawCode)}"></div>`;
+          } else {
+            const highlighted = highlightCode(rawCode, codeLang);
+            html += `<div class="code-shell">` +
+                    `<div class="code-head"><span class="code-lang">${escapeHtml(lang)}</span></div>` +
+                    `<pre><code class="lang-${escapeHtml(lang)}">${highlighted}</code></pre>` +
+                    `</div>`;
+          }
           inCode = false;
           codeBuffer = [];
           codeLang = "";
         } else {
-          flushParagraph();
-          closeList();
+          flushAll();
           codeLang = line.trim().slice(3).trim();
           inCode = true;
         }
@@ -222,25 +266,22 @@
       }
 
       if (!line.trim()) {
-        flushParagraph();
-        closeList();
+        flushAll();
         continue;
       }
 
       const heading = line.match(/^(#{1,3})\s+(.*)$/);
       if (heading) {
-        flushParagraph();
-        closeList();
+        flushAll();
         const level = heading[1].length;
         html += `<h${level}>${formatInline(heading[2].trim(), currentDoc)}</h${level}>`;
         continue;
       }
 
       if (line.startsWith(">")) {
-        flushParagraph();
-        closeList();
+        flushAll();
         const quote = line.replace(/^>\s?/, "");
-        const calloutMatch = quote.match(/^(\\*\\*)?(Tip|Note|Idea|Warning|Caution)\\*\\*?:\\s*(.*)$/i);
+        const calloutMatch = quote.match(/^(\*\*?)?(Tip|Note|Idea|Warning|Caution)\**?:?\s*(.*)$/i);
         if (calloutMatch) {
           const label = calloutMatch[2];
           const text = calloutMatch[3] || "";
@@ -271,8 +312,7 @@
       paragraph.push(line.trim());
     }
 
-    flushParagraph();
-    closeList();
+    flushAll();
     if (inCode) {
       const rawCode = codeBuffer.join("\n");
       const lang = codeLang || "text";
@@ -302,6 +342,20 @@
       return;
     }
     docContent.innerHTML = renderMarkdown(content, docPath);
+    
+    if (window.mermaid) {
+      docContent.querySelectorAll('.mermaid-container').forEach((el, index) => {
+        const code = el.getAttribute('data-mermaid');
+        const id = `mermaid-svg-${Date.now()}-${index}`;
+        mermaid.render(id, code)
+          .then(({ svg }) => { el.innerHTML = svg; })
+          .catch(e => {
+            console.error("Mermaid render failed", e);
+            el.innerHTML = `<pre class="code-shell">${escapeHtml(code)}</pre>`;
+          });
+      });
+    }
+
     docTitle.textContent = title || docPath;
     rawLink.href = `../${docPath}`;
     setActive(docPath);

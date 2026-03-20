@@ -1,18 +1,21 @@
 :root {
   color-scheme: dark;
-  --bg: #0a0b0f;
-  --bg-accent: #131722;
-  --ink: #f1f5f9;
-  --muted: #b6c0cc;
+  --bg: #030712;
+  --bg-sidebar: #0b0f1a;
+  --bg-card: #0f172a;
+  --bg-accent: #1e293b;
+  --ink: #f8fafc;
+  --muted: #94a3b8;
   --border: #334155;
-  --accent: #6ee7b7;
-  --accent-2: #f59e0b;
-  --highlight: rgba(110, 231, 183, 0.12);
-  --shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
-  --radius: 16px;
-  --radius-sm: 10px;
-  --font-sans: "Avenir Next", "Futura", "Gill Sans", "Trebuchet MS", sans-serif;
-  --font-mono: "IBM Plex Mono", "Menlo", "Consolas", monospace;
+  --accent: #34d399;
+  --accent-2: #38bdf8;
+  --accent-3: #818cf8;
+  --highlight: rgba(52, 211, 153, 0.1);
+  --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", "Menlo", monospace;
 }
 
 * {
@@ -23,25 +26,28 @@ body {
   margin: 0;
   font-family: var(--font-sans);
   color: var(--ink);
-  background: radial-gradient(circle at top left, #1f2937 0%, #0a0b0f 50%, #06070a 100%);
+  background-color: var(--bg);
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(52, 211, 153, 0.05) 0px, transparent 50%);
+  background-attachment: fixed;
 }
 
 .app {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 300px 1fr;
   transition: grid-template-columns 0.25s ease;
 }
 
 .sidebar {
-  padding: 28px 20px;
-  background: #0f1420;
-  border-right: 1px solid #2b3445;
+  padding: 32px 24px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  transition: transform 0.25s ease, opacity 0.2s ease;
-  box-shadow: 8px 0 26px rgba(0, 0, 0, 0.45);
+  gap: 24px;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
 }
 
 .brand {
@@ -52,15 +58,15 @@ body {
 }
 
 .brand-mark {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #000;
+  font-weight: 800;
+  font-size: 1.2rem;
   display: grid;
   place-items: center;
-  background: linear-gradient(140deg, #6ee7b7, #2563eb);
-  color: #0b0d12;
-  font-weight: 700;
-  letter-spacing: 0.08em;
 }
 
 .brand-title {
@@ -139,21 +145,23 @@ body {
 }
 
 .main {
-  padding: 36px 40px 60px;
+  padding: 40px 60px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .header {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 24px 32px;
+  border-radius: 20px;
+  margin-bottom: 32px;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 20px;
-  border-bottom: 1px solid #2b3445;
-  padding-bottom: 20px;
-  background: rgba(15, 20, 32, 0.85);
-  backdrop-filter: blur(10px);
-  border-radius: 16px;
-  padding: 20px 20px 18px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
 }
 
 .eyebrow {
@@ -164,6 +172,12 @@ body {
 }
 
 h1 {
+  background: linear-gradient(to right, #fff, #94a3b8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   margin: 6px 0 0;
   font-size: 2.2rem;
 }
@@ -189,18 +203,18 @@ h1 {
 }
 
 .content {
-  margin-top: 24px;
-  background: #101826;
-  border-radius: var(--radius);
-  padding: 28px 32px;
-  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin-top: 0;
 }
 
 .doc {
   animation: fadeIn 0.35s ease;
-  font-size: 1rem;
-  line-height: 1.7;
+  font-size: 1.05rem;
+  line-height: 1.75;
+  color: #cbd5e1;
 }
 
 .doc h1,
@@ -214,11 +228,20 @@ h1 {
 }
 
 .doc h2 {
-  font-size: 1.4rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-top: 2.5em;
+  margin-bottom: 1em;
+  color: #fff;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.3em;
 }
 
 .doc h3 {
-  font-size: 1.15rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 2em;
+  color: var(--accent-2);
 }
 
 .doc p {
@@ -227,9 +250,57 @@ h1 {
 
 .doc code {
   font-family: var(--font-mono);
-  background: #111a2b;
-  padding: 2px 6px;
+  background: var(--bg-accent);
+  color: var(--accent-2);
+  padding: 0.2em 0.4em;
+  font-size: 0.9em;
   border-radius: 6px;
+}
+
+/* New Pill Component */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  height: 24px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--highlight);
+  color: var(--accent);
+  border: 1px solid rgba(52, 211, 153, 0.2);
+  margin: 0 2px;
+  vertical-align: middle;
+}
+
+.pill-blue {
+  background: rgba(56, 189, 248, 0.1);
+  color: var(--accent-2);
+  border-color: rgba(56, 189, 248, 0.2);
+}
+
+.pill-indigo {
+  background: rgba(129, 140, 248, 0.1);
+  color: var(--accent-3);
+  border-color: rgba(129, 140, 248, 0.2);
+}
+
+/* Mermaid Adjustments */
+.mermaid-container {
+  background: var(--bg-card);
+  padding: 32px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  margin: 2.5em 0;
+  display: flex;
+  justify-content: center;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  min-height: 100px;
+}
+
+.mermaid-container svg {
+  max-width: 100%;
+  height: auto;
 }
 
 .code-shell {
@@ -479,4 +550,31 @@ h1 {
 }
 .tab-pane > *:last-child {
   margin-bottom: 0;
+}
+
+/* Tables */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 1.5em 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  background: var(--bg-card);
+}
+th, td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+th {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+  color: var(--ink);
+}
+tr:last-child th,
+tr:last-child td {
+  border-bottom: none;
 }

@@ -1,135 +1,92 @@
-**Knowledge Base**
+# **Knowledge Base**
 
-This page explains what the runtime is, what workflows, agents, functions, and tools are, and how they fit together.
+Welcome to the **Agentic Runtime** Knowledge Base. This page explains the core architecture, the building blocks of the system, and how they interact to provide a deterministic, observable execution environment for AI agents.
 
-**What This Is**
+---
 
-`agentic-runtime` is an execution runtime for AI agent workflows. You define a workflow in YAML, the runtime executes each step deterministically, and it records every state change so you can inspect, resume, and replay runs.
+## **The System Architecture**
 
-**Core Building Blocks**
+At its core, `agentic-runtime` is a high-performance orchestration layer. It bridges the gap between static definitions and dynamic AI execution.
 
-- Workflow: the YAML recipe that describes inputs and steps.
-- Function: a Python callable that powers a `function` step.
-- Agent: an LLM-backed definition that powers an `agent` step.
-- Tool: a Python class that powers a `tool` step.
-- State: the structured data that flows between steps.
-- Run: a persisted execution record stored in SQLite.
-
-**Agent Definitions vs Workflow Definitions**
-
-- Workflow definition: the YAML file in `workflows/` that defines inputs and steps.
-- Agent definition: the YAML file in `agents/` that describes an LLM agent's model, strategy, tools, and pipeline.
-
-Think of it like this:
-The **workflow** is the recipe, and the **agent** is the packaged meal kit that says which recipe to run and what ingredients to include.
-
-**How They Tie Together**
-
-1. You write a workflow (`workflows/my_workflow.yaml`).
-2. The workflow references agents, functions, and tools by name.
-3. The runtime loads the workflow and builds the step registry.
-4. When it reaches an `agent` step, it resolves the agent definition and runs its LLM pipeline.
-5. When it reaches a `function` step, it calls the Python function.
-6. When it reaches a `tool` step, it calls the tool's `execute()` method.
-7. Each step runs in order (with branching/retries if configured).
-8. Every step output is merged into state and persisted.
-
-**Visual Summary**
-
-```text
-Workflow YAML
-  ├─ Inputs (initial state)
-  ├─ Steps
-  │   ├─ agent step    → Agent definition (LLM pipeline)
-  │   ├─ function step → Python function
-  │   └─ tool step     → Tool class
-  └─ Outputs (state after each step)
-
-Runtime
-  ├─ Executes steps
-  ├─ Persists run + state
-  └─ Enables inspect / resume / replay
+```mermaid
+graph TD
+    User([User]) -->|Inputs| Runtime{Runtime}
+    Runtime -->|Load| W[Workflow YAML]
+    W -->|Iterate| Steps{Steps}
+    
+    Steps -->|Type: Agent| A[["[[i!Agent]]"]]
+    Steps -->|Type: Function| F[["[[b!Function]]"]]
+    Steps -->|Type: Tool| T[["[[Tool]]"]]
+    
+    A -->|LLM Pipeline| R1[Result]
+    F -->|Python Code| R2[Result]
+    T -->|External Action| R3[Result]
+    
+    R1 & R2 & R3 -->|Update| State[(State)]
+    Runtime -.->|Persist| DB[(SQLite)]
 ```
 
-**Workflows**
+---
 
-Workflows define the sequence of steps and how data flows.
+## **Core Building Blocks**
 
-Example:
+Every solution in the runtime is built using these five essential primitives:
 
-```yaml
-workflow:                     # workflow metadata
-  id: issue_triage             # unique id
-  version: v1                  # version tag
-inputs:                        # declared inputs
-  issue:
-    required: true             # required input
-steps:                         # ordered steps
-  - id: summarize
-    type: agent                # agent step uses an LLM agent
-    agent: summarizer          # agent id from agents/
-    inputs:
-      issue: inputs.issue      # input reference
-  - id: echo
-    type: tool                 # tool step uses a tool class
-    tool: tools.echo           # tool name
-    inputs:
-      message: steps.summarize.summary  # step output reference
-```
+| Block | Role | Integration |
+| :--- | :--- | :--- |
+| [[i!Workflow]] | The YAML "Recipe" | Describes the sequence of operations. |
+| [[i!Agent]] | LLM-backed Intel | Powers complex reasoning and decision making. |
+| [[b!Function]] | Python Logic | Executes pre-defined, deterministic code blocks. |
+| [[Tool]] | External Bridge | Connects the runtime to APIs, databases, or local files. |
+| [[b!State]] | Memory Layer | The thread of data that weaves through every step. |
 
-**Functions**
+---
 
-Functions are plain Python callables. They receive an inputs dict and return a dictionary of outputs.
+## **Workflow vs. Agent Definitions**
 
-```python
-def summarize_issue(inputs: dict) -> dict:
-    issue = inputs.get("issue", "")
-    return {"summary": issue[:140]}
-```
+It is important to distinguish between the **Orchestra** (Workflow) and the **Performer** (Agent).
 
-**Tools**
+::::tabs
+:::tab [[i!Workflow Definition]]
+Located in `workflows/`.
+- **Purpose**: Defines the inputs, the sequence of steps, and the data mapping between them.
+- **Analogy**: The script of a play.
+:::
+:::tab [[i!Agent Definition]]
+Located in `agents/`.
+- **Purpose**: Describes a specific AI's personality, model choice (e.g., GPT-4, Claude), and the specific tools it has access to.
+- **Analogy**: The actor playing a specific role.
+::::
 
-Tools are Python classes that perform external actions.
+---
 
-```python
-from __future__ import annotations
+## **How They Tie Together**
 
-from typing import Any, Dict, Optional
-from agent_runtime.tools.base import RuntimeContext, ToolResult
+1. **Initialization**: You provide a [[i!Workflow]] and initial inputs.
+2. **Registry Building**: The runtime loads the YAML and builds a registry of all referenced [[b!Function]]s and [[Tool]]s.
+3. **Step Execution**: 
+   - For an `agent` step, the runtime resolves the [[i!Agent]] definition and triggers its LLM pipeline.
+   - For a `function` step, it triggers a direct Python call.
+   - For a `tool` step, it executes the tool's `execute()` method with the provided context.
+4. **State Persistence**: After every successful step, the [[b!State]] is updated and a snapshot is saved to the [[i!Run]] record in SQLite.
 
-class ExampleTool:
-    name = "tools.example"
-    description = "Uppercases the provided text"
-    input_schema = {
-        "type": "object",
-        "properties": {"text": {"type": "string"}},
-        "required": ["text"],
-    }
-    timeout: Optional[float] = None
-    retries: Optional[int] = None
+---
 
-    async def execute(
-        self, input: Dict[str, Any], context: RuntimeContext
-    ) -> ToolResult:
-        text = input.get("text", "")  # read tool input
-        return ToolResult(             # return tool result
-            success=True,
-            output={"text": text.upper()},
-            error=None,
-            metadata=None,
-        )
-```
+## **Data Flow Patterns**
 
-**State And Data Flow**
+The runtime uses a strict, injectable data flow model:
 
-- Inputs are accessed as `inputs.<name>`.
-- Step outputs are accessed as `steps.<step_id>.<field>`.
-- Each step result is stored under `steps.<step_id>` in state.
+- **Inputs**: Accessed via `inputs.<name>`.
+- **Step Results**: Accessed via `steps.<step_id>.<field>`.
+- **Global Context**: Shared metadata accessible to all blocks.
 
-**Where To Learn More**
+> [!TIP]
+> Use the `-i` flag in the CLI to override any input at runtime, or use environmental variables for sensitive API keys.
 
-- [Getting Started](getting-started.md)
-- [Manual](manual.md)
-- [Writing Workflows](workflows.md)
-- [Functions and Agents](functions-and-agents.md)
-- [Tools](tools.md)
+---
+
+## **Next Steps**
+
+- [Getting Started](getting-started.md) — From zero to your first run.
+- [Manual](manual.md) — Deep dive into all CLI commands.
+- [Tools](tools.md) — Learn how to build your own external bridges.
