@@ -29,6 +29,9 @@ import json
 import sys
 
 
+_LEVELS = {"debug": 0, "info": 1, "warning": 2, "error": 3}
+
+
 class StructuredLogger:
     """Emit structured JSON event logs.
 
@@ -49,17 +52,25 @@ class StructuredLogger:
         >>> logger.info("RUN_START", {"run_id": "r1"})
     """
 
-    def __init__(self, stream=None) -> None:
+    def __init__(self, stream=None, level: str = "info") -> None:
         """Initialize logger with optional stream override.
 
         Args:
             stream: Writable text stream; defaults to `sys.stdout`.
+            level: Minimum log level (debug/info/warning/error).
 
         Example:
             >>> StructuredLogger(stream=sys.stdout)
             <agent_runtime.logging.StructuredLogger object...>
         """
         self.stream = stream or sys.stdout
+        self._level = _LEVELS.get(level, 1)
+
+    def _emit(self, level: int, event: str, payload: Dict[str, Any]) -> None:
+        if level < self._level:
+            return
+        record = {"event": event, **payload}
+        self.stream.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     def info(self, event: str, payload: Dict[str, Any]) -> None:
         """Write an informational event as one JSON line.
@@ -71,8 +82,7 @@ class StructuredLogger:
         Example:
             >>> StructuredLogger().info("STEP", {"id": "a"})
         """
-        record = {"event": event, **payload}
-        self.stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        self._emit(1, event, payload)
 
     def error(self, event: str, payload: Dict[str, Any]) -> None:
         """Write an error event as one JSON line.
@@ -84,8 +94,7 @@ class StructuredLogger:
         Example:
             >>> StructuredLogger().error("STEP_ERROR", {"id": "a"})
         """
-        record = {"event": event, **payload}
-        self.stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        self._emit(3, event, payload)
 
     def from_dataclass(self, event: str, obj: Any) -> None:
         """Serialize a dataclass object and emit it as an info event.

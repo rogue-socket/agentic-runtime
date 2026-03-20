@@ -74,7 +74,7 @@ steps:
 2. It resolves `formatters.format_markdown` → `functions/formatters.py` → `format_markdown()`.
 3. It builds the input dict from the step's `inputs:` mapping.
 4. It calls `format_markdown(inputs)`.
-5. The returned dict is stored at `steps.format` in state.
+5. The returned dict is stored at `steps.format` in state. Downstream steps reference its keys directly — e.g. `steps.format.report`.
 
 ---
 

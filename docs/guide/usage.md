@@ -122,6 +122,14 @@ ai run my_workflow.yaml -i issue="bug report" -i priority="high"
 
 If the workflow declares defaults, you can omit inputs that have them.
 
+## Run with verbose logging
+
+By default, only compact progress lines are shown. For full structured JSON event logs (LLM calls, tool invocations, timing, token usage), add `-v` / `--verbose`:
+
+```bash
+ai run workflows/example.yaml -v
+```
+
 ## Use a custom SQLite path
 
 ```bash
@@ -227,9 +235,9 @@ What each sample demonstrates:
 - `02_retry_and_backoff.yaml`: retry semantics and attempt visibility
 - `03_branching_triage.yaml`: deterministic conditional branching
 - `04_fail_and_resume.yaml`: failure path and resume flow
-- `05_llm_call.yaml`: agent steps with LLM provider
+- `05_llm_call.yaml`: agent steps with LLM provider (uses `output_key` for downstream references)
 - `06_gemini_call.yaml`: agent steps with Gemini provider
-- `07_agent_and_function.yaml`: mixed agent + function + tool steps
+- `07_agent_and_function.yaml`: mixed agent + function + tool steps with output contracts
 - `versioning/code_review_agent_v1.yaml` + `v2`: workflow version evolution
 
 ## 8. Step types and authoring
@@ -285,6 +293,7 @@ agent:
   version: v1
   model: gemini/gemini-2.5-flash
   system: "You are a senior code reviewer."
+  output_key: review              # downstream steps read via steps.review.review
   strategy:
     type: react
     max_iterations: 5

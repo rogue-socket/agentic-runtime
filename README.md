@@ -7,7 +7,7 @@
 Define workflows and agents in YAML. Execute with full state tracking. Resume from failure. Replay any run.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](#quick-start)
-[![Tests](https://img.shields.io/badge/tests-448_passing-brightgreen.svg)](#tests)
+[![Tests](https://img.shields.io/badge/tests-413_passing-brightgreen.svg)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](#)
 
 </div>
@@ -59,8 +59,9 @@ Your agent project can live anywhere; the CLI treats the current directory as th
 
 **Learn the concepts:**
 - [docs/guide/workflows.md](docs/guide/workflows.md) — writing workflows
-- [docs/guide/functions-and-agents.md](docs/guide/functions-and-agents.md) — functions vs agents explained
-- [docs/guide/tools.md](docs/guide/tools.md) — building tools
+- [docs/guide/writing-agents.md](docs/guide/writing-agents.md) — writing agent definitions
+- [docs/guide/writing-functions.md](docs/guide/writing-functions.md) — writing function steps
+- [docs/guide/writing-tools.md](docs/guide/writing-tools.md) — writing tool steps
 - [docs/guide/knowledge-base.md](docs/guide/knowledge-base.md) — conceptual overview
 
 **Understand the internals:**
@@ -80,6 +81,7 @@ ai run workflows/example.yaml          # run a workflow by path
 ai run summarizer                      # run by agent id (resolves from agents/)
 ai run my_workflow@v2                   # run a specific workflow version
 ai run my_workflow -i issue="bug"       # pass inputs
+ai run my_workflow -v                   # verbose structured logs
 ai inspect <run_id> --steps            # inspect step details
 ai inspect <run_id> --state-history    # inspect state evolution
 ai visualize <run_id>                  # HTML visualization (auto-opens)

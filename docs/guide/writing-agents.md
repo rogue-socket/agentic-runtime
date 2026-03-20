@@ -38,6 +38,7 @@ agent:
   model: gemini/gemini-2.5-flash    # LLM provider/model
   system: "You are a concise summarizer."  # system prompt
   strategy: single                  # reasoning strategy
+  output_key: summary               # key name for the agent's text output
   tools:                            # tools the agent can use
     - tools.echo
   temperature: 0.3                  # LLM temperature
@@ -57,6 +58,7 @@ agent:
 | `model` | Yes | LLM model in `provider/model` format. |
 | `system` | No | System prompt string, or a `prompts.<id>` reference. |
 | `strategy` | Yes | Reasoning strategy: `single`, `react`, or custom. |
+| `output_key` | No | Key name for the agent's text output (default: `text`). |
 | `tools` | No | List of tool names the agent is allowed to call. |
 | `temperature` | No | LLM sampling temperature. |
 | `max_tokens` | No | Maximum response tokens. |
@@ -174,6 +176,39 @@ steps:
 
 The runtime resolves `summarizer` → `agents/summarizer.yaml`, builds the input dict, runs the pipeline, and stores the output at `steps.summarize` in state.
 
+The output dict has one key: the agent's `output_key` (default `text`). So if the agent has `output_key: summary`, downstream steps read it as `steps.summarize.summary`.
+
+---
+
+**How `output_key` Works**
+
+When the LLM returns plain text, the runtime wraps it as `{output_key: "LLM response..."}`. This key is what downstream steps use to read the agent's output.
+
+```yaml
+# Agent definition:
+agent:
+  id: summarizer
+  output_key: summary    # output will be {"summary": "LLM response..."}
+  # ...
+
+# Workflow step referencing it:
+steps:
+  - id: summarize
+    type: agent
+    agent: summarizer
+    inputs:
+      issue: inputs.issue
+  - id: echo
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.summarize.summary   # reads the output_key
+```
+
+If the LLM returns a `FINAL_ANSWER` JSON block, the parsed dict is used directly — `output_key` only applies to plain text responses.
+
+If you omit `output_key`, it defaults to `text` and downstream steps read via `steps.<step_id>.text`.
+
 ---
 
 **Full Example: Code Reviewer Agent**
@@ -224,6 +259,8 @@ agent:
 - Forgot `pipeline` — every agent needs at least one pipeline step.
 - Used a tool in the pipeline that isn't listed in `tools:` — the runtime will reject it.
 - `react` strategy without `max_iterations` — it will default, but set it explicitly to avoid runaway loops.
+- Workflow references `steps.summarize.summary` but agent has no `output_key: summary` — the default key is `text`, so the lookup fails. Always match the workflow reference to the agent's `output_key`.
+- Pipeline prompt uses `{{ analyze.text }}` but agent sets `output_key: review` — the pipeline's internal template key must match the default `text` (which is what pipeline steps produce internally), not the agent-level `output_key`.
 
 ---
 

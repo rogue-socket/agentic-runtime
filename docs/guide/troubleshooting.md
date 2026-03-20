@@ -113,6 +113,14 @@ Valid examples: `state.inputs.issue == "bug"`, `len(state.steps.classify.tags) >
 - The runtime detects this at execution time and raises an error.
 - Fix: restructure your branch rules to avoid cycles.
 
+**KeyError: 'Path not found: steps.\<step\>.\<key\>'**
+
+- A downstream step references a key that the producing step doesn't output.
+- For **agent steps**, the output key is controlled by `output_key` in the agent YAML (default: `text`). If the workflow reads `steps.summarize.summary`, the agent must set `output_key: summary`.
+- For **function steps**, check that the function's return dict includes the expected key.
+- For **tool steps**, check that `ToolResult.output` includes the expected key.
+- Tip: run `ai inspect <run_id> --steps` to see actual step outputs.
+
 **Empty or null step output**
 
 - If a function returns `None` instead of a dict, or an agent returns an empty response, the step will fail.

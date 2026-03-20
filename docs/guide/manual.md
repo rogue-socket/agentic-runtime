@@ -103,6 +103,12 @@ ai run workflows/example.yaml
 ai run workflows/example.yaml -i issue="Login API fails for invalid token"
 ```
 
+By default, the CLI shows compact progress lines. Add `-v` for full structured JSON logs (LLM calls, tool invocations):
+
+```bash
+ai run workflows/example.yaml -v
+```
+
 **Inspecting Runs**
 
 ```bash

@@ -279,6 +279,7 @@ async def _run_pipeline(
 
             response = llm_client.call(
                 model=model_name, prompt=prompt, system=system, params=params,
+                context={"run_id": context.run_id, "step_id": context.step_id},
             )
             turn = AgentTurn(
                 iteration=iteration,

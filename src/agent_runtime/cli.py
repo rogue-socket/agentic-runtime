@@ -1165,6 +1165,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     run_parser = subparsers.add_parser("run", help="Run a workflow")
     run_parser.add_argument("workflow", help="Workflow path or workflow_id[@version]")
     run_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
+    run_parser.add_argument("-v", "--verbose", action="store_true",
+                            help="Show structured JSON log events (LLM, tool)")
     run_parser.add_argument("-i", "--input", action="append", default=[],
                             metavar="KEY=VALUE",
                             help="Workflow input (repeatable, e.g. -i issue=\"bug report\")")
@@ -1335,7 +1337,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == "run":
-        logger = StructuredLogger(stream=sys.stderr)
+        log_level = "info" if getattr(args, "verbose", False) else "warning"
+        logger = StructuredLogger(stream=sys.stderr, level=log_level)
         llm_client = _default_llm_client(cfg, logger)
         # Try agent-aware resolution: check agents/ for a definition
         # matching the workflow arg as an agent_id (with optional @version).

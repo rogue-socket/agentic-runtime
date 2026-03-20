@@ -81,7 +81,7 @@ class UppercaseTool:
 2. It finds the tool by `name` in the `tools/` directory.
 3. It validates the input dict against `input_schema`.
 4. It calls `execute(input, context)`.
-5. The `ToolResult.output` dict is stored at `steps.<step_id>` in state.
+5. The `ToolResult.output` dict is stored at `steps.<step_id>` in state. Downstream steps reference its keys directly — e.g. `steps.shout.text`.
 
 ---
 

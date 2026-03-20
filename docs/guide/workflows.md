@@ -62,6 +62,12 @@ ai run workflows/example.yaml -i issue="Login API fails for invalid token"
 - `inputs.<name>` reads workflow inputs.
 - `steps.<step_id>.<field>` reads outputs from a prior step.
 
+Each step type controls its output keys differently:
+
+- **Function steps** — the Python function returns a dict; its keys become the output. E.g. `return {"severity": "critical"}` → `steps.classify.severity`.
+- **Tool steps** — the `ToolResult.output` dict keys become the output. E.g. `output={"priority": "P1"}` → `steps.priority.priority`.
+- **Agent steps** — when the LLM returns plain text, the runtime wraps it as `{output_key: "..."}` where `output_key` is set in the agent YAML (default: `text`). E.g. agent with `output_key: summary` → `steps.summarize.summary`.
+
 Example:
 
 ```yaml
