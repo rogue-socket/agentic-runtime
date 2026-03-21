@@ -27,6 +27,8 @@ from agent_runtime.agent.strategies import (
     resolve_strategy,
     _parse_tool_calls,
     _parse_final_answer,
+    _build_tool_preamble,
+    _resolve_pipeline_system,
 )
 from agent_runtime.agent.executor import AgentExecutor
 from agent_runtime.errors import AgentValidationError
@@ -730,3 +732,207 @@ class TestAgentExecutor:
         assert result.iterations == 2
         assert len(result.trace) == 2
         assert result.trace[0].tool_calls[0].tool_name == "tools.echo"
+
+
+# ── Auto Tool Prompt Injection ───────────────────────────────────────────
+
+
+def _tool_with_schema(name, description, properties, required=None):
+    """Create a FakeTool with a real input_schema."""
+    t = FakeTool(name)
+    t.description = description
+    t.input_schema = {
+        "type": "object",
+        "properties": properties,
+        **({"required": required} if required else {}),
+    }
+    return t
+
+
+class TestBuildToolPreamble:
+    def test_basic_preamble(self):
+        echo = _tool_with_schema(
+            "tools.echo", "Echo a message back",
+            {"message": {"type": "string", "description": "Text to echo"}},
+            required=["message"],
+        )
+        agent = AgentDefinition(
+            agent_id="a", version="v1", model="m",
+            tools=["tools.echo"],
+            strategy=StrategyConfig(type="react"),
+            pipeline=_simple_pipeline(),
+        )
+        preamble = _build_tool_preamble(agent, FakeToolRegistry([echo]))
+        assert "## Tool Calling" in preamble
+        assert "## Returning Your Final Answer" in preamble
+        assert "## Available Tools" in preamble
+        assert "### tools.echo" in preamble
+        assert "Echo a message back" in preamble
+        assert "message (string, required)" in preamble
+        assert "```tool_call" in preamble
+        assert "```final_answer" in preamble
+
+    def test_multiple_tools(self):
+        t1 = _tool_with_schema("tools.a", "Tool A", {"x": {"type": "integer"}})
+        t2 = _tool_with_schema("tools.b", "Tool B", {"y": {"type": "string"}}, required=["y"])
+        agent = AgentDefinition(
+            agent_id="a", version="v1", model="m",
+            tools=["tools.a", "tools.b"],
+            strategy=StrategyConfig(type="react"),
+            pipeline=_simple_pipeline(),
+        )
+        preamble = _build_tool_preamble(agent, FakeToolRegistry([t1, t2]))
+        assert "### tools.a" in preamble
+        assert "### tools.b" in preamble
+        assert "Tool A" in preamble
+        assert "Tool B" in preamble
+        assert "y (string, required)" in preamble
+
+    def test_unknown_tool_graceful(self):
+        agent = AgentDefinition(
+            agent_id="a", version="v1", model="m",
+            tools=["tools.missing"],
+            strategy=StrategyConfig(type="react"),
+            pipeline=_simple_pipeline(),
+        )
+        preamble = _build_tool_preamble(agent, FakeToolRegistry())
+        assert "### tools.missing" in preamble
+        assert "not found" in preamble
+
+    def test_tool_without_properties(self):
+        t = FakeTool("tools.noop")
+        t.description = "Does nothing"
+        t.input_schema = {"type": "object"}
+        agent = AgentDefinition(
+            agent_id="a", version="v1", model="m",
+            tools=["tools.noop"],
+            strategy=StrategyConfig(type="react"),
+            pipeline=_simple_pipeline(),
+        )
+        preamble = _build_tool_preamble(agent, FakeToolRegistry([t]))
+        assert "### tools.noop" in preamble
+        assert "Parameters:" not in preamble
+
+
+class TestResolvePipelineSystemInjection:
+    def test_react_with_tools_injects_preamble(self):
+        echo = _tool_with_schema("tools.echo", "Echo", {"msg": {"type": "string"}})
+        agent = AgentDefinition(
+            agent_id="a", version="v1", model="m",
+            tools=["tools.echo"], system="Be helpful.",
+            strategy=StrategyConfig(type="react"),
+            pipeline=_simple_pipeline(),
+        )
+        step = agent.pipeline[0]
+        result = _resolve_pipeline_system(agent, step, FakeToolRegistry([echo]))
+        assert result.startswith("## Tool Calling")
+        assert "Be helpful." in result
+        assert "### tools.echo" in result
+
+    def test_react_no_tools_no_preamble(self):
+        agent = AgentDefinition(
+            agent_id="a", version="v1", model="m",
+            system="Be helpful.",
+            strategy=StrategyConfig(type="react"),
+            pipeline=_simple_pipeline(),
+        )
+        step = agent.pipeline[0]
+        result = _resolve_pipeline_system(agent, step, FakeToolRegistry())
+        assert result == "Be helpful."
+
+    def test_single_strategy_no_preamble(self):
+        echo = _tool_with_schema("tools.echo", "Echo", {"msg": {"type": "string"}})
+        agent = AgentDefinition(
+            agent_id="a", version="v1", model="m",
+            tools=["tools.echo"], system="Be helpful.",
+            strategy=StrategyConfig(type="single"),
+            pipeline=_simple_pipeline(),
+        )
+        step = agent.pipeline[0]
+        result = _resolve_pipeline_system(agent, step, FakeToolRegistry([echo]))
+        assert result == "Be helpful."
+
+    def test_auto_tool_prompt_false_skips(self):
+        echo = _tool_with_schema("tools.echo", "Echo", {"msg": {"type": "string"}})
+        agent = AgentDefinition(
+            agent_id="a", version="v1", model="m",
+            tools=["tools.echo"], system="Manual instructions.",
+            strategy=StrategyConfig(type="react"),
+            auto_tool_prompt=False,
+            pipeline=_simple_pipeline(),
+        )
+        step = agent.pipeline[0]
+        result = _resolve_pipeline_system(agent, step, FakeToolRegistry([echo]))
+        assert result == "Manual instructions."
+
+    def test_no_registry_no_preamble(self):
+        agent = AgentDefinition(
+            agent_id="a", version="v1", model="m",
+            tools=["tools.echo"], system="Be helpful.",
+            strategy=StrategyConfig(type="react"),
+            pipeline=_simple_pipeline(),
+        )
+        step = agent.pipeline[0]
+        result = _resolve_pipeline_system(agent, step)
+        assert result == "Be helpful."
+
+    def test_no_system_prompt_preamble_only(self):
+        echo = _tool_with_schema("tools.echo", "Echo", {"msg": {"type": "string"}})
+        agent = AgentDefinition(
+            agent_id="a", version="v1", model="m",
+            tools=["tools.echo"],
+            strategy=StrategyConfig(type="react"),
+            pipeline=_simple_pipeline(),
+        )
+        step = agent.pipeline[0]
+        result = _resolve_pipeline_system(agent, step, FakeToolRegistry([echo]))
+        assert result.startswith("## Tool Calling")
+        assert "### tools.echo" in result
+
+
+class TestReActAutoInjectionE2E:
+    def test_system_prompt_sent_to_llm_contains_tools(self):
+        """End-to-end: react agent with tools sends auto-injected system prompt to LLM."""
+        echo = _tool_with_schema(
+            "tools.echo", "Echo back",
+            {"message": {"type": "string", "description": "What to echo"}},
+            required=["message"],
+        )
+        client = FakeLLMClient([
+            '```final_answer\n{"result": "done"}\n```',
+        ])
+        agent = AgentDefinition(
+            agent_id="a", version="v1", model="m",
+            tools=["tools.echo"],
+            system="You are a test agent.",
+            strategy=StrategyConfig(type="react", max_iterations=3),
+            pipeline=_simple_pipeline("Do it"),
+        )
+        result = _run(
+            ReActStrategy().run(
+                agent, client, FakeToolRegistry([echo]), {}, _ctx()
+            )
+        )
+        system_sent = client.calls[0]["system"]
+        assert "## Tool Calling" in system_sent
+        assert "### tools.echo" in system_sent
+        assert "Echo back" in system_sent
+        assert "You are a test agent." in system_sent
+
+    def test_single_strategy_no_injection_e2e(self):
+        """End-to-end: single strategy agent does NOT get tool preamble."""
+        echo = _tool_with_schema("tools.echo", "Echo back", {})
+        client = FakeLLMClient(["Hello"])
+        agent = AgentDefinition(
+            agent_id="a", version="v1", model="m",
+            tools=["tools.echo"],
+            system="Just a system prompt.",
+            strategy=StrategyConfig(type="single"),
+            pipeline=_simple_pipeline("Say hi"),
+        )
+        _run(
+            SingleCallStrategy().run(
+                agent, client, FakeToolRegistry([echo]), {}, _ctx()
+            )
+        )
+        assert client.calls[0]["system"] == "Just a system prompt."

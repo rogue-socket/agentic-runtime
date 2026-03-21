@@ -10,10 +10,11 @@ pipeline (an ordered sequence of model + tool steps):
   # TODO: make accumulation configurable (option: clean slate per iteration)
 - **custom**: Developer-provided strategy class.
 
-Tool descriptions are NOT auto-injected into prompts.  Developers
-control prompts entirely via the agent’s system/prompt fields and
-the prompt registry.  The runtime only parses tool_call / final_answer
-blocks from LLM output and executes tools from the agent's allowed list.
+For ``react`` agents with declared tools, the runtime auto-injects
+tool-calling instructions and available tool descriptions into the
+system prompt (unless ``auto_tool_prompt: false`` is set on the agent).
+The runtime parses ``tool_call`` / ``final_answer`` blocks from LLM
+output and executes tools from the agent's allowed list.
 """
 
 from __future__ import annotations
@@ -95,10 +96,9 @@ class AgentStrategyProtocol(Protocol):
 
 
 # -- tool-calling helpers --------------------------------------------------
-# Tool descriptions are NOT auto-injected.  The developer controls the
-# prompt (including tool instructions) via system/prompt_template.
-# The runtime only parses tool_call / final_answer blocks and executes
-# tools that are in the agent's allowed tools list.
+# For react agents with tools, the runtime auto-injects tool descriptions
+# and calling-convention instructions into the system prompt.  Set
+# ``auto_tool_prompt: false`` on the agent to disable this behaviour.
 
 
 def _parse_tool_calls(text: str) -> List[Dict[str, Any]]:
@@ -200,11 +200,82 @@ def _resolve_pipeline_model(agent: AgentDefinition, step: PipelineStep) -> str:
     return step.model or agent.model
 
 
-def _resolve_pipeline_system(agent: AgentDefinition, step: PipelineStep) -> Optional[str]:
-    """Return the system prompt for a pipeline model step (step override or agent default)."""
+def _build_tool_preamble(agent: AgentDefinition, tool_registry: ToolRegistry) -> str:
+    """Generate tool-calling instructions from the agent's registered tools."""
+    lines = [
+        "## Tool Calling",
+        "You have access to the tools listed below. To call a tool, output a "
+        "fenced code block tagged `tool_call` with a JSON object containing "
+        '"tool" and "input" keys:',
+        "",
+        "```tool_call",
+        '{"tool": "tool_name", "input": {"param": "value"}}',
+        "```",
+        "",
+        "You may call multiple tools in a single response. You will receive "
+        "each tool's result as an observation before your next response.",
+        "",
+        "## Returning Your Final Answer",
+        "When you have completed the task, return a fenced code block tagged "
+        "`final_answer` with a JSON object:",
+        "",
+        "```final_answer",
+        '{"key": "value"}',
+        "```",
+        "",
+        "## Available Tools",
+        "",
+    ]
+    for tool_name in agent.tools:
+        try:
+            tool = tool_registry.get(tool_name)
+            lines.append(f"### {tool.name}")
+            lines.append(tool.description)
+            schema = tool.input_schema
+            if isinstance(schema, dict) and schema.get("properties"):
+                params = []
+                required = set(schema.get("required", []))
+                for pname, pinfo in schema["properties"].items():
+                    ptype = pinfo.get("type", "any")
+                    req = ", required" if pname in required else ""
+                    desc = pinfo.get("description", "")
+                    suffix = f" — {desc}" if desc else ""
+                    params.append(f"  - {pname} ({ptype}{req}){suffix}")
+                lines.append("Parameters:")
+                lines.extend(params)
+            lines.append("")
+        except Exception:
+            lines.append(f"### {tool_name}")
+            lines.append("(tool not found in registry)")
+            lines.append("")
+    return "\n".join(lines)
+
+
+def _resolve_pipeline_system(
+    agent: AgentDefinition, step: PipelineStep, tool_registry: Optional[ToolRegistry] = None,
+) -> Optional[str]:
+    """Return the system prompt for a pipeline model step.
+
+    For ``react`` agents with declared tools and ``auto_tool_prompt`` enabled,
+    tool-calling instructions are prepended automatically.
+    """
     if step.system is not None:
-        return step.system or None
-    return agent.system or None
+        base = step.system or None
+    else:
+        base = agent.system or None
+
+    if (
+        tool_registry is not None
+        and agent.tools
+        and agent.auto_tool_prompt
+        and agent.strategy.type == "react"
+    ):
+        preamble = _build_tool_preamble(agent, tool_registry)
+        if base:
+            return preamble + "\n\n" + base
+        return preamble
+
+    return base
 
 
 def _render_pipeline_prompt(template: str, state: Dict[str, Any]) -> str:
@@ -274,7 +345,7 @@ async def _run_pipeline(
     for step in agent.pipeline:
         if step.type == "model":
             model_name = _resolve_pipeline_model(agent, step)
-            system = _resolve_pipeline_system(agent, step)
+            system = _resolve_pipeline_system(agent, step, tool_registry)
             prompt = _render_pipeline_prompt(step.prompt, pipeline_state)
 
             response = llm_client.call(

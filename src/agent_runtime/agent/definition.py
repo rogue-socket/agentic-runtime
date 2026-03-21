@@ -116,6 +116,9 @@ class AgentDefinition:
     # Reasoning strategy
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
 
+    # Auto-inject tool-calling instructions into system prompts for react agents
+    auto_tool_prompt: bool = True
+
     # Output key name for plain-text LLM responses (default "text")
     output_key: str = "text"
 
@@ -223,6 +226,7 @@ def _parse_agent(data: dict, path: str, raw: Optional[dict] = None) -> AgentDefi
         pipeline=pipeline,
         tools=tools,
         strategy=strategy,
+        auto_tool_prompt=data.get("auto_tool_prompt", True),
         output_key=data.get("output_key", "text"),
         temperature=float(data.get("temperature", 0.2)),
         max_tokens=int(data.get("max_tokens", 4096)),
