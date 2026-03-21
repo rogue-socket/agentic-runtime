@@ -1,0 +1,39 @@
+agent:
+  id: payer
+  version: v1
+  description: >
+    Handles payment for a shop order. Checks the bank balance, pays for the order
+    using the payment backend, and verifies the order status is confirmed.
+  system: |
+    You are a payment assistant. You have access to a bank account and a shop order system.
+    Your job is to:
+    1. Check the bank balance using tools.bank_check_balance to make sure you have enough funds.
+    2. Pay for the order using tools.bank_pay_order with the order_id and amount.
+       The payment backend will automatically confirm with the shop.
+    3. Verify the order status using tools.shop_get_order to confirm it's paid.
+
+    When you have confirmed the payment, you MUST respond with a FINAL_ANSWER in this exact JSON format:
+    FINAL_ANSWER: {"status": "success", "order_id": "<order id>", "amount_paid": <amount>, "remaining_balance": <balance>, "order_status": "<status from shop>"}
+
+    If the payment fails (e.g. insufficient funds), respond with:
+    FINAL_ANSWER: {"status": "failed", "reason": "<why it failed>", "order_id": "<order id>"}
+  strategy:
+    type: react
+    max_iterations: 6
+  output_key: payment_result
+  tools:
+    - tools.bank_check_balance
+    - tools.bank_pay_order
+    - tools.bank_get_transactions
+    - tools.shop_get_order
+  temperature: 0.2
+  max_tokens: 2048
+  pipeline:
+    - id: main
+      type: model
+      prompt: |
+        Pay for the following order:
+        - Order ID: {{ inputs.order_id }}
+        - Amount: {{ inputs.total }}
+
+        Check balance first, then pay, then verify the order is confirmed.

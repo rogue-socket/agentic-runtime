@@ -1,0 +1,54 @@
+workflow:                     # workflow metadata
+  id: example_workflow         # unique workflow id
+  version: v1                  # version tag
+inputs:                        # declared inputs
+  issue:
+    description: The issue text to analyze
+    default: "Login API fails for invalid token"
+on_error: fail_fast            # stop on first error
+steps:                         # ordered steps (a list)
+  - id: summarize
+    type: agent                # agent step delegates to an agent definition
+    agent: summarizer          # defined in agents/summarizer.yaml
+    inputs:
+      issue: inputs.issue      # read from inputs
+  - id: priority
+    type: tool                 # tool step uses a tool class
+    tool: tools.priority_heuristic  # quick heuristic tool
+    inputs:
+      issue: inputs.issue
+  - id: classify
+    type: function             # function step calls a plain Python function
+    function: stubs.classify_severity  # defined in functions/stubs.py
+    inputs:
+      issue: inputs.issue
+  - id: next_steps
+    type: agent                # agent step delegates to an agent definition
+    agent: fixer               # defined in agents/fixer.yaml
+    inputs:
+      issue: inputs.issue
+      summary: steps.summarize.summary
+      priority: steps.priority.priority
+  - id: build_report
+    type: tool                 # tool step uses a tool class
+    tool: tools.report_builder # build a markdown report
+    inputs:
+      title: "Quickstart Report"
+      summary: steps.summarize.summary
+      priority: steps.priority.priority
+      next_steps: steps.next_steps.next_steps
+  - id: echo_summary
+    type: tool                 # tool step uses a tool class
+    tool: tools.echo           # built-in echo tool
+    inputs:
+      message: steps.summarize.summary  # read prior step output
+  - id: echo_report
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.build_report.report
+  - id: echo_next_steps
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: steps.next_steps.next_steps

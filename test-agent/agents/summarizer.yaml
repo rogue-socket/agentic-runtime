@@ -1,0 +1,20 @@
+# Agent definition — describes an LLM-backed agent.
+# Referenced from workflow steps via `type: agent` + `agent: summarizer`.
+agent:
+  id: summarizer
+  version: v1
+  description: "Summarizes an issue and calls out likely root causes"
+  system: "You are a senior support engineer. Be concise and actionable."
+  strategy: single              # single | react | custom
+  output_key: summary           # key name for the agent's text output
+  tools:
+    - tools.echo
+  temperature: 0.3
+  max_tokens: 256
+  pipeline:
+    - id: main
+      type: model
+      prompt: |
+        Summarize the issue in 2-3 sentences and call out likely root causes.
+
+        Issue: {{ inputs.issue }}

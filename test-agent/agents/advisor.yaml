@@ -1,0 +1,20 @@
+agent:
+  id: advisor
+  version: v1
+  description: "Provides a strategic recommendation based on research findings"
+  system: "You are a strategic advisor. Based on research findings, provide a clear, actionable recommendation in 2-3 sentences."
+  strategy: single
+  output_key: recommendation
+  tools:
+    - tools.echo
+  temperature: 0.3
+  max_tokens: 256
+  pipeline:
+    - id: main
+      type: model
+      prompt: |
+        Based on these research findings, provide one strategic recommendation.
+
+        Findings: {{ inputs.findings }}
+
+        Be specific and actionable.
