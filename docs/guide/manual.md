@@ -14,7 +14,7 @@ ai quickstart
 
 This creates the project structure, configures your LLM provider, and runs the starter workflow.
 
-**Project Structure**
+**Project Structure & Configuration**
 
 ```
 my-agent/
@@ -22,9 +22,15 @@ my-agent/
   functions/         # Python functions for function steps
   tools/             # Python tool classes for tool steps
   workflows/         # YAML workflow definitions
-  runtime.yaml       # runtime configuration
+  runtime.yaml       # Project-level configuration (e.g. default_model)
   .env               # API keys (not committed)
 ```
+
+The `runtime.yaml` file is the central nervous system for your environment. Notably, it defines `default_model`, allowing your agent definitions to remain completely provider-agnostic.
+
+**Model Resolution (Expected vs Actual)**
+- **Expected (What you want)**: The agent runs automatically on a globally configured model without you needing to specify it in every agent YAML.
+- **Actual (What happens under the hood)**: When building the runtime context, if an agent lacks a `model` key, it falls back to the `default_model` in `runtime.yaml`. This guarantees consistent execution and simplifies switching models later.
 
 
 **Functions (Function Steps)**

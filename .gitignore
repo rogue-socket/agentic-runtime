@@ -17,7 +17,8 @@ venv/
 .pytest_cache/
 .coverage
 htmlcov/
-agent-one/**
+agent-one/
+test-agent/
 
 # Build artifacts
 build/

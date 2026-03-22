@@ -62,6 +62,7 @@ agent:
 | `max_tokens` | No | Maximum response tokens. |
 | `pipeline` | Yes | Ordered list of pipeline steps. |
 | `model` | No | Override the runtime default model for this agent only. |
+| `auto_tool_prompt` | No | Auto-inject tool schemas into system prompt (default: `true`). |
 
 ---
 
@@ -145,20 +146,124 @@ agent:
 
 ---
 
-**Giving Tools To An Agent**
+**Configuring The Model**
 
-List tool names under `tools:`. The agent can call them during pipeline execution (especially useful with the `react` strategy).
+The runtime resolves the LLM model using a fallback system. This keeps your agents model-agnostic and makes it easy to switch providers later.
 
+```mermaid
+flowchart TD
+    A[Agent Execution] --> B{"Does agent.yaml have 'model'?"}
+    B -- Yes --> C[Use Agent-Specific Model<br/>(e.g., openai/o3-mini)]
+    B -- No --> D{"Does runtime.yaml have 'default_model'?"}
+    D -- Yes --> E[Use Project Default Model<br/>(e.g., claude-3-opus)]
+    D -- No --> F[Fails: Missing Model]
+```
+
+::::tabs
+:::tab Default Behavior (Recommended)
+**What You Write**
+
+`runtime.yaml`:
+```yaml
+default_model: claude-3-opus
+```
+
+`agents/summarizer.yaml`:
 ```yaml
 agent:
-  id: code_reviewer
+  id: summarizer
+  version: v1
+  # Look ma, no model needed!
+  # It automatically inherits 'claude-3-opus'
+```
+
+**What The Runtime Executes (Actual)**
+The `summarizer` agent executes using `claude-3-opus`. If you change `runtime.yaml`, the agent updates automatically without touching its definition.
+:::
+:::tab Custom Override (Advanced)
+**What You Write**
+
+`agents/complex_agent.yaml`:
+```yaml
+agent:
+  id: complex_agent
+  version: v1
+  model: openai/o1-preview  # Overrides the default model
+```
+
+**What The Runtime Executes (Actual)**
+Even if `runtime.yaml` sets a default model, `complex_agent` will always execute using `openai/o1-preview` because it explicitly defined it.
+:::
+::::
+
+---
+
+**Giving Tools To An Agent & Auto-Injection**
+
+When you give an agent a list of tools and use the `react` strategy, the runtime **automatically injects** the required JSON schemas and tool-calling instructions directly into the system prompt. This guarantees the LLM actually knows how to format its action requests.
+
+```mermaid
+flowchart TD
+    A[Agent System Prompt] --> B{"Strategy == react<br>& tools exist?"}
+    B -- No --> C[Send System Prompt As-Is]
+    B -- Yes --> D{"auto_tool_prompt == true?"<br>(Default)}
+    D -- Yes --> E[Runtime appends `## Tool Calling`<br>with schemas and syntax]
+    D -- No --> C
+```
+
+::::tabs
+:::tab Default Behavior (Auto-Inject)
+**What You Write (`agents/researcher.yaml`)**
+```yaml
+agent:
+  id: researcher
+  system: "You research topics."
   tools:
-    - tools.file
     - tools.http
   strategy:
     type: react
-    max_iterations: 5
 ```
+
+**What The Model Actually Sees (Expected Prompt)**
+```text
+You research topics.
+
+## Tool Calling
+You have access to the following tools:
+### tools.http
+Fetches a URL.
+Parameters:
+- url (string, required)
+
+To call a tool, use this format:
+\`\`\`tool_call
+{"tool": "tools.http", "input": {"url": "..."}}
+\`\`\`
+```
+:::
+:::tab Custom Override (Manual)
+**What You Write (`agents/researcher.yaml`)**
+```yaml
+agent:
+  id: researcher
+  system: |
+    You research topics. You must strictly output tool calls exactly like this:
+    <CALL>tools.http:{"url": "X"}</CALL>
+  tools:
+    - tools.http
+  strategy:
+    type: react
+  auto_tool_prompt: false # Disables auto-injection
+```
+
+**What The Model Actually Sees (Expected Prompt)**
+```text
+You research topics. You must strictly output tool calls exactly like this:
+<CALL>tools.http:{"url": "X"}</CALL>
+```
+*(No standard schemas are injected; you must provide all instructions manually).*
+:::
+::::
 
 ---
 
