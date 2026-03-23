@@ -346,10 +346,11 @@ async def _run_pipeline(
         if step.type == "model":
             model_name = _resolve_pipeline_model(agent, step)
             system = _resolve_pipeline_system(agent, step, tool_registry)
-            prompt = _render_pipeline_prompt(step.prompt, pipeline_state)
+            history = pipeline_state.get("_history")
 
             response = llm_client.call(
                 model=model_name, prompt=prompt, system=system, params=params,
+                history=history,
                 context={"run_id": context.run_id, "step_id": context.step_id},
             )
             turn = AgentTurn(
@@ -461,6 +462,16 @@ class ReActStrategy:
         for i in range(1, max_iter + 1):
             # expose iteration number in state for prompt templates
             pipeline_state["_iteration"] = i
+
+            # build message history from previous turns
+            history: List[Dict[str, str]] = []
+            for turn in all_turns:
+                if turn.llm_response and turn.llm_response.text:
+                    history.append({"role": "assistant", "content": turn.llm_response.text})
+                if turn.observation:
+                    history.append({"role": "user", "content": f"Tool observation:\n{turn.observation}"})
+            if history:
+                pipeline_state["_history"] = history
 
             turns, pipeline_state, last_text = await _run_pipeline(
                 agent, llm_client, tool_registry, inputs, context,

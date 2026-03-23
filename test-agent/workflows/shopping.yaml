@@ -46,4 +46,4 @@ steps:
     type: tool
     tool: tools.echo
     inputs:
-      message: steps.pay_and_confirm.payment_result
+      message: steps.pay_and_confirm.status

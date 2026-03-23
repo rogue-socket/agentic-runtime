@@ -74,7 +74,7 @@ class WorkflowRegistry:
         if not root_path.exists():
             return registry
 
-        for path in sorted(root_path.rglob("*.y*ml")):
+        for path in sorted(root_path.glob("*.y*ml")):
             workflow = load_workflow(str(path))
             workflow_version = workflow.get("workflow_version")
             if workflow_version is None:

@@ -51,7 +51,7 @@ class AgentRegistry:
             return registry
         for pattern in ("*.yaml", "*.yml"):
             for path in sorted(
-                glob.glob(os.path.join(agents_dir, "**", pattern), recursive=True)
+                glob.glob(os.path.join(agents_dir, pattern))
             ):
                 try:
                     defn = load_agent_definition(path)

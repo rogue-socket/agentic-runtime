@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """LLM client that routes requests through provider adapters."""
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .adapters import LLMAdapter, OpenAIAdapter, AnthropicAdapter, GeminiAdapter
 from .registry import LLMRegistry
@@ -46,6 +46,7 @@ class LLMClient:
         prompt: str,
         provider: Optional[str] = None,
         system: Optional[str] = None,
+        history: Optional[List[Dict[str, str]]] = None,
         params: Optional[Dict[str, Any]] = None,
         context: Optional[Dict[str, Any]] = None,
     ) -> LLMResponse:
@@ -94,6 +95,7 @@ class LLMClient:
                 system=system,
                 params=merged_params,
                 base_url=provider_obj.base_url,
+                history=history,
                 context=context,
                 timeout=timeout,
             )

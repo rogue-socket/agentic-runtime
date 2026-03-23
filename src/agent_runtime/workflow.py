@@ -293,6 +293,8 @@ def _parse_workflow(
             for value in input_spec.values():
                 if isinstance(value, str) and value.startswith("steps."):
                     parts = value.split(".")
+                    # TODO: Allow passing entire step output dictionaries (e.g. `steps.pay_and_confirm`).
+                    # Enforcing a strict 3-segment dot path breaks modularity.
                     if len(parts) < 3:
                         raise WorkflowValidationError(f"Invalid step input path: {value}")
                     referenced_step = parts[1]

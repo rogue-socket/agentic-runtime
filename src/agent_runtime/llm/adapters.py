@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """LLM adapter implementations (HTTP clients per provider)."""
 
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol
 import json
 import time
 import urllib.error
@@ -61,7 +61,8 @@ class LLMAdapter(Protocol):
         system: Optional[str],
         params: Dict[str, Any],
         base_url: Optional[str],
-        context: Optional[Dict[str, Any]],
+        history: Optional[List[Dict[str, str]]] = None,
+        context: Optional[Dict[str, Any]] = None,
         timeout: int = DEFAULT_TIMEOUT,
     ) -> LLMResponse:
         """Execute an LLM request and return a normalized response."""
@@ -85,7 +86,8 @@ class OpenAIAdapter:
         system: Optional[str],
         params: Dict[str, Any],
         base_url: Optional[str],
-        context: Optional[Dict[str, Any]],
+        history: Optional[List[Dict[str, str]]] = None,
+        context: Optional[Dict[str, Any]] = None,
         timeout: int = DEFAULT_TIMEOUT,
     ) -> LLMResponse:
         if not api_key:
@@ -97,6 +99,8 @@ class OpenAIAdapter:
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
+        if history:
+            messages.extend(history)
         messages.append({"role": "user", "content": prompt})
 
         payload = {
@@ -157,7 +161,8 @@ class AnthropicAdapter:
         system: Optional[str],
         params: Dict[str, Any],
         base_url: Optional[str],
-        context: Optional[Dict[str, Any]],
+        history: Optional[List[Dict[str, str]]] = None,
+        context: Optional[Dict[str, Any]] = None,
         timeout: int = DEFAULT_TIMEOUT,
     ) -> LLMResponse:
         if not api_key:
@@ -166,9 +171,14 @@ class AnthropicAdapter:
         base = base_url or "https://api.anthropic.com"
         url = base.rstrip("/") + "/v1/messages"
 
+        messages = []
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": prompt})
+
         body: Dict[str, Any] = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "max_tokens": params.pop("max_tokens", 4096),
         }
         if system:
@@ -258,7 +268,8 @@ class GeminiAdapter:
         system: Optional[str],
         params: Dict[str, Any],
         base_url: Optional[str],
-        context: Optional[Dict[str, Any]],
+        history: Optional[List[Dict[str, str]]] = None,
+        context: Optional[Dict[str, Any]] = None,
         timeout: int = DEFAULT_TIMEOUT,
     ) -> LLMResponse:
         if not api_key:
@@ -268,13 +279,15 @@ class GeminiAdapter:
         model_path = model if model.startswith("models/") else f"models/{model}"
         url = base.rstrip("/") + f"/{model_path}:generateContent"
 
+        contents = []
+        if history:
+            for msg in history:
+                role = "model" if msg.get("role") == "assistant" else "user"
+                contents.append({"role": role, "parts": [{"text": msg.get("content", "")}]})
+        contents.append({"role": "user", "parts": [{"text": prompt}]})
+
         body: Dict[str, Any] = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": prompt}],
-                }
-            ]
+            "contents": contents
         }
         if system:
             body["system_instruction"] = {"parts": [{"text": system}]}
