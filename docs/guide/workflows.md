@@ -61,6 +61,7 @@ ai run workflows/example.yaml -i issue="Login API fails for invalid token"
 
 - `inputs.<name>` reads workflow inputs.
 - `steps.<step_id>.<field>` reads outputs from a prior step.
+  *(Note: Output paths **must** contain exactly 3 segments. You cannot pass an entire step's output dictionary natively by referencing `steps.<step_id>` yet; you must unpack the specific field like `steps.<step_id>.result`).*
 
 Each step type controls its output keys differently:
 
