@@ -2,18 +2,7 @@
 
 <br/>
 
-```
-    *         *        *          *         *
-   ***       ***      ***        ***       ***
-  *****     *****    *****      *****     *****
- *******   *******  *******    *******   *******
-    |          |       |           |         |
-    |          |       |           |         |
-
-        F  O  R  R  E  S  T  R  U  N
-        ================================
-          deterministic agent runtime
-```
+<img src="docs/banner.svg" alt="ForrestRun — deterministic agentic runtime" width="860" />
 
 ### Build AI agent workflows that are **deterministic**, **resumable**, and **observable** — by design.
 
