@@ -346,6 +346,7 @@ async def _run_pipeline(
         if step.type == "model":
             model_name = _resolve_pipeline_model(agent, step)
             system = _resolve_pipeline_system(agent, step, tool_registry)
+            prompt = _render_pipeline_prompt(step.prompt, pipeline_state)
             history = pipeline_state.get("_history")
 
             response = llm_client.call(
