@@ -3,13 +3,16 @@
 <br/>
 
 ```
-  ██████╗  ██████╗ ███████╗███╗   ██╗████████╗██╗ ██████╗
- ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝██║██╔════╝
- ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║   ██║██║
- ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║   ██║██║
- ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║   ██║╚██████╗
- ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝ ╚═════╝
-          R U N T I M E
+    *         *        *          *         *
+   ***       ***      ***        ***       ***
+  *****     *****    *****      *****     *****
+ *******   *******  *******    *******   *******
+    |          |       |           |         |
+    |          |       |           |         |
+
+        F  O  R  R  E  S  T  R  U  N
+        ================================
+          deterministic agent runtime
 ```
 
 ### Build AI agent workflows that are **deterministic**, **resumable**, and **observable** — by design.
@@ -31,7 +34,7 @@
 
 Running AI agents in production is a mess. LLM calls fail mid-workflow. State gets lost. There's no way to tell *what happened* after a run. Retrying means re-running everything from scratch.
 
-**`agentic-runtime` fixes all of that.**
+**ForrestRun fixes all of that.**
 
 ---
 
@@ -188,5 +191,7 @@ pytest -q    # 448 tests, all passing
 <div align="center">
 
 Built for developers who want AI agents that **run reliably in production** — not just in demos.
+
+*ForrestRun — deterministic agentic runtime*
 
 </div>
