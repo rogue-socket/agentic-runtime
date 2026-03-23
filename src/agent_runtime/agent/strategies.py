@@ -361,6 +361,42 @@ async def _run_pipeline(
             )
 
             # parse tool_call blocks inside model response (if any)
+            # ---------------------------------------------------------------------------
+            # TODO(native-function-calling — Phase 3: Strategy Layer)
+            #
+            # CURRENT BEHAVIOUR:
+            #   Text in `response.text` is parsed for ```tool_call``` blocks.
+            #   This is fragile: models hallucinate the format, emit partial JSON,
+            #   or skip the markers entirely — silently dropping tool calls.
+            #
+            # TARGET BEHAVIOUR:
+            #   1. Check `response.tool_calls` first (populated by adapters).
+            #      If non-empty, these are structured ToolCallRequest objects — use them.
+            #   2. Fall back to `_parse_tool_calls(response.text)` ONLY when
+            #      `response.tool_calls` is empty (e.g. local/custom models that
+            #      don't support native function calling).
+            #
+            # CHANGES:
+            #   Replace the block below with:
+            #
+            #     if response.tool_calls:
+            #         # Native path — use structured tool calls from adapter
+            #         calls_to_run = [
+            #             {"tool": tc.tool_name, "input": tc.tool_input}
+            #             for tc in response.tool_calls
+            #         ]
+            #     else:
+            #         # Text fallback path — parse ```tool_call``` blocks
+            #         calls_to_run = _parse_tool_calls(response.text)
+            #
+            #   Then iterate over `calls_to_run` as now.
+            #
+            # HISTORY-BUILDING (see ReActStrategy):
+            #   When native tool calls are used, the follow-up user message must
+            #   include a provider-specific tool result block, NOT a plain text
+            #   observation. See adapters.py per-provider FOLLOW-UP TURN comments
+            #   for the exact format required by each provider.
+            # ---------------------------------------------------------------------------
             inline_tool_calls = _parse_tool_calls(response.text)
             if inline_tool_calls:
                 observations = []

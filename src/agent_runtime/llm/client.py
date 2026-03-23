@@ -49,6 +49,12 @@ class LLMClient:
         history: Optional[List[Dict[str, str]]] = None,
         params: Optional[Dict[str, Any]] = None,
         context: Optional[Dict[str, Any]] = None,
+        # TODO(native-function-calling — Phase 2: LLMClient passthrough)
+        # Add: tools: Optional[List[Dict[str, Any]]] = None
+        # Each entry: {"name": str, "description": str, "parameters": JSON Schema}
+        # Pass `tools` to adapter.call() unchanged — adapters handle the wire format.
+        # The `tools` list is built in strategies._build_tool_schemas() (to be created)
+        # by reading tool.input_schema for each tool in agent.tools.
     ) -> LLMResponse:
         """Resolve provider/model and invoke the matching adapter."""
         provider_name, model_id = self._resolve_provider_model(provider, model)

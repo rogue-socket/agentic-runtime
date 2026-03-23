@@ -47,6 +47,30 @@ def _urlopen_with_retry(
 # [Pain Point Solved] #5 Framework Lock-in / Dependency Hell: Provider-agnostic
 #   Protocol — any backend implements call(). All adapters use stdlib urllib, so
 #   zero SDK dependencies. Swapping OpenAI for Gemini is a config change, not a refactor.
+# ---------------------------------------------------------------------------
+# TODO(native-function-calling — Phase 2: Adapter Protocol Extension)
+#
+# To support native function calling, extend the `LLMAdapter.call()` signature
+# with a `tools` parameter. This carries the JSON Schema definitions of the
+# tools to register with the model.
+#
+# WHAT TO DO:
+#   1. Add `tools: Optional[List[Dict[str, Any]]] = None` to `call()` here.
+#      Each entry is a provider-agnostic tool schema:
+#        {
+#            "name": str,              # tool name
+#            "description": str,       # what it does
+#            "parameters": {...}       # JSON Schema of the input
+#        }
+#   2. Each concrete adapter translates this into its own wire format
+#      (see OpenAI, Anthropic, Gemini TODOs below).
+#   3. The `LLMResponse` already has `tool_calls: List[ToolCallRequest]`.
+#      Adapters should populate it when the model responds with function calls
+#      instead of (or alongside) text.
+#   4. `LLMClient.call()` passes `tools` through to the adapter unchanged.
+#   5. `strategies.py` checks `response.tool_calls` BEFORE falling back to
+#      the text parser — see TODO there.
+# ---------------------------------------------------------------------------
 class LLMAdapter(Protocol):
     """Protocol for provider-specific adapters."""
 
@@ -64,6 +88,7 @@ class LLMAdapter(Protocol):
         history: Optional[List[Dict[str, str]]] = None,
         context: Optional[Dict[str, Any]] = None,
         timeout: int = DEFAULT_TIMEOUT,
+        # TODO(native-function-calling): add tools: Optional[List[Dict[str, Any]]] = None
     ) -> LLMResponse:
         """Execute an LLM request and return a normalized response."""
         ...
@@ -72,7 +97,42 @@ class LLMAdapter(Protocol):
 class OpenAIAdapter:
     """Minimal OpenAI-compatible adapter using the Chat Completions API.
 
-    TODO: Support the newer Responses API and streaming for better token-level feedback.
+    TODO(native-function-calling — OpenAI): Implement native function calling
+    via the Chat Completions `tools` parameter.
+
+    REQUEST CHANGES:
+      Add to the payload dict:
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "parameters": tool["parameters"],  # JSON Schema
+                }
+            }
+            for tool in tools
+        ],
+        "tool_choice": "auto",  # let the model decide
+
+    RESPONSE CHANGES:
+      The `choices[0].message` can have `tool_calls` instead of (or with) `content`.
+      Parse each element:
+        for tc in (message.get("tool_calls") or []):
+            ToolCallRequest(
+                id=tc["id"],
+                tool_name=tc["function"]["name"],
+                tool_input=json.loads(tc["function"]["arguments"]),
+            )
+      Set `LLMResponse.tool_calls` to the parsed list.
+      Set `LLMResponse.text` to `message.get("content") or ""`.
+
+    FOLLOW-UP TURN:
+      When sending tool results back, add a message per call:
+        {"role": "tool", "tool_call_id": tc.id, "content": json.dumps(result)}
+      The history-building logic in `strategies.py` needs updating too.
+
+    TODO: Support streaming (stream=True) for token-level feedback.
     """
 
     provider_name = "openai"
@@ -146,6 +206,47 @@ class OpenAIAdapter:
 
 class AnthropicAdapter:
     """Adapter for the Anthropic Messages API.
+
+    TODO(native-function-calling — Anthropic): Implement native tool use
+    via the Messages API `tools` parameter.
+
+    REQUEST CHANGES:
+      Add to the body dict:
+        "tools": [
+            {
+                "name": tool["name"],
+                "description": tool["description"],
+                "input_schema": tool["parameters"],  # JSON Schema
+            }
+            for tool in tools
+        ],
+
+    RESPONSE CHANGES:
+      The response `content` list can contain blocks of type `"tool_use"` in
+      addition to `"text"` blocks. Parse each:
+        for block in content_blocks:
+            if block.get("type") == "tool_use":
+                ToolCallRequest(
+                    id=block["id"],
+                    tool_name=block["name"],
+                    tool_input=block["input"],  # already a dict, not a string
+                )
+      Set `LLMResponse.tool_calls` to the parsed list.
+      Set `LLMResponse.text` to joined text blocks as now.
+
+    FOLLOW-UP TURN:
+      Add a `tool_result` block to the next user message:
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tc.id,
+                    "content": json.dumps(result),
+                }
+            ]
+        }
+      The history-building logic in `strategies.py` needs updating too.
 
     TODO: Add streaming support for token-level feedback.
     """
@@ -224,7 +325,55 @@ class AnthropicAdapter:
 
 
 class GeminiAdapter:
-    """Adapter for the Gemini generateContent REST API."""
+    """Adapter for the Gemini generateContent REST API.
+
+    TODO(native-function-calling — Gemini): Implement native function calling
+    via the `tools` + `tool_config` fields in the generateContent request.
+
+    REQUEST CHANGES:
+      Add to the body dict:
+        "tools": [
+            {
+                "function_declarations": [
+                    {
+                        "name": tool["name"],
+                        "description": tool["description"],
+                        "parameters": tool["parameters"],  # JSON Schema
+                    }
+                    for tool in tools
+                ]
+            }
+        ],
+        "tool_config": {"function_calling_config": {"mode": "AUTO"}},
+
+    RESPONSE CHANGES:
+      The `parts` list in `candidates[0].content` can contain `functionCall`
+      dicts instead of (or with) `text` dicts. Parse each:
+        for part in parts:
+            if "functionCall" in part:
+                ToolCallRequest(
+                    id=part["functionCall"].get("name", ""),  # Gemini uses name as ID
+                    tool_name=part["functionCall"]["name"],
+                    tool_input=part["functionCall"].get("args", {}),
+                )
+      Set `LLMResponse.tool_calls` to the parsed list.
+      Set `LLMResponse.text` to joined text parts as now.
+
+    FOLLOW-UP TURN:
+      Add a `functionResponse` part to the next user content:
+        {
+            "role": "user",
+            "parts": [
+                {
+                    "functionResponse": {
+                        "name": tc.tool_name,
+                        "response": {"result": result},
+                    }
+                }
+            ]
+        }
+      The history-building logic in `strategies.py` needs updating too.
+    """
 
     provider_name = "gemini"
 
