@@ -60,8 +60,9 @@ ai run workflows/example.yaml -i issue="Login API fails for invalid token"
 **How Data Moves**
 
 - `inputs.<name>` reads workflow inputs.
-- `steps.<step_id>.<field>` reads outputs from a prior step.
-  *(Note: Output paths **must** contain exactly 3 segments. You cannot pass an entire step's output dictionary natively by referencing `steps.<step_id>` yet; you must unpack the specific field like `steps.<step_id>.result`).*
+- `steps.<step_id>.<field>` reads a specific field from a prior step's output.
+- `steps.<step_id>` (2-segment path) resolves to the **entire output dictionary** of that step.
+  Use this when you want to pass all outputs from one step into a downstream step as a single object.
 
 Each step type controls its output keys differently:
 
@@ -103,6 +104,8 @@ steps:
 `tool` step:
 - Calls a tool class in `tools/`.
 - Use this for external actions (HTTP, filesystem, shell, APIs).
+- The built-in `tools.echo` accepts any JSON-serializable value for `message` (string, dict,
+  list, number). Non-string values are serialized to indented JSON automatically.
 
 **Retry Policy**
 
