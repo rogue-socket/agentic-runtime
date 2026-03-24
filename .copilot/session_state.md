@@ -39,8 +39,7 @@ Refresh stale workspace guidance in `.copilot/` and `.github/prompts/` so future
 
 ## Known Issues / Open Questions
 1. No automated CI validation currently enforces TODO tag taxonomy consistency.
-2. `type: model` compatibility remains in code/docs while migration to explicit step types continues.
-3. Procedural memory is still roadmap-level and docs should be revisited when implemented.
+2. Procedural memory is still roadmap-level and docs should be revisited when implemented.
 
 ## Recommended Next Step
 1. If further docs cleanup is needed, run a targeted path/reference audit.

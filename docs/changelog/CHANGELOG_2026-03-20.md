@@ -34,9 +34,9 @@
 
 ## Deprecations (P1)
 
-- **`type: model` deprecated**:
-  Workflow steps using `type: model` now emit a `DeprecationWarning` at parse
-  time and at dispatch time, advising migration to `type: llm`.
+- **Workflow `type: model` removed**:
+  Current workflow validation accepts only `agent`, `function`, and `tool`.
+  `model` remains valid only inside agent pipelines (`agents/*.yaml`).
 
 ## Safety (P1)
 

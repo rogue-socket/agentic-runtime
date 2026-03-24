@@ -46,7 +46,7 @@ This means:
 - Agent definitions describe *what the agent can do* (model, strategy, pipeline, tools). The **workflow** decides *when and how* to use it.
 - The separation of concerns is explicit: LLM reasoning is an agent step, deterministic transforms are function steps, external side effects are tool steps.
 
-The legacy agent manifest still exists for packaging and portability (`ai validate`, `ai export`, `ai import`), but it is no longer the authoring primitive. You write workflows and agent definitions separately.
+Legacy agent manifest packaging commands are not part of the current CLI surface. Authoring is centered on workflows and agent definitions.
 
 ### Why this matters
 
@@ -140,26 +140,28 @@ Tool input is validated against `input_schema` (JSON Schema) before execution. T
     url: inputs.api_endpoint
 ```
 
-### The deprecated `type: model`
+### Workflow `type: model` is removed
 
-The old `type: model` step type still works — it dispatches to a handler function via the `StepHandlerRegistry`. But it emits a `DeprecationWarning` at both parse time and execution time. Only `generate_summary` (a deterministic scaffold, not a real LLM call) remains in the registry.
+Current workflow validation accepts only `type: agent`, `type: function`, and
+`type: tool`. There is no workflow-level `type: model` compatibility mode in
+the current runtime.
 
-The migration path is clear:
-- If the handler was doing LLM reasoning → convert to `type: agent` with an agent definition.
-- If the handler was doing deterministic logic → convert to `type: function`.
-- If the handler was calling external services → convert to `type: tool`.
+Important distinction: `model` remains valid inside an agent pipeline
+(`agents/*.yaml`) where pipeline step types are `model` and `tool`.
 
 ---
 
 ## 3. The handler system was removed
 
-The handler system (`handler_discovery.py`, `handlers/` directories, handler auto-discovery) was the scaffolding that made the old `type: model` dispatch work. It has been deleted entirely:
+The legacy handler-dispatch model is not part of the runtime's execution path.
+Execution now routes through explicit workflow step types:
 
-- `handler_discovery.py` — deleted. Had zero imports anywhere in the codebase.
-- `handlers/` directories (root and `agent-one/`) — deleted. All logic lives in agent definitions, functions, or the LLM subsystem.
-- Four unused handlers (`classify_severity`, `diagnose_issue`, `propose_fix`, `review_code`) pruned from `steps.py`.
+- `type: agent` -> agent registry + agent executor
+- `type: function` -> function resolver in `functions/`
+- `type: tool` -> tool registry
 
-What remains in `steps.py` is the `StepHandlerRegistry` class and the `generate_summary` scaffold function — both explicitly marked deprecated. They exist only so that existing tests using `type: model` don't break while they're migrated.
+This keeps orchestration declarative and type-specific, instead of routing all
+computation through a single handler abstraction.
 
 ---
 
@@ -244,15 +246,17 @@ The `handlers/` directory is gone. There is a one-to-one correspondence between 
 
 ## 8. Agent definitions vs agent manifests
 
-The codebase contains two agent-related subsystems, and the distinction matters:
+The codebase distinguishes current authoring primitives from older manifest concepts:
 
 **Agent definitions** (current, primary) live in `agents/*.yaml` and describe a single LLM-backed reasoning unit: system prompt, strategy, pipeline, tools. They are referenced from workflow steps via `type: agent`. They are the building blocks of workflows.
 
-**Agent manifests** (legacy, still supported) live in `agent.yaml` and describe a *deployable package*: which workflow to run, which handlers/tools to include, which providers are required, which env vars are needed, and what default inputs to use. They are used for `ai validate`, `ai export`, and `ai import`.
+**Agent manifests** are a legacy packaging concept. Current runtime flows focus on
+workflows + `agents/*.yaml`, and there are no manifest packaging CLI commands
+(`ai validate`, `ai export`, `ai import`) in the current command set.
 
-The difference: an agent definition says "I am a code reviewer that uses Gemini with a react strategy." An agent manifest says "Here is a self-contained package you can deploy: it needs this workflow, these tools, these providers, and these API keys."
-
-Agent definitions are *composed into workflows*. Agent manifests are *packaged for distribution*. Both can exist in the same project, serving different purposes.
+The difference: an agent definition says "I am a code reviewer that uses Gemini
+with a react strategy." Runtime execution composes these definitions into
+workflows.
 
 ---
 
@@ -262,11 +266,11 @@ The runtime now emits structured lifecycle events at five points: `RUN_START`, `
 
 Per-step timing captures both total step duration and call-specific latency (`handler_duration_ms` for model steps, `tool_duration_ms` for tool steps). Agent steps capture reasoning traces (iterations, tool calls, token usage) in `StepExecution.agent_trace`.
 
-The CLI has 14 commands covering the full operate→debug→recover loop:
+The CLI has primary commands covering the full operate→debug→recover loop:
 - **Run**: `ai run`, `ai quickstart`, `ai onboard`, `ai setup`
 - **Observe**: `ai inspect`, `ai state-diff`, `ai visualize`
 - **Recover**: `ai resume`, `ai replay`
-- **Package**: `ai validate`, `ai export`, `ai import`, `ai list`
+- **Discover**: `ai list`, `ai runs`
 - **Bootstrap**: `ai init`
 
 ---

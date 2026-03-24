@@ -130,10 +130,8 @@ ai resume <run_id>                      # resume a failed run from failure point
 ai replay <run_id> --verify-state       # deterministic replay with state verification
 
 # Manage
-ai list                                 # list registered agents and workflows
-ai validate <manifest>                  # pre-flight validation
-ai export <manifest>                    # bundle agent as .tar.gz
-ai import <archive>                     # import agent bundle
+ai list                                 # list available agents
+ai runs                                 # list recent runs
 ```
 
 ---

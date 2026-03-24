@@ -10,7 +10,7 @@ This guide covers common errors, their causes, and how to fix them.
 - Unknown agent: confirm the agent id matches a YAML file in `agents/`. Check `agent.id` in the YAML.
 - Unknown tool: confirm the tool class has a `name` attribute and is in `tools/`.
 - Missing inputs: add `-i key=value` or set defaults in the workflow.
-- YAML errors: run `ai validate <agent.yaml>` or fix indentation issues.
+- YAML errors: fix indentation/syntax and run `ai run <workflow_ref>`; the runtime surfaces YAML parse and validation errors.
 - Workflow hash mismatch on resume: the workflow YAML changed since the original run. Resume requires the same workflow definition.
 - `BranchResolutionError`: no `when` condition matched and no `default` rule was provided.
 - `WorkflowValidationError`: step references a future step's output, duplicate output keys across steps, or invalid retry config.

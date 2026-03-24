@@ -64,17 +64,17 @@ Namespacing prevents cross-step key collisions, preserves output ownership per s
 All extensible subsystems (handlers, tools, LLM providers, workflows) use name→object registry maps with `register()` / `get()` APIs.
 
 ### Context
-The runtime needs to support built-in functionality and user-provided extensions (custom handlers, tools, LLM providers) without requiring code changes to core modules.
+The runtime needs to support built-in functionality and user-provided extensions (custom agents, functions, tools, LLM providers) without requiring code changes to core modules.
 
 ### Reasoning
-Registries decouple definition from usage. YAML workflows reference handlers/tools by name; the registry resolves names to implementations at startup. Auto-discovery from directories (`handlers/`, `tools/`) makes registration zero-config for users.
+Registries decouple definition from usage. YAML workflows reference functions/tools/agents by name; registries resolve names to implementations at startup. Auto-discovery from directories (`functions/`, `tools/`, `agents/`) makes registration low-friction for users.
 
 ### Alternatives Considered
 - **Direct imports:** Tight coupling, no user extensibility.
-- **Entry points / plugin system:** Too heavy for the current scope; pyproject.toml doesn't exist yet.
+- **Entry points / plugin system:** Too heavy for the current scope.
 
 ### Implications
-- Four registries exist: `StepHandlerRegistry`, `ToolRegistry`, `LLMRegistry`, `WorkflowRegistry`.
+- Four registries exist: `AgentRegistry`, `ToolRegistry`, `LLMRegistry`, `WorkflowRegistry`.
 - CLI bootstrap initializes all registries before execution.
 - Name conflicts between built-in and discovered items need clear precedence rules.
 
@@ -277,7 +277,7 @@ A single callback function is the simplest possible extension point. It avoids t
 The primary SDK surface is two module-level functions: `run_workflow(workflow_path, inputs, ...)` (sync) and `run_workflow_async(...)` (async). These handle all subsystem construction internally.
 
 ### Context
-Embedding the runtime programmatically required constructing `RuntimeConfig`, `SQLiteStorage`, `MemoryManager`, `ToolRegistry`, `StepHandlerRegistry`, `Executor`, and calling `run_async()` — 20+ lines of boilerplate.
+Embedding the runtime programmatically required constructing `RuntimeConfig`, `SQLiteStorage`, `MemoryManager`, `ToolRegistry`, `AgentRegistry`, `Executor`, and calling `run_async()` — 20+ lines of boilerplate.
 
 ### Reasoning
 A single function call with sensible defaults covers the 80% use case (run a workflow file with some inputs). Advanced users can still construct subsystems manually for full control. The sync wrapper uses `asyncio.run()` for callers without an event loop.

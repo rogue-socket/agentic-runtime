@@ -8,8 +8,6 @@ The active authoring model is workflow-first with three primary step types:
 - `function` (deterministic Python transforms)
 - `tool` (external actions)
 
-`type: model` remains as a deprecated compatibility path.
-
 ## Tech Stack
 - Language: Python 3.10+
 - Local environment: conda env `agent_runtime`

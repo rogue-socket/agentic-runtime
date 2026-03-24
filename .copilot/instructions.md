@@ -13,7 +13,6 @@ When assisting with this repo:
 	- `type: agent` for LLM reasoning via `agent/` definitions.
 	- `type: function` for deterministic Python callables in `functions/`.
 	- `type: tool` for Tool protocol implementations in `tools/`.
-	- `type: model` is deprecated compatibility only.
 - Respect registry patterns (`ToolRegistry`, `LLMRegistry`, `WorkflowRegistry`, `AgentRegistry`).
 - Tools must implement Tool protocol (`name`, `description`, `input_schema`, `execute`).
 - Persist through `Storage` abstractions only; do not perform ad hoc SQLite access outside storage modules.

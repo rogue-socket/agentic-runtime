@@ -108,7 +108,10 @@ Step types:
 - `agent` — delegates to an agent definition (LLM-backed reasoning)
 - `function` — calls a plain Python function for deterministic logic
 - `tool` — calls a tool class for external actions
-- `model` — deprecated, kept for backward compatibility with existing tests
+
+Agent pipeline step types (inside `agents/*.yaml`) are separate from workflow step types:
+- `model` — performs an LLM call
+- `tool` — executes an allowed tool
 
 Step controls:
 - `inputs` mapping from state paths (`inputs.issue`, `steps.a.summary`)
@@ -648,31 +651,22 @@ Key classes (module `agent/`):
 - `AgentRegistry` — discovers and resolves agents from directory
 - `AgentExecutor` — runs agent pipeline with configured strategy
 - `PromptRegistry` — manages versioned prompts for A/B testing
-- `ai import <archive> [--path .]` — extract into project, place manifest in `agents/`
 - `ai list` — list all agents in `agents/`
-- `ai run <agent_id>[@version]` — resolves from `agents/`, merges defaults with `-i` overrides
+- `ai run <agent_id>[@version]` — resolves from `agents/`, synthesizes a workflow wrapper, and merges defaults with `-i` overrides
 
 ### Agent-aware run resolution
 
 When `ai run <ref>` is invoked, the runtime first checks `agents/` for a
-matching `agent.id`.  If found, the manifest's workflow path is used and
-default inputs are merged (CLI `-i` overrides take precedence).  If no
-agent matches, the runtime falls back to workflow resolution (file path or
+matching `agent.id`. If found, the runtime synthesizes a workflow wrapper
+for the resolved agent definition and then applies CLI `-i` inputs.
+If no agent matches, the runtime falls back to workflow resolution (file path or
 workflow registry).
 
-### Export / Import flow
+### Manifest packaging status
 
-**Export** bundles `agent.yaml` + workflow + handlers + tools into a
-self-contained `.tar.gz` archive.  The archive does not include
-`runtime.yaml` (machine-specific) or the runtime itself.
-
-**Import** extracts the archive into the project tree and places the
-manifest in `agents/`.  Post-import validation reports missing providers
-and env vars so the operator can configure the environment.
-
-> **Status: Implemented** — manifest loading, validation, export, import,
-> CLI commands, and agent-aware run resolution are functional.
-> TODO: Support multiple workflows per agent with a designated entry point.
+Legacy manifest packaging commands (`ai validate`, `ai export`, `ai import`)
+are not part of the current CLI surface. The current runtime path is
+workflow + agent-definition authoring and execution.
 
 ## 21. Status summary
 
