@@ -110,4 +110,45 @@ We are the thing that makes agents run reliably in production:
 
 ---
 
-*Last updated: 2026-03-24*
+## Next Steps — 2026-03-25
+
+These are the immediate execution priorities to move from "strong alpha" to "developer default".
+
+### 1) Harden Core Runtime Reliability (P0)
+
+- Ship async-safe sync wrapper behavior in `core.py` to support FastAPI/Jupyter embedding.
+- Add long-running execution heartbeats and standardize progress events across agent/tool steps.
+- Add trace redaction defaults for prompts and tool payloads before persistence/inspection output.
+
+### 2) Improve Developer Experience in the First 10 Minutes (P0)
+
+- Ensure `ai quickstart` always reaches a successful visible result path (real model or mock fallback).
+- Tighten CLI guidance and errors for setup/run/inspect to reduce onboarding dead-ends.
+- Add one canonical "production-like" sample with branching + retry + inspect + resume flow.
+
+### 3) Reduce Maintainability Risk in Hotspot Modules (P1)
+
+- Split `cli.py` into command-focused modules with shared helpers.
+- Extract executor concerns in `core.py` into smaller orchestration units (branching, retries, dispatch, persistence).
+- Add architecture guardrails (module ownership and boundaries) to prevent monolith regression.
+
+### 4) Add Runtime Governance Controls (P1)
+
+- Introduce rate limiting and model regression checks in the LLM client path.
+- Add explicit cost controls (budget thresholds + warnings/fail-fast modes).
+- Expand observability outputs to surface retry behavior and run-level SLO violations.
+
+### 5) Prepare the Composability Wedge (P2)
+
+- Implement sub-workflow/multi-agent composition as the next flagship capability.
+- Extend safe branch-expression power in a deterministic and sandboxed way.
+- Add richer output contract validation (type/enum/regex) to reduce silent drift.
+
+### 6) Keep Enterprise Path Explicit but Deferred (P3)
+
+- Keep auth, tenancy, and non-SQLite backends in the 1.0 track.
+- Continue documenting why these are intentionally deferred to preserve focus.
+
+---
+
+*Last updated: 2026-03-25*
