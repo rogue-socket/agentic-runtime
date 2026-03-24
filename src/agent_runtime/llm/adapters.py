@@ -8,7 +8,7 @@ import time
 import urllib.error
 import urllib.request
 
-from .types import LLMResponse
+from .types import LLMResponse, ToolCallRequest
 
 # Default HTTP timeout in seconds.
 DEFAULT_TIMEOUT: int = 60
@@ -18,6 +18,75 @@ DEFAULT_MAX_RETRIES: int = 2
 DEFAULT_INITIAL_DELAY: float = 1.0
 
 _RETRYABLE_CODES = frozenset({429, 500, 502, 503, 504})
+
+
+class MockAdapter:
+    """Mock LLM adapter for offline demos and tests.
+    
+    Returns a deterministic response containing a summary of the input,
+    simulating a successful reasoning turn without making network calls.
+    """
+
+    provider_name = "mock"
+
+    def call(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        prompt: str,
+        system: Optional[str],
+        params: Dict[str, Any],
+        base_url: Optional[str],
+        history: Optional[List[Dict[str, Any]]] = None,
+        context: Optional[Dict[str, Any]] = None,
+        timeout: int = DEFAULT_TIMEOUT,
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> LLMResponse:
+        # Simulate slight delay
+        time.sleep(0.5)
+        
+        tool_calls = []
+        text = f"[MOCK] Processing: \"{prompt[:40]}...\""
+        
+        # Simple ReAct simulation:
+        # 1. If we have tools and no tool results in history yet, return a tool call.
+        # 2. If we have tool results in history, return a final answer.
+        
+        has_results = False
+        if history:
+            for msg in history:
+                if msg.get("role") == "tool" or (msg.get("role") == "user" and "tool_results" in msg.get("content", "")):
+                    has_results = True
+                    break
+        
+        if tools and not has_results:
+            tool = tools[0]
+            tool_calls = [
+                ToolCallRequest(
+                    id=f"call_{int(time.monotonic())}",
+                    name=tool["name"],
+                    arguments={"query": "mock search", "input": "mock data"},
+                )
+            ]
+            text = f"I will use the {tool['name']} tool to help answer the user's request."
+        elif has_results:
+            text = f"Based on the tool results, I can confirm that the operation was successful. [MOCK FINISHED]"
+            # Add final answer markers for text parsers just in case
+            text += "\n```final_answer\n{\"result\": \"success\"}\n```"
+        else:
+            text = f"Hello! I am the mock adapter. I received your prompt: \"{prompt}\". How can I help?"
+            text += "\n```final_answer\n{\"result\": \"success\"}\n```"
+
+        return LLMResponse(
+            text=text,
+            provider=self.provider_name,
+            model=model,
+            usage={"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+            raw={"status": "mock_success"},
+            tool_calls=tool_calls,
+        )
+
 
 
 def _urlopen_with_retry(
@@ -44,32 +113,166 @@ def _urlopen_with_retry(
     raise last_exc  # type: ignore[misc]  # unreachable in practice
 
 
+# ---------------------------------------------------------------------------
+# Provider-agnostic history format
+# ---------------------------------------------------------------------------
+# The strategy layer emits generic history entries that each adapter translates
+# into its own wire format.  Two sentinel role values carry native tool call
+# information:
+#
+#   "tool_results"
+#       A batch of tool execution results to send back after the model requested
+#       native tool calls.  Contains a "_native_results" list, each entry:
+#           {"id": str, "name": str, "content": str (JSON)}
+#
+#   assistant entry with "_native_tool_calls" key
+#       The prior assistant turn that requested tool calls.  Contains:
+#           "_native_tool_calls": [{"id": str, "name": str, "input": dict}, ...]
+#
+# Plain {"role": "assistant"/"user", "content": str} entries are passed
+# through as-is (text-based fallback path).
+# ---------------------------------------------------------------------------
+
+
+def _build_openai_messages(
+    system: Optional[str],
+    history: Optional[List[Dict[str, Any]]],
+    prompt: str,
+) -> List[Dict[str, Any]]:
+    """Build OpenAI Chat Completions messages from system, history, and prompt."""
+    messages: List[Dict[str, Any]] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    for msg in (history or []):
+        role = msg.get("role", "user")
+        if role == "tool_results":
+            # One `tool` message per result, matched by tool_call_id.
+            for r in msg.get("_native_results", []):
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": r["id"],
+                    "content": r["content"],
+                })
+        elif role == "assistant" and "_native_tool_calls" in msg:
+            # Must replay the original tool_calls array so the model can
+            # correlate result messages to prior requests.
+            messages.append({
+                "role": "assistant",
+                "content": msg.get("content") or None,
+                "tool_calls": [
+                    {
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {
+                            "name": tc["name"],
+                            "arguments": json.dumps(tc["input"]),
+                        },
+                    }
+                    for tc in msg["_native_tool_calls"]
+                ],
+            })
+        else:
+            messages.append({"role": role, "content": msg.get("content", "")})
+    messages.append({"role": "user", "content": prompt})
+    return messages
+
+
+def _build_anthropic_messages(
+    history: Optional[List[Dict[str, Any]]],
+    prompt: str,
+) -> List[Dict[str, Any]]:
+    """Build Anthropic Messages API messages from history and prompt.
+
+    System prompt is passed separately as a top-level body field.
+    """
+    messages: List[Dict[str, Any]] = []
+    for msg in (history or []):
+        role = msg.get("role", "user")
+        if role == "tool_results":
+            # Tool results go in a user message with tool_result content blocks.
+            messages.append({
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": r["id"],
+                        "content": r["content"],
+                    }
+                    for r in msg.get("_native_results", [])
+                ],
+            })
+        elif role == "assistant" and "_native_tool_calls" in msg:
+            # Mix text block(s) and tool_use blocks in the assistant content array.
+            content_blocks: List[Dict[str, Any]] = []
+            if msg.get("content"):
+                content_blocks.append({"type": "text", "text": msg["content"]})
+            for tc in msg["_native_tool_calls"]:
+                content_blocks.append({
+                    "type": "tool_use",
+                    "id": tc["id"],
+                    "name": tc["name"],
+                    "input": tc["input"],
+                })
+            messages.append({"role": "assistant", "content": content_blocks})
+        else:
+            messages.append({"role": role, "content": msg.get("content", "")})
+    messages.append({"role": "user", "content": prompt})
+    return messages
+
+
+def _build_gemini_contents(
+    history: Optional[List[Dict[str, Any]]],
+    prompt: str,
+) -> List[Dict[str, Any]]:
+    """Build Gemini generateContent ``contents`` list from history and prompt."""
+    contents: List[Dict[str, Any]] = []
+    for msg in (history or []):
+        role = msg.get("role", "user")
+        if role == "tool_results":
+            # functionResponse parts in a user-role content block.
+            parts = []
+            for r in msg.get("_native_results", []):
+                # Gemini expects the response value as a structured dict.
+                try:
+                    result_value = json.loads(r["content"])
+                except (json.JSONDecodeError, TypeError):
+                    result_value = r["content"]
+                parts.append({
+                    "functionResponse": {
+                        "name": r["name"],
+                        "response": {"result": result_value},
+                    }
+                })
+            contents.append({"role": "user", "parts": parts})
+        elif role == "assistant" and "_native_tool_calls" in msg:
+            # Gemini uses "model" role; functionCall parts for tool requests.
+            parts: List[Dict[str, Any]] = []
+            if msg.get("content"):
+                parts.append({"text": msg["content"]})
+            for tc in msg["_native_tool_calls"]:
+                parts.append({
+                    "functionCall": {
+                        "name": tc["name"],
+                        "args": tc["input"],
+                    }
+                })
+            contents.append({"role": "model", "parts": parts})
+        else:
+            gemini_role = "model" if role == "assistant" else "user"
+            contents.append({
+                "role": gemini_role,
+                "parts": [{"text": msg.get("content", "")}],
+            })
+    contents.append({"role": "user", "parts": [{"text": prompt}]})
+    return contents
+
+
+# ---------------------------------------------------------------------------
+# Adapter Protocol
+# ---------------------------------------------------------------------------
 # [Pain Point Solved] #5 Framework Lock-in / Dependency Hell: Provider-agnostic
 #   Protocol — any backend implements call(). All adapters use stdlib urllib, so
 #   zero SDK dependencies. Swapping OpenAI for Gemini is a config change, not a refactor.
-# ---------------------------------------------------------------------------
-# TODO(native-function-calling — Phase 2: Adapter Protocol Extension)
-#
-# To support native function calling, extend the `LLMAdapter.call()` signature
-# with a `tools` parameter. This carries the JSON Schema definitions of the
-# tools to register with the model.
-#
-# WHAT TO DO:
-#   1. Add `tools: Optional[List[Dict[str, Any]]] = None` to `call()` here.
-#      Each entry is a provider-agnostic tool schema:
-#        {
-#            "name": str,              # tool name
-#            "description": str,       # what it does
-#            "parameters": {...}       # JSON Schema of the input
-#        }
-#   2. Each concrete adapter translates this into its own wire format
-#      (see OpenAI, Anthropic, Gemini TODOs below).
-#   3. The `LLMResponse` already has `tool_calls: List[ToolCallRequest]`.
-#      Adapters should populate it when the model responds with function calls
-#      instead of (or alongside) text.
-#   4. `LLMClient.call()` passes `tools` through to the adapter unchanged.
-#   5. `strategies.py` checks `response.tool_calls` BEFORE falling back to
-#      the text parser — see TODO there.
 # ---------------------------------------------------------------------------
 class LLMAdapter(Protocol):
     """Protocol for provider-specific adapters."""
@@ -85,54 +288,32 @@ class LLMAdapter(Protocol):
         system: Optional[str],
         params: Dict[str, Any],
         base_url: Optional[str],
-        history: Optional[List[Dict[str, str]]] = None,
+        history: Optional[List[Dict[str, Any]]] = None,
         context: Optional[Dict[str, Any]] = None,
         timeout: int = DEFAULT_TIMEOUT,
-        # TODO(native-function-calling): add tools: Optional[List[Dict[str, Any]]] = None
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResponse:
-        """Execute an LLM request and return a normalized response."""
+        """Execute an LLM request and return a normalized response.
+
+        Args:
+            tools: Provider-agnostic tool schema list for native function calling.
+                   Each entry: ``{"name": str, "description": str, "parameters": JSON Schema}``.
+                   Pass ``None`` to disable native function calling.
+        """
         ...
 
 
 class OpenAIAdapter:
     """Minimal OpenAI-compatible adapter using the Chat Completions API.
 
-    TODO(native-function-calling — OpenAI): Implement native function calling
-    via the Chat Completions `tools` parameter.
+    Native function calling is activated when ``tools`` is non-empty:
+      - Adds ``"tools"`` array and ``"tool_choice": "auto"`` to the payload.
+      - Parses ``tool_calls`` from the response, populating
+        ``LLMResponse.tool_calls`` with ``ToolCallRequest`` objects.
+      - Translates ``_native_tool_calls`` / ``tool_results`` history entries
+        into the correct OpenAI wire format for multi-turn tool conversations.
 
-    REQUEST CHANGES:
-      Add to the payload dict:
-        "tools": [
-            {
-                "type": "function",
-                "function": {
-                    "name": tool["name"],
-                    "description": tool["description"],
-                    "parameters": tool["parameters"],  # JSON Schema
-                }
-            }
-            for tool in tools
-        ],
-        "tool_choice": "auto",  # let the model decide
-
-    RESPONSE CHANGES:
-      The `choices[0].message` can have `tool_calls` instead of (or with) `content`.
-      Parse each element:
-        for tc in (message.get("tool_calls") or []):
-            ToolCallRequest(
-                id=tc["id"],
-                tool_name=tc["function"]["name"],
-                tool_input=json.loads(tc["function"]["arguments"]),
-            )
-      Set `LLMResponse.tool_calls` to the parsed list.
-      Set `LLMResponse.text` to `message.get("content") or ""`.
-
-    FOLLOW-UP TURN:
-      When sending tool results back, add a message per call:
-        {"role": "tool", "tool_call_id": tc.id, "content": json.dumps(result)}
-      The history-building logic in `strategies.py` needs updating too.
-
-    TODO: Support streaming (stream=True) for token-level feedback.
+    TODO(roadmap): Support streaming (stream=True) for token-level feedback.
     """
 
     provider_name = "openai"
@@ -146,9 +327,10 @@ class OpenAIAdapter:
         system: Optional[str],
         params: Dict[str, Any],
         base_url: Optional[str],
-        history: Optional[List[Dict[str, str]]] = None,
+        history: Optional[List[Dict[str, Any]]] = None,
         context: Optional[Dict[str, Any]] = None,
         timeout: int = DEFAULT_TIMEOUT,
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResponse:
         if not api_key:
             raise ValueError("Missing OpenAI API key.")
@@ -156,18 +338,23 @@ class OpenAIAdapter:
         base = base_url or "https://api.openai.com/v1"
         url = base.rstrip("/") + "/chat/completions"
 
-        messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        if history:
-            messages.extend(history)
-        messages.append({"role": "user", "content": prompt})
-
-        payload = {
-            "model": model,
-            "messages": messages,
-        }
+        messages = _build_openai_messages(system, history, prompt)
+        payload: Dict[str, Any] = {"model": model, "messages": messages}
         payload.update({k: v for k, v in params.items() if v is not None})
+
+        if tools:
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool["description"],
+                        "parameters": tool["parameters"],
+                    },
+                }
+                for tool in tools
+            ]
+            payload["tool_choice"] = "auto"
 
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
@@ -191,8 +378,23 @@ class OpenAIAdapter:
         choices = raw.get("choices") or []
         if not choices:
             raise RuntimeError("OpenAI API returned no choices.")
-        content = (choices[0].get("message") or {}).get("content")
-        if not isinstance(content, str):
+        message = choices[0].get("message") or {}
+        content = message.get("content") or ""
+
+        # Parse native tool calls from the response message.
+        native_tool_calls: List[ToolCallRequest] = []
+        for tc in (message.get("tool_calls") or []):
+            try:
+                tool_input = json.loads(tc["function"]["arguments"])
+            except (json.JSONDecodeError, KeyError):
+                tool_input = {}
+            native_tool_calls.append(ToolCallRequest(
+                id=tc["id"],
+                tool_name=tc["function"]["name"],
+                tool_input=tool_input,
+            ))
+
+        if not content and not native_tool_calls:
             raise RuntimeError("OpenAI API returned an empty response message.")
 
         return LLMResponse(
@@ -201,54 +403,21 @@ class OpenAIAdapter:
             model=model,
             usage=raw.get("usage"),
             raw=raw,
+            tool_calls=native_tool_calls,
         )
 
 
 class AnthropicAdapter:
     """Adapter for the Anthropic Messages API.
 
-    TODO(native-function-calling — Anthropic): Implement native tool use
-    via the Messages API `tools` parameter.
+    Native tool use is activated when ``tools`` is non-empty:
+      - Adds ``"tools"`` array (using ``input_schema`` field) to the request body.
+      - Parses ``tool_use`` content blocks from the response, populating
+        ``LLMResponse.tool_calls`` with ``ToolCallRequest`` objects.
+      - Translates ``_native_tool_calls`` / ``tool_results`` history entries
+        into Anthropic's multi-content-block format for multi-turn conversations.
 
-    REQUEST CHANGES:
-      Add to the body dict:
-        "tools": [
-            {
-                "name": tool["name"],
-                "description": tool["description"],
-                "input_schema": tool["parameters"],  # JSON Schema
-            }
-            for tool in tools
-        ],
-
-    RESPONSE CHANGES:
-      The response `content` list can contain blocks of type `"tool_use"` in
-      addition to `"text"` blocks. Parse each:
-        for block in content_blocks:
-            if block.get("type") == "tool_use":
-                ToolCallRequest(
-                    id=block["id"],
-                    tool_name=block["name"],
-                    tool_input=block["input"],  # already a dict, not a string
-                )
-      Set `LLMResponse.tool_calls` to the parsed list.
-      Set `LLMResponse.text` to joined text blocks as now.
-
-    FOLLOW-UP TURN:
-      Add a `tool_result` block to the next user message:
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "tool_result",
-                    "tool_use_id": tc.id,
-                    "content": json.dumps(result),
-                }
-            ]
-        }
-      The history-building logic in `strategies.py` needs updating too.
-
-    TODO: Add streaming support for token-level feedback.
+    TODO(roadmap): Add streaming support for token-level feedback.
     """
 
     provider_name = "anthropic"
@@ -262,9 +431,10 @@ class AnthropicAdapter:
         system: Optional[str],
         params: Dict[str, Any],
         base_url: Optional[str],
-        history: Optional[List[Dict[str, str]]] = None,
+        history: Optional[List[Dict[str, Any]]] = None,
         context: Optional[Dict[str, Any]] = None,
         timeout: int = DEFAULT_TIMEOUT,
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResponse:
         if not api_key:
             raise ValueError("Missing Anthropic API key.")
@@ -272,11 +442,7 @@ class AnthropicAdapter:
         base = base_url or "https://api.anthropic.com"
         url = base.rstrip("/") + "/v1/messages"
 
-        messages = []
-        if history:
-            messages.extend(history)
-        messages.append({"role": "user", "content": prompt})
-
+        messages = _build_anthropic_messages(history, prompt)
         body: Dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -285,6 +451,17 @@ class AnthropicAdapter:
         if system:
             body["system"] = system
         body.update({k: v for k, v in params.items() if v is not None})
+
+        if tools:
+            body["tools"] = [
+                {
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    # Anthropic uses "input_schema" instead of "parameters".
+                    "input_schema": tool["parameters"],
+                }
+                for tool in tools
+            ]
 
         data = json.dumps(body).encode("utf-8")
         req = urllib.request.Request(
@@ -307,72 +484,51 @@ class AnthropicAdapter:
             raise RuntimeError(f"Anthropic API request failed: {exc}") from exc
 
         content_blocks = raw.get("content") or []
-        text_parts = [
-            block.get("text", "")
-            for block in content_blocks
-            if block.get("type") == "text"
-        ]
-        if not text_parts:
-            raise RuntimeError("Anthropic API returned no text content.")
+        text_parts: List[str] = []
+        native_tool_calls: List[ToolCallRequest] = []
+        for block in content_blocks:
+            if block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+            elif block.get("type") == "tool_use":
+                # Anthropic provides `input` as a pre-parsed dict, not a JSON string.
+                native_tool_calls.append(ToolCallRequest(
+                    id=block["id"],
+                    tool_name=block["name"],
+                    tool_input=block.get("input", {}),
+                ))
+
+        text = "".join(text_parts)
+        if not text and not native_tool_calls:
+            raise RuntimeError("Anthropic API returned no content.")
 
         return LLMResponse(
-            text="".join(text_parts),
+            text=text,
             provider=self.provider_name,
             model=model,
             usage=raw.get("usage"),
             raw=raw,
+            tool_calls=native_tool_calls,
         )
 
 
 class GeminiAdapter:
     """Adapter for the Gemini generateContent REST API.
 
-    TODO(native-function-calling — Gemini): Implement native function calling
-    via the `tools` + `tool_config` fields in the generateContent request.
+    Native function calling is activated when ``tools`` is non-empty:
+      - Adds ``"tools"`` (with ``function_declarations``) and ``"tool_config"``
+        with ``mode: AUTO`` to the request body.
+      - Parses ``functionCall`` parts from the response, populating
+        ``LLMResponse.tool_calls`` with ``ToolCallRequest`` objects.
+      - Translates ``_native_tool_calls`` / ``tool_results`` history entries
+        into Gemini's ``functionCall`` / ``functionResponse`` part format.
 
-    REQUEST CHANGES:
-      Add to the body dict:
-        "tools": [
-            {
-                "function_declarations": [
-                    {
-                        "name": tool["name"],
-                        "description": tool["description"],
-                        "parameters": tool["parameters"],  # JSON Schema
-                    }
-                    for tool in tools
-                ]
-            }
-        ],
-        "tool_config": {"function_calling_config": {"mode": "AUTO"}},
+    Note: Gemini does not assign unique IDs to function calls.  The tool name
+    is used as the correlation ID (``ToolCallRequest.id = function_name``).
+    This works correctly as long as the same tool is not called more than once
+    in a single response turn.  If a model calls the same tool twice in one
+    turn, results are correlated by position.  This is a Gemini API limitation.
 
-    RESPONSE CHANGES:
-      The `parts` list in `candidates[0].content` can contain `functionCall`
-      dicts instead of (or with) `text` dicts. Parse each:
-        for part in parts:
-            if "functionCall" in part:
-                ToolCallRequest(
-                    id=part["functionCall"].get("name", ""),  # Gemini uses name as ID
-                    tool_name=part["functionCall"]["name"],
-                    tool_input=part["functionCall"].get("args", {}),
-                )
-      Set `LLMResponse.tool_calls` to the parsed list.
-      Set `LLMResponse.text` to joined text parts as now.
-
-    FOLLOW-UP TURN:
-      Add a `functionResponse` part to the next user content:
-        {
-            "role": "user",
-            "parts": [
-                {
-                    "functionResponse": {
-                        "name": tc.tool_name,
-                        "response": {"result": result},
-                    }
-                }
-            ]
-        }
-      The history-building logic in `strategies.py` needs updating too.
+    TODO(roadmap): Support streaming for token-level feedback.
     """
 
     provider_name = "gemini"
@@ -417,9 +573,10 @@ class GeminiAdapter:
         system: Optional[str],
         params: Dict[str, Any],
         base_url: Optional[str],
-        history: Optional[List[Dict[str, str]]] = None,
+        history: Optional[List[Dict[str, Any]]] = None,
         context: Optional[Dict[str, Any]] = None,
         timeout: int = DEFAULT_TIMEOUT,
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResponse:
         if not api_key:
             raise ValueError("Missing Gemini API key.")
@@ -428,18 +585,26 @@ class GeminiAdapter:
         model_path = model if model.startswith("models/") else f"models/{model}"
         url = base.rstrip("/") + f"/{model_path}:generateContent"
 
-        contents = []
-        if history:
-            for msg in history:
-                role = "model" if msg.get("role") == "assistant" else "user"
-                contents.append({"role": role, "parts": [{"text": msg.get("content", "")}]})
-        contents.append({"role": "user", "parts": [{"text": prompt}]})
+        contents = _build_gemini_contents(history, prompt)
 
-        body: Dict[str, Any] = {
-            "contents": contents
-        }
+        body: Dict[str, Any] = {"contents": contents}
         if system:
             body["system_instruction"] = {"parts": [{"text": system}]}
+
+        if tools:
+            body["tools"] = [
+                {
+                    "function_declarations": [
+                        {
+                            "name": tool["name"],
+                            "description": tool["description"],
+                            "parameters": tool["parameters"],
+                        }
+                        for tool in tools
+                    ]
+                }
+            ]
+            body["tool_config"] = {"function_calling_config": {"mode": "AUTO"}}
 
         generation_config: Dict[str, Any] = {}
         params = dict(params or {})
@@ -488,18 +653,33 @@ class GeminiAdapter:
             raise RuntimeError("Gemini API returned no candidates.")
         content = candidates[0].get("content") or {}
         parts = content.get("parts") or []
-        text_parts = [
-            part.get("text", "")
-            for part in parts
-            if isinstance(part, dict) and part.get("text")
-        ]
-        if not text_parts:
-            raise RuntimeError("Gemini API returned no text content.")
+
+        text_parts: List[str] = []
+        native_tool_calls: List[ToolCallRequest] = []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            if part.get("text"):
+                text_parts.append(part["text"])
+            elif "functionCall" in part:
+                fc = part["functionCall"]
+                # Gemini has no per-call ID; use the function name as the
+                # correlation handle (see class docstring for limitation note).
+                native_tool_calls.append(ToolCallRequest(
+                    id=fc.get("name", ""),
+                    tool_name=fc["name"],
+                    tool_input=fc.get("args", {}),
+                ))
+
+        text = "".join(text_parts)
+        if not text and not native_tool_calls:
+            raise RuntimeError("Gemini API returned no content.")
 
         return LLMResponse(
-            text="".join(text_parts),
+            text=text,
             provider=self.provider_name,
             model=model,
             usage=raw.get("usageMetadata") or raw.get("usage"),
             raw=raw,
+            tool_calls=native_tool_calls,
         )

@@ -76,7 +76,7 @@ def run_workflow(
         RuntimeError: If called from within an already-running event loop.
             Use :func:`run_workflow_async` instead.
     """
-    # TODO(Pain Point — Export/Wire-Into-Product):
+    # TODO(pain-point): Export/Wire-Into-Product -
     #   This function (and run_workflow_async) is already the embryo of an
     #   embeddable API, but it's not enough for production integration.
     #

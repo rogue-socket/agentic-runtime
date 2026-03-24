@@ -891,8 +891,8 @@ class TestResolvePipelineSystemInjection:
 
 
 class TestReActAutoInjectionE2E:
-    def test_system_prompt_sent_to_llm_contains_tools(self):
-        """End-to-end: react agent with tools sends auto-injected system prompt to LLM."""
+    def test_native_tools_sent_to_llm_preamble_skipped(self):
+        """End-to-end: react agent with tools passes tools arg, skips system prompt preamble."""
         echo = _tool_with_schema(
             "tools.echo", "Echo back",
             {"message": {"type": "string", "description": "What to echo"}},
@@ -906,6 +906,7 @@ class TestReActAutoInjectionE2E:
             tools=["tools.echo"],
             system="You are a test agent.",
             strategy=StrategyConfig(type="react", max_iterations=3),
+            auto_tool_prompt=True,
             pipeline=_simple_pipeline("Do it"),
         )
         result = _run(
@@ -913,11 +914,15 @@ class TestReActAutoInjectionE2E:
                 agent, client, FakeToolRegistry([echo]), {}, _ctx()
             )
         )
-        system_sent = client.calls[0]["system"]
-        assert "## Tool Calling" in system_sent
-        assert "### tools.echo" in system_sent
-        assert "Echo back" in system_sent
-        assert "You are a test agent." in system_sent
+        call_kwargs = client.calls[0]
+        # Text preamble is skipped
+        assert "## Tool Calling" not in call_kwargs["system"]
+        assert call_kwargs["system"] == "You are a test agent."
+        
+        # Tools are passed natively
+        assert "tools" in call_kwargs
+        assert len(call_kwargs["tools"]) == 1
+        assert call_kwargs["tools"][0]["name"] == "tools.echo"
 
     def test_single_strategy_no_injection_e2e(self):
         """End-to-end: single strategy agent does NOT get tool preamble."""

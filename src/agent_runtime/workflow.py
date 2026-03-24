@@ -230,6 +230,10 @@ def _parse_workflow(
             raise WorkflowValidationError(f"Duplicate step id: {step['id']}")
         step_ids.append(step["id"])
         seen_steps.append(step["id"])
+        timeout_ms = step.get("timeout_ms")
+        if timeout_ms is not None and (not isinstance(timeout_ms, int) or timeout_ms < 0):
+            raise WorkflowValidationError("timeout_ms must be a non-negative integer.")
+
         retry_cfg = step.get("retry")
         retry = None
         if retry_cfg is not None:
@@ -328,6 +332,7 @@ def _parse_workflow(
                     input_contract=input_contract,
                     output_contract=output_contract,
                     next_rules=next_rules,
+                    timeout_ms=timeout_ms,
                 )
             )
         elif step_type == "function":
@@ -348,6 +353,7 @@ def _parse_workflow(
                     input_contract=input_contract,
                     output_contract=output_contract,
                     next_rules=next_rules,
+                    timeout_ms=timeout_ms,
                 )
             )
         else:  # tool
@@ -362,6 +368,7 @@ def _parse_workflow(
                     input_contract=input_contract,
                     output_contract=output_contract,
                     next_rules=next_rules,
+                    timeout_ms=timeout_ms,
                 )
             )
 

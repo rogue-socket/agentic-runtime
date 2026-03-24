@@ -114,6 +114,8 @@ class LLMRegistry:
         self._providers: Dict[str, LLMProvider] = {}
         self._default_provider = default_provider
 
+
+
     # ---- default provider -----
 
     @property

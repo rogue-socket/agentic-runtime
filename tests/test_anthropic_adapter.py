@@ -124,7 +124,7 @@ def test_anthropic_adapter_empty_content_raises() -> None:
     mock_resp.__exit__ = MagicMock(return_value=False)
 
     with patch("urllib.request.urlopen", return_value=mock_resp):
-        with pytest.raises(RuntimeError, match="no text content"):
+        with pytest.raises(RuntimeError, match="no content"):
             adapter.call(
                 api_key="sk-test",
                 model="claude-3-opus",

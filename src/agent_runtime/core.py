@@ -128,6 +128,12 @@ class StepDefinition:
     input_contract: Optional[List[str]] = None
     output_contract: Optional[List[str]] = None
     next_rules: Optional[List["NextRule"]] = None
+    # Step-level execution time limit declared in
+    # workflow YAML as `timeout_ms: 30000`. Parsed in workflow.py and stored
+    # here. The executor wraps agent/tool dispatch with:
+    #   asyncio.wait_for(handler_coro, timeout=timeout_ms / 1000)
+    # and raises StepExecutionError on expiry so retry/on_error applies normally.
+    timeout_ms: Optional[int] = None
 
 
 @dataclass
@@ -160,7 +166,7 @@ class RetryPolicy:
 class StepExecution:
     """Persisted execution record for one step attempt lifecycle."""
 
-    # TODO(Prod Pain Point #2 — Latency Budgets): duration_ms tracks how long
+    # TODO(pain-point): Latency Budgets - duration_ms tracks how long
     #   each step took, but there's no way to declare "this workflow must complete
     #   in under 5s" and fail-fast when a step exceeds its budget. Add an optional
     #   `timeout_ms` on StepDefinition and a `latency_budget_ms` on the workflow
@@ -182,6 +188,7 @@ class StepExecution:
     state_before: Optional[StateDict] = None
     state_after: Optional[StateDict] = None
     execution_index: Optional[int] = None
+    token_usage: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -270,7 +277,7 @@ class Executor:
         self.llm_client = llm_client
         self.default_model = default_model
 
-    # TODO(Prod Pain Point #11 — Heartbeats for Long-Running Workflows): A react
+    # TODO(pain-point): Heartbeats for Long-Running Workflows - A react
     #   agent iterating 5 times with tool calls can take 30+ seconds. Behind a
     #   load balancer or API gateway, the connection times out. Add a WebSocket/SSE
     #   adapter for `on_event` that streams STEP_START/STEP_COMPLETE/agent iteration
@@ -548,20 +555,29 @@ class Executor:
                             )
                             agent_input = step_input if step_def.input_spec is not None else snapshot
                             call_start = time.monotonic()
-                            agent_result = await agent_executor.execute(
-                                agent_def, agent_input, agent_ctx
-                            )
+                            
+                            coro = agent_executor.execute(agent_def, agent_input, agent_ctx)
+                            if step_def.timeout_ms:
+                                t_sec = float(step_def.timeout_ms) / 1000.0
+                                try:
+                                    agent_result = await asyncio.wait_for(coro, timeout=t_sec)
+                                except asyncio.TimeoutError:
+                                    raise StepExecutionError(f"Agent step timed out after {step_def.timeout_ms}ms")
+                            else:
+                                agent_result = await coro
+                                
                             handler_duration_ms = int((time.monotonic() - call_start) * 1000)
                             output = agent_result.outputs
+                            execution.token_usage = agent_result.token_usage
                             # store agent trace for observability
-                            # TODO(Prod Pain Point #5 — Secrets in Agent Traces):
+                            # TODO(pain-point): Secrets in Agent Traces -
                             #   The trace below captures the full llm_request, which
                             #   contains interpolated prompts with user PII, internal
                             #   system details, and business logic. If storage is
                             #   shared or inspect output is logged, you're leaking
                             #   sensitive data. Add a trace sanitizer that redacts
                             #   PII patterns and user content before persistence.
-                            # TODO(Prod Pain Point #4 — Hallucination Guardrails):
+                            # TODO(pain-point): Hallucination Guardrails -
                             #   The agent output is stored as-is. For extraction tasks,
                             #   add an optional `grounding_validator` hook that cross-
                             #   checks agent output against source input — catching
@@ -595,9 +611,16 @@ class Executor:
                                 raise StepExecutionError("Missing tool name.")
                             tool = self.tool_registry.get(step_def.tool_name)
                             tool_input = step_input if step_def.input_spec is not None else format_template(step_def.raw_input or {}, snapshot)
-                            output, tool_duration_ms = await self._execute_tool_async(
-                                tool, tool_input, run.run_id, step_def.step_id, snapshot
-                            )
+                            
+                            coro = self._execute_tool_async(tool, tool_input, run.run_id, step_def.step_id, snapshot)
+                            if step_def.timeout_ms:
+                                t_sec = float(step_def.timeout_ms) / 1000.0
+                                try:
+                                    output, tool_duration_ms = await asyncio.wait_for(coro, timeout=t_sec)
+                                except asyncio.TimeoutError:
+                                    raise StepExecutionError(f"Tool step timed out after {step_def.timeout_ms}ms")
+                            else:
+                                output, tool_duration_ms = await coro
                         else:
                             raise StepExecutionError(f"Unknown step type: {step_def.step_type}")
 
@@ -607,7 +630,7 @@ class Executor:
                         last_error = exc
                         execution.last_error = f"{type(exc).__name__}: {exc}"
                         if attempt < max_attempts:
-                            # TODO(Pain Point #N6 — Retry-Aware Observability): Emit a
+                            # TODO(pain-point): Retry-Aware Observability - Emit a
                             #   structured STEP_RETRY event here so logs distinguish
                             #   transient failures (recovered by retry) from real
                             #   failures. Without this, monitoring dashboards overcount
@@ -622,7 +645,7 @@ class Executor:
                 if output is None or not isinstance(output, dict):
                     raise StepExecutionError("Step handler must return a dict.")
                 if step_def.output_contract:
-                    # TODO(Prod Pain Point #1 — Structured Output Parsing): Output
+                    # TODO(pain-point): Structured Output Parsing - Output
                     #   contracts enforce key presence but not value shape. An LLM
                     #   can return {"severity": "it's pretty bad"} when downstream
                     #   expects "P0"|"P1"|"P2". Add optional value-level schema
@@ -641,11 +664,11 @@ class Executor:
                             f"Output contract violation for step {step_def.step_id}: undeclared keys {sorted(extra)}"
                         )
 
-                # [TODO] Enforce immutability rules:
+                # TODO(security): Enforce immutability rules:
                 # - Prevent modification of "inputs"
                 # - Prevent overwriting existing step outputs unless explicitly allowed
                 # - Add collision validation policy
-                # TODO(Prod Pain Point #7 — No Graceful Degradation): on_error is
+                # TODO(pain-point): No Graceful Degradation - on_error is
                 #   workflow-level. But sometimes step 3 is a nice-to-have enrichment
                 #   that shouldn't kill the run. Add per-step `optional: true` with a
                 #   `default` output value, so failures use the fallback and continue
@@ -820,7 +843,7 @@ class Executor:
     def _ensure_no_running_loop(async_entrypoint: str) -> None:
         """Raise when called from an existing event loop.
 
-        TODO: Provide an opt-in helper to run sync APIs in async contexts by
+        TODO(eng): Provide an opt-in helper to run sync APIs in async contexts by
         dispatching to a dedicated worker thread if we ever need that behavior.
         """
         try:
@@ -831,7 +854,7 @@ class Executor:
 
     def _resolve_next_step(self, step_def: StepDefinition, state: StateDict) -> Optional[str]:
         """Resolve next step via branch rules or sequential fallback."""
-        # TODO(Pain Point #N5 — Fan-Out/Fan-In): Steps currently execute sequentially.
+        # TODO(pain-point): Fan-Out/Fan-In - Steps currently execute sequentially.
         #   "Run this agent on each item in the list, then aggregate the results"
         #   sounds simple but needs: partial failure handling, retry of individual
         #   items, atomic result merging, and gap-tolerant aggregation.
@@ -843,7 +866,7 @@ class Executor:
         #   3. Merge parallel step outputs into state atomically (snapshot per
         #      group, not per step) to preserve replay determinism.
         #   4. Update visualization to render parallel branches side-by-side.
-        # [TODO(roadmap)] Multi-agent composition: allow a step to invoke
+        # TODO(roadmap): Multi-agent composition: allow a step to invoke
         #   a sub-workflow or delegate to another agent definition. This is
         #   the foundation for orchestrator-specialist agent patterns.
         if not step_def.next_rules:

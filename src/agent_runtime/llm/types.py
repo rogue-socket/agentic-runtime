@@ -9,15 +9,10 @@ from typing import Any, Dict, List, Optional
 # ---------------------------------------------------------------------------
 # Native function-calling types
 # ---------------------------------------------------------------------------
-# TODO(native-function-calling — Phase 1: Data Model)
-#
-# These types are the contract between adapters and the agent strategy layer.
-# An adapter that supports native function calling should populate
-# `LLMResponse.tool_calls` instead of (or in addition to) `text`.
-#
-# WHAT TO DO:
-#   • No changes needed here for Phase 1 — the data model is ready.
-#   • See adapters.py for where to populate these.
+# [DONE — Phase 1] Data model is complete. Adapters in adapters.py are
+# responsible for populating LLMResponse.tool_calls when the model responds
+# via native function calling rather than text markdown blocks.
+# See adapters.py (Phase 2) and strategies.py (Phase 3) for pending work.
 # ---------------------------------------------------------------------------
 
 
