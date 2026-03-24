@@ -31,7 +31,7 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
     Returns:
         Absolute/relative path written to disk.
     """
-    # TODO(Eng-8, html-template): This renderer builds the entire HTML page
+    # TODO(eng): html-template - This renderer builds the entire HTML page
     #   via f-string concatenation.  This is fragile and hard to maintain
     #   as the report grows.  Consider:
     #   1. Move the HTML/CSS skeleton to a separate .html template file
@@ -122,7 +122,7 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
             "</div>"
         )
 
-    # [TODO] Replace text edge list with interactive graph rendering (e.g., Mermaid) without external network dependencies.
+    # TODO(ux): Replace text edge list with interactive graph rendering (e.g., Mermaid) without external network dependencies.
     edge_lines = [f"{edge.source} -> {edge.target} [{edge.kind}]" for edge in graph.edges]
 
     run_duration = timeline.run_duration_ms if timeline.run_duration_ms is not None else "n/a"

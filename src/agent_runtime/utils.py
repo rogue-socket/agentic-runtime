@@ -129,7 +129,7 @@ def render_path_template(text: str, state: Dict[str, Any]) -> str:
         >>> render_path_template("Issue: {{ inputs.issue }}", {"inputs": {"issue": "x"}})
         'Issue: x'
     """
-    # TODO(Pain Point #N4 — Template Injection): User-supplied state values are
+    # TODO(pain-point): Template Injection - User-supplied state values are
     #   interpolated directly into LLM prompts here without sanitization. This is
     #   a prompt injection vector — adversarial input like "Ignore previous
     #   instructions..." flows straight into the system prompt. Add input
@@ -290,7 +290,7 @@ def safe_eval(expr: str, state: Dict[str, Any]) -> bool:
         True
     """
     # [SCAFFOLD:DETERMINISM] Simple safe eval; replace with dedicated expression engine later.
-    # TODO(Eng-5, expression-language): Expand the expression language for
+    # TODO(eng): expression-language - Expand the expression language for
     #   branch conditions.  Currently limited to `state` and `len`.
     #   Useful additions:
     #   - String methods: .startswith(), .endswith(), .lower(), "x" in state.y

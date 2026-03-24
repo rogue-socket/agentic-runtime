@@ -57,7 +57,7 @@ class RuntimeConfig:
     # Default model for agent steps that don't specify one
     default_model: str = ""
 
-    # TODO(Prod Pain Point #6 — Config Drift Between Environments): Dev uses
+    # TODO(pain-point): Config Drift Between Environments - Dev uses
     #   gemini/flash with temp=0.2, prod needs openai/gpt-4o with temp=0.0
     #   and a different db_path. Add environment-aware config layering:
     #   runtime.yaml as base, runtime.prod.yaml as overlay, plus env-var

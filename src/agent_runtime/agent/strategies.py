@@ -7,7 +7,7 @@ pipeline (an ordered sequence of model + tool steps):
 - **react**: Each react iteration runs the full pipeline.  The last model
   step's output decides whether to loop (no ``final_answer``) or stop.
   State is accumulated across iterations.
-  # TODO: make accumulation configurable (option: clean slate per iteration)
+  # TODO(eng): make accumulation configurable (option: clean slate per iteration)
 - **custom**: Developer-provided strategy class.
 
 For ``react`` agents with declared tools, the runtime auto-injects
@@ -177,7 +177,7 @@ def _format_observation(record: ToolCall) -> str:
 #   per-provider and aggregated across agent turns. However, it is NOT persisted
 #   on StepExecution records, there are no cost calculations, and there is no
 #   run-level token/cost summary in the CLI.
-# TODO(Pain Point #N3 — Cost Accounting): Persist aggregated token usage on each
+# TODO(pain-point): Cost Accounting - Persist aggregated token usage on each
 #   StepExecution record. Add a pricing table per model and compute per-step and
 #   per-run cost. Surface it in `ai inspect` so developers know which step is
 #   the expensive one before the invoice arrives.
@@ -201,7 +201,11 @@ def _resolve_pipeline_model(agent: AgentDefinition, step: PipelineStep) -> str:
 
 
 def _build_tool_preamble(agent: AgentDefinition, tool_registry: ToolRegistry) -> str:
-    """Generate tool-calling instructions from the agent's registered tools."""
+    """Generate text tool-calling instructions (used as system prompt preamble).
+
+    Only injected when native function calling is NOT active, i.e. as fallback
+    for models that don't support the provider's native tool-calling API.
+    """
     lines = [
         "## Tool Calling",
         "You have access to the tools listed below. To call a tool, output a "
@@ -251,13 +255,49 @@ def _build_tool_preamble(agent: AgentDefinition, tool_registry: ToolRegistry) ->
     return "\n".join(lines)
 
 
+def _build_tool_schemas(
+    agent: AgentDefinition, tool_registry: ToolRegistry
+) -> List[Dict[str, Any]]:
+    """Build a provider-agnostic tool schema list for native function calling.
+
+    Returns a list of dicts with ``name``, ``description``, and ``parameters``
+    (a JSON Schema object).  This list is passed to ``LLMClient.call(tools=...)``
+    and forwarded to the adapter, which translates it into the provider's wire
+    format (OpenAI ``tools``, Anthropic ``tools`` with ``input_schema``,
+    Gemini ``function_declarations``).
+
+    Tools that cannot be resolved from the registry are skipped silently —
+    the same behaviour as ``_build_tool_preamble``.
+    """
+    schemas: List[Dict[str, Any]] = []
+    for tool_name in agent.tools:
+        try:
+            tool = tool_registry.get(tool_name)
+            schemas.append({
+                "name": tool.name,
+                "description": tool.description,
+                # ``input_schema`` is already a JSON Schema dict.  Fall back to
+                # an empty object schema if the tool didn't declare one.
+                "parameters": tool.input_schema or {"type": "object", "properties": {}},
+            })
+        except Exception:  # noqa: BLE001
+            pass
+    return schemas
+
+
 def _resolve_pipeline_system(
-    agent: AgentDefinition, step: PipelineStep, tool_registry: Optional[ToolRegistry] = None,
+    agent: AgentDefinition,
+    step: PipelineStep,
+    tool_registry: Optional[ToolRegistry] = None,
+    native_tools_active: bool = False,
 ) -> Optional[str]:
     """Return the system prompt for a pipeline model step.
 
     For ``react`` agents with declared tools and ``auto_tool_prompt`` enabled,
-    tool-calling instructions are prepended automatically.
+    text tool-calling instructions are prepended automatically — **unless**
+    native function calling is active (``native_tools_active=True``), in which
+    case the preamble is skipped to avoid confusing the model with conflicting
+    calling conventions.
     """
     if step.system is not None:
         base = step.system or None
@@ -269,6 +309,7 @@ def _resolve_pipeline_system(
         and agent.tools
         and agent.auto_tool_prompt
         and agent.strategy.type == "react"
+        and not native_tools_active
     ):
         preamble = _build_tool_preamble(agent, tool_registry)
         if base:
@@ -327,15 +368,25 @@ async def _run_pipeline(
     context: AgentContext,
     pipeline_state: Dict[str, Any],
     iteration: int,
-) -> tuple[List[AgentTurn], Dict[str, Any], str]:
-    """Execute the agent's pipeline once and return (turns, updated_state, last_model_text).
+    tools: Optional[List[Dict[str, Any]]] = None,
+) -> tuple[List[AgentTurn], Dict[str, Any], str, bool]:
+
+    """Execute the agent's pipeline once and return
+    ``(turns, updated_state, last_model_text, last_had_native_calls)``.
 
     ``pipeline_state`` is mutated: each step's output is written under
     its step id (e.g. ``{"analyze": {...}, "fetch": {...}}``).  The
     ``inputs`` key holds the original agent inputs.
+
+    ``last_had_native_calls`` is ``True`` when the final model step in this
+    pipeline execution returned native tool calls.  ``ReActStrategy`` uses
+    this to determine whether to continue looping: a model turn with no
+    native calls (and no ``final_answer`` block) signals completion.
     """
     turns: List[AgentTurn] = []
     last_model_text = ""
+    last_had_native_calls = False
+    native_tools_active = bool(tools)
     params = {
         "temperature": agent.temperature,
         "max_tokens": agent.max_tokens,
@@ -345,14 +396,21 @@ async def _run_pipeline(
     for step in agent.pipeline:
         if step.type == "model":
             model_name = _resolve_pipeline_model(agent, step)
-            system = _resolve_pipeline_system(agent, step, tool_registry)
+            system = _resolve_pipeline_system(
+                agent, step, tool_registry,
+                native_tools_active=native_tools_active,
+            )
             prompt = _render_pipeline_prompt(step.prompt, pipeline_state)
             history = pipeline_state.get("_history")
 
             response = llm_client.call(
-                model=model_name, prompt=prompt, system=system, params=params,
+                model=model_name,
+                prompt=prompt,
+                system=system,
+                params=params,
                 history=history,
                 context={"run_id": context.run_id, "step_id": context.step_id},
+                tools=tools,
             )
             turn = AgentTurn(
                 iteration=iteration,
@@ -360,57 +418,44 @@ async def _run_pipeline(
                 llm_response=response,
             )
 
-            # parse tool_call blocks inside model response (if any)
             # ---------------------------------------------------------------------------
-            # TODO(native-function-calling — Phase 3: Strategy Layer)
+            # Tool dispatch: native path first, text-parsing fallback second.
             #
-            # CURRENT BEHAVIOUR:
-            #   Text in `response.text` is parsed for ```tool_call``` blocks.
-            #   This is fragile: models hallucinate the format, emit partial JSON,
-            #   or skip the markers entirely — silently dropping tool calls.
+            # Native path  — ``response.tool_calls`` is populated by adapters when the
+            #   provider's function-calling API is in use.  These are structured
+            #   ``ToolCallRequest`` objects; no fragile text parsing required.
             #
-            # TARGET BEHAVIOUR:
-            #   1. Check `response.tool_calls` first (populated by adapters).
-            #      If non-empty, these are structured ToolCallRequest objects — use them.
-            #   2. Fall back to `_parse_tool_calls(response.text)` ONLY when
-            #      `response.tool_calls` is empty (e.g. local/custom models that
-            #      don't support native function calling).
-            #
-            # CHANGES:
-            #   Replace the block below with:
-            #
-            #     if response.tool_calls:
-            #         # Native path — use structured tool calls from adapter
-            #         calls_to_run = [
-            #             {"tool": tc.tool_name, "input": tc.tool_input}
-            #             for tc in response.tool_calls
-            #         ]
-            #     else:
-            #         # Text fallback path — parse ```tool_call``` blocks
-            #         calls_to_run = _parse_tool_calls(response.text)
-            #
-            #   Then iterate over `calls_to_run` as now.
-            #
-            # HISTORY-BUILDING (see ReActStrategy):
-            #   When native tool calls are used, the follow-up user message must
-            #   include a provider-specific tool result block, NOT a plain text
-            #   observation. See adapters.py per-provider FOLLOW-UP TURN comments
-            #   for the exact format required by each provider.
+            # Text fallback — ``_parse_tool_calls`` extracts ```tool_call``` code blocks
+            #   from free-form LLM output.  Used for models that do not support native
+            #   function calling or when ``tools`` was not passed to this pipeline.
             # ---------------------------------------------------------------------------
-            inline_tool_calls = _parse_tool_calls(response.text)
-            if inline_tool_calls:
-                observations = []
+            observations: List[str] = []
+            if response.tool_calls:
+                # Native function-calling path.
+                last_had_native_calls = True
+                for tc in response.tool_calls:
+                    record = await _execute_tool(
+                        tool_registry, tc.tool_name, tc.tool_input, context,
+                    )
+                    turn.tool_calls.append(record)
+                    observations.append(_format_observation(record))
+            else:
+                # Text-based fallback path.
+                last_had_native_calls = False
+                inline_tool_calls = _parse_tool_calls(response.text)
                 for tc in inline_tool_calls:
                     record = await _execute_tool(
                         tool_registry, tc["tool"], tc.get("input", {}), context,
                     )
                     turn.tool_calls.append(record)
                     observations.append(_format_observation(record))
+
+            if observations:
                 turn.observation = "\n".join(observations)
 
             turns.append(turn)
 
-            # store model output in pipeline state under step id
+            # Store model output in pipeline state under step id.
             final = _parse_final_answer(response.text)
             step_output = final if final else {agent.output_key: response.text}
             pipeline_state[step.id] = step_output
@@ -426,7 +471,7 @@ async def _run_pipeline(
                 llm_request={"step_id": step.id, "tool": step.tool},
                 tool_calls=[record],
             )
-            # store tool output in pipeline state
+            # Store tool output in pipeline state.
             if record.result and record.result.success:
                 pipeline_state[step.id] = record.result.output or {}
             else:
@@ -436,7 +481,7 @@ async def _run_pipeline(
                 )
             turns.append(turn)
 
-    return turns, pipeline_state, last_model_text
+    return turns, pipeline_state, last_model_text, last_had_native_calls
 
 
 # ── Strategy implementations ────────────────────────────────────────────
@@ -454,16 +499,20 @@ class SingleCallStrategy:
         context: AgentContext,
     ) -> AgentResult:
         pipeline_state: Dict[str, Any] = {"inputs": inputs}
-        turns, pipeline_state, last_text = await _run_pipeline(
+        tools = _build_tool_schemas(agent, tool_registry) if agent.tools else None
+        turns, pipeline_state, last_text, _ = await _run_pipeline(
             agent, llm_client, tool_registry, inputs, context,
-            pipeline_state, iteration=1,
+            pipeline_state, iteration=1, tools=tools,
         )
 
-        # output comes from the last pipeline step
+        # Output comes from the last pipeline step.
         last_step_id = agent.pipeline[-1].id
         step_output = pipeline_state.get(last_step_id, {})
         final = _parse_final_answer(last_text) if last_text else None
-        outputs = final if final else (step_output if isinstance(step_output, dict) else {agent.output_key: str(step_output)})
+        outputs = final if final else (
+            step_output if isinstance(step_output, dict)
+            else {agent.output_key: str(step_output)}
+        )
 
         return AgentResult(
             outputs=outputs,
@@ -477,10 +526,13 @@ class SingleCallStrategy:
 class ReActStrategy:
     """ReAct loop: each iteration runs the full pipeline.
 
-    The last model step in the pipeline decides whether to loop
-    (no ``final_answer`` block) or stop (has ``final_answer`` block).
+    The last model step in the pipeline decides whether to loop or stop:
+      - **Native function calling**: a turn with no ``tool_calls`` in the
+        response signals completion (the model has nothing more to do).
+      - **Text-based fallback**: a ``final_answer`` code block signals
+        completion; absence of one continues the loop.
     State is accumulated across iterations.
-    # TODO: make accumulation configurable (option: clean slate per iteration)
+    # TODO(eng): make accumulation configurable (option: clean slate per iteration)
     """
 
     async def run(
@@ -492,31 +544,99 @@ class ReActStrategy:
         context: AgentContext,
     ) -> AgentResult:
         max_iter = agent.strategy.max_iterations
-        # TODO: make referencing configurable (options: named ids, positional prev.*, accumulator)
+        # TODO(eng): make referencing configurable (options: named ids, positional prev.*, accumulator)
         pipeline_state: Dict[str, Any] = {"inputs": inputs}
         all_turns: List[AgentTurn] = []
+        tools = _build_tool_schemas(agent, tool_registry) if agent.tools else None
 
         for i in range(1, max_iter + 1):
-            # expose iteration number in state for prompt templates
+            # Expose iteration number in state for prompt templates.
             pipeline_state["_iteration"] = i
 
-            # build message history from previous turns
-            history: List[Dict[str, str]] = []
+            # ---------------------------------------------------------------------------
+            # Build message history from previous turns.
+            #
+            # Turns that used native function calling emit structured history entries
+            # (``_native_tool_calls`` / ``tool_results`` sentinel roles) so that each
+            # adapter can translate them into its own wire format.
+            #
+            # Turns that used text-based tool calling emit plain assistant + user
+            # observation entries — identical to the pre-native behaviour.
+            # ---------------------------------------------------------------------------
+            history: List[Dict[str, Any]] = []
             for turn in all_turns:
-                if turn.llm_response and turn.llm_response.text:
-                    history.append({"role": "assistant", "content": turn.llm_response.text})
-                if turn.observation:
-                    history.append({"role": "user", "content": f"Tool observation:\n{turn.observation}"})
+                if not turn.llm_response:
+                    continue
+                if turn.llm_response.tool_calls:
+                    # Native path: replay the assistant's tool_call requests …
+                    history.append({
+                        "role": "assistant",
+                        "content": turn.llm_response.text or "",
+                        "_native_tool_calls": [
+                            {"id": tc.id, "name": tc.tool_name, "input": tc.tool_input}
+                            for tc in turn.llm_response.tool_calls
+                        ],
+                    })
+                    # … then the tool execution results.
+                    # ``turn.tool_calls`` is parallel to ``turn.llm_response.tool_calls``.
+                    if turn.tool_calls:
+                        history.append({
+                            "role": "tool_results",
+                            "_native_results": [
+                                {
+                                    "id": req.id,
+                                    "name": req.tool_name,
+                                    "content": json.dumps(
+                                        executed.result.output
+                                        if (executed.result and executed.result.success)
+                                        else f"Error: {executed.result.error if executed.result else 'unknown'}",
+                                        default=str,
+                                    ),
+                                }
+                                for req, executed in zip(
+                                    turn.llm_response.tool_calls, turn.tool_calls
+                                )
+                            ],
+                        })
+                else:
+                    # Text-based path: plain assistant text + observation.
+                    if turn.llm_response.text:
+                        history.append({"role": "assistant", "content": turn.llm_response.text})
+                    if turn.observation:
+                        history.append({"role": "user", "content": f"Tool observation:\n{turn.observation}"})
             if history:
                 pipeline_state["_history"] = history
 
-            turns, pipeline_state, last_text = await _run_pipeline(
+            turns, pipeline_state, last_text, last_had_native_calls = await _run_pipeline(
                 agent, llm_client, tool_registry, inputs, context,
-                pipeline_state, iteration=i,
+                pipeline_state, iteration=i, tools=tools,
             )
             all_turns.extend(turns)
 
-            # check if the last model step produced a final_answer
+            # -- Stop condition 1: native path, model requested no more tools ------------
+            # When native function calling is active, the model signals completion by
+            # returning a turn with no tool_calls.  We distinguish this from the
+            # text-based fallback by checking whether any turn in this iteration
+            # actually executed a tool (native OR text): if not, the model is done.
+            this_iteration_called_tools = any(t.tool_calls for t in turns)
+            if tools and last_had_native_calls is False and not this_iteration_called_tools:
+                last_step_id = agent.pipeline[-1].id
+                step_output = pipeline_state.get(last_step_id, {})
+                # Prefer an explicit final_answer block; fall back to step output.
+                final = _parse_final_answer(last_text) if last_text else None
+                outputs = final if final else (
+                    step_output if isinstance(step_output, dict)
+                    else {agent.output_key: str(step_output)}
+                )
+                return AgentResult(
+                    outputs=outputs,
+                    trace=all_turns,
+                    iterations=i,
+                    token_usage=_aggregate_usage(all_turns),
+                    final_text=last_text,
+                )
+
+            # -- Stop condition 2: explicit final_answer block (text-based path) ---------
             final = _parse_final_answer(last_text) if last_text else None
             if final:
                 return AgentResult(
@@ -527,7 +647,7 @@ class ReActStrategy:
                     final_text=last_text,
                 )
 
-            # evaluate stop_conditions against current pipeline state
+            # -- Stop condition 3: declarative stop_conditions ---------------------------
             if agent.strategy.stop_conditions:
                 from ..utils import safe_eval
                 for cond in agent.strategy.stop_conditions:
@@ -535,7 +655,10 @@ class ReActStrategy:
                         if safe_eval(cond, pipeline_state):
                             last_step_id = agent.pipeline[-1].id
                             step_output = pipeline_state.get(last_step_id, {})
-                            outputs = step_output if isinstance(step_output, dict) else {agent.output_key: str(step_output)}
+                            outputs = (
+                                step_output if isinstance(step_output, dict)
+                                else {agent.output_key: str(step_output)}
+                            )
                             return AgentResult(
                                 outputs=outputs,
                                 trace=all_turns,
@@ -543,16 +666,18 @@ class ReActStrategy:
                                 token_usage=_aggregate_usage(all_turns),
                                 final_text=last_text if last_text else "",
                             )
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         pass  # invalid condition — skip rather than crash the loop
 
-            # no final_answer — plain text with no loop signal;
-            # continue to next iteration (or stop at max)
+            # No stop signal — continue to next iteration (or stop at max).
 
-        # max iterations reached — return last response as output
+        # Max iterations reached — return last response as output.
         last_step_id = agent.pipeline[-1].id
         step_output = pipeline_state.get(last_step_id, {})
-        outputs = step_output if isinstance(step_output, dict) else {agent.output_key: str(step_output)}
+        outputs = (
+            step_output if isinstance(step_output, dict)
+            else {agent.output_key: str(step_output)}
+        )
         return AgentResult(
             outputs=outputs,
             trace=all_turns,

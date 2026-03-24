@@ -96,7 +96,7 @@ def _discover_tool_instances(tools_dir: str) -> List[tuple]:
             continue
 
         module = importlib.util.module_from_spec(spec)
-        # TODO(Eng-3, module-caching): Same sys.modules caching concern as
+        # TODO(eng): module-caching - Same sys.modules caching concern as
         #   function_resolver._import_from_path — stale modules after edits.
         sys.modules[module_name] = module
         spec.loader.exec_module(module)

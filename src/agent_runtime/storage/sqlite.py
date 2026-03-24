@@ -115,7 +115,7 @@ class SQLiteStorage(Storage):
           outermost transaction.  SQLite does not support true nested
           transactions; savepoints could be added later if needed.
 
-        TODO(future): Use SAVEPOINT for nested transactions if callers
+        TODO(eng): Use SAVEPOINT for nested transactions if callers
           ever need independent rollback of inner blocks.
         """
         if self._in_transaction:
@@ -195,6 +195,7 @@ class SQLiteStorage(Storage):
                 tool_duration_ms INTEGER,
                 attempts INTEGER,
                 agent_trace_json TEXT,
+                token_usage_json TEXT,
                 FOREIGN KEY(run_id) REFERENCES runs(id)
             );
             CREATE TABLE IF NOT EXISTS state_versions (
@@ -230,6 +231,8 @@ class SQLiteStorage(Storage):
             conn.execute("ALTER TABLE steps ADD COLUMN tool_duration_ms INTEGER")
         if "agent_trace_json" not in columns:
             conn.execute("ALTER TABLE steps ADD COLUMN agent_trace_json TEXT")
+        if "token_usage_json" not in columns:
+            conn.execute("ALTER TABLE steps ADD COLUMN token_usage_json TEXT")
 
     def _ensure_runs_columns(self, conn: sqlite3.Connection) -> None:
         """Add missing `runs` table columns for backward compatibility."""
@@ -296,9 +299,10 @@ class SQLiteStorage(Storage):
             INSERT INTO steps (
                 run_id, step_id, type, status, input_json, output_json, error, last_error,
                 state_before_json, state_after_json, execution_index, started_at, finished_at,
-                duration_ms, handler_duration_ms, tool_duration_ms, attempts, agent_trace_json
+                duration_ms, handler_duration_ms, tool_duration_ms, attempts, agent_trace_json,
+                token_usage_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -319,6 +323,7 @@ class SQLiteStorage(Storage):
                 step.tool_duration_ms,
                 step.attempt_count,
                 json_dumps(step.agent_trace) if step.agent_trace is not None else None,
+                json_dumps(step.token_usage) if step.token_usage is not None else None,
             ),
         )
 
@@ -374,6 +379,7 @@ class SQLiteStorage(Storage):
         for row in rows:
             from ..core import StepExecution
             agent_trace_raw = row["agent_trace_json"] if "agent_trace_json" in row.keys() else None
+            token_usage_raw = row["token_usage_json"] if "token_usage_json" in row.keys() else None
             steps.append(
                 StepExecution(
                     step_id=row["step_id"],
@@ -393,6 +399,7 @@ class SQLiteStorage(Storage):
                     attempt_count=row["attempts"],
                     execution_index=row["execution_index"],
                     agent_trace=json_loads(agent_trace_raw) if agent_trace_raw else None,
+                    token_usage=json_loads(token_usage_raw) if token_usage_raw else None,
                 )
             )
         return steps

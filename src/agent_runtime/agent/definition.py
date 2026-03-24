@@ -48,7 +48,7 @@ class StrategyConfig:
 # -- pipeline step ---------------------------------------------------------
 
 VALID_PIPELINE_STEP_TYPES = ("model", "tool")
-# TODO: Consider adding "agent" pipeline step type for nested agent calls
+# TODO(roadmap): Consider adding "agent" pipeline step type for nested agent calls
 # in the future.  For now, pipelines only support model + tool steps.
 
 

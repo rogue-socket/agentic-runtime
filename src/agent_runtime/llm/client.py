@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from .adapters import LLMAdapter, OpenAIAdapter, AnthropicAdapter, GeminiAdapter
+from .adapters import LLMAdapter, OpenAIAdapter, AnthropicAdapter, GeminiAdapter, MockAdapter
 from .registry import LLMRegistry
 from .types import LLMResponse
 from ..logging import StructuredLogger
@@ -13,13 +13,13 @@ from ..logging import StructuredLogger
 class LLMClient:
     """Client facade that resolves providers/models and executes calls."""
 
-    # TODO(Prod Pain Point #3 — Rate Limiting Across Concurrent Runs): One
+    # TODO(pain-point): Rate Limiting Across Concurrent Runs - One
     #   workflow is fine. Fifty concurrent webhook-triggered runs all hit the
     #   same provider and get rate-limited together. Add a global rate limiter
     #   (token bucket or semaphore) at this client level so concurrent
     #   Executor instances share a throttled request queue instead of each
     #   independently hammering the API and triggering 429s.
-    # TODO(Prod Pain Point #10 — Model Regression Detection): When you swap
+    # TODO(pain-point): Model Regression Detection - When you swap
     #   from gpt-4o-2024-05-13 to gpt-4o-2024-08-06, nothing breaks but
     #   output quality subtly shifts. Add a `compare_models()` utility that
     #   runs the same inputs through two model versions and diffs outputs
@@ -37,6 +37,7 @@ class LLMClient:
             OpenAIAdapter.provider_name: OpenAIAdapter(),
             AnthropicAdapter.provider_name: AnthropicAdapter(),
             GeminiAdapter.provider_name: GeminiAdapter(),
+            MockAdapter.provider_name: MockAdapter(),
         }
 
     def call(
@@ -49,22 +50,28 @@ class LLMClient:
         history: Optional[List[Dict[str, str]]] = None,
         params: Optional[Dict[str, Any]] = None,
         context: Optional[Dict[str, Any]] = None,
-        # TODO(native-function-calling — Phase 2: LLMClient passthrough)
-        # Add: tools: Optional[List[Dict[str, Any]]] = None
-        # Each entry: {"name": str, "description": str, "parameters": JSON Schema}
-        # Pass `tools` to adapter.call() unchanged — adapters handle the wire format.
-        # The `tools` list is built in strategies._build_tool_schemas() (to be created)
-        # by reading tool.input_schema for each tool in agent.tools.
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResponse:
-        """Resolve provider/model and invoke the matching adapter."""
+        """Resolve provider/model and invoke the matching adapter.
+
+        Args:
+            tools: Provider-agnostic tool schema list for native function calling.
+                   Each entry: ``{"name": str, "description": str, "parameters": JSON Schema}``.
+                   Built by ``strategies._build_tool_schemas()`` from the agent's tool registry.
+                   Pass ``None`` to disable native function calling (text-based fallback).
+        """
+
         provider_name, model_id = self._resolve_provider_model(provider, model)
         provider_obj = self.registry.get_provider(provider_name)
         if provider_obj is None:
             raise ValueError(f"LLM provider not configured: {provider_name}")
 
         api_key = provider_obj.resolve_api_key()
-        if not api_key:
+        if not api_key and provider_name != "mock":
             raise ValueError(f"API key env var '{provider_obj.api_key_env}' is not set")
+        
+        # Handle mock provider with a synthetic key if not provided
+        api_key = api_key or "mock-key"
 
         adapter = self.adapters.get(provider_name)
         if adapter is None:
@@ -104,6 +111,7 @@ class LLMClient:
                 history=history,
                 context=context,
                 timeout=timeout,
+                tools=tools,
             )
         except Exception as exc:  # noqa: BLE001
             if self.logger:

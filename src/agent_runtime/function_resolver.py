@@ -104,7 +104,7 @@ def _resolve_unqualified(ref: str, functions_dir: str) -> Callable:
 
 def _import_from_path(filepath: str, module_name: str):
     """Import a Python module from an absolute file path."""
-    # TODO(Eng-3, module-caching): Modules are cached in sys.modules under
+    # TODO(eng): module-caching - Modules are cached in sys.modules under
     #   a synthetic prefix (_runtime_functions.*).  This means:
     #   - File edits on disk are invisible until the process restarts.
     #   - Long-running CLI sessions or watch-mode servers will use stale code.

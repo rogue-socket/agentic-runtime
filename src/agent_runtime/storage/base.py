@@ -26,7 +26,7 @@ class Storage(ABC):
       subclass should be a drop-in replacement for SQLiteStorage.
     TODO(roadmap): Consider a remote-capable storage adapter (e.g., S3 + DynamoDB)
       for cloud-native deployments where SQLite files aren't practical.
-    TODO(PM-6, multi-user): Storage is currently single-user — one SQLite file
+    TODO(roadmap): Storage is currently single-user — one SQLite file
       per project with no authentication or access control.  For team use:
       1. Add a `user_id` / `tenant_id` column to the runs table.
       2. Add row-level filtering in all read paths so users only see their runs.

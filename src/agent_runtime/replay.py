@@ -35,10 +35,10 @@ class ReplayResult:
 # [Pain Point Partial] #N9 Cold-Path Amnesia: Replay can re-verify individual runs
 #   including branched paths, but there is no branch-coverage tracking to warn that
 #   a rarely-executed path hasn't been exercised in months.
-# TODO(Pain Point #N9 — Cold-Path Amnesia): Add branch-coverage tracking across
+# TODO(pain-point): Cold-Path Amnesia - Add branch-coverage tracking across
 #   replays. Track which workflow branches have been exercised and warn when a
 #   path hasn't been tested since the workflow YAML was last modified.
-# TODO(Prod Pain Point #8 — Snapshot Testing for LLM Outputs): Replay works for
+# TODO(pain-point): Snapshot Testing for LLM Outputs - Replay works for
 #   full runs, but there's no test-fixture pattern for it. Add a `capture_golden`
 #   mode that records LLM responses as snapshots, and a `replay_golden` mode that
 #   replays from those snapshots in tests — so you can validate pipeline behavior
