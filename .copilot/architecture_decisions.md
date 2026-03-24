@@ -437,3 +437,30 @@ The `EventCallback` mechanism already fires at the right lifecycle points. An Op
 - Step records map to child spans with `step_id`, `step_type`, `status`, `duration_ms`.
 - LLM-specific span attributes: model name, token count, estimated cost.
 - The visualization module can read from OTel-exported data, not just local storage — enabling remote run inspection.
+
+---
+
+## ADR-014: Categorized TODO Governance
+
+**Date:** 2026-03-25
+**Status:** Accepted
+
+### Decision
+Inline TODO comments in source should use categorized tags and follow the repo taxonomy from `vision/todos.md`: `roadmap`, `pain-point`, `ux`, `security`, and `eng` (with optional milestone tags such as `0.2.0` for release-gated work).
+
+When an implementation intentionally takes a simplified or partial path, authors should leave a categorized TODO at the decision point documenting what was deferred and why.
+
+### Context
+The repository already tracks TODOs as planning inputs and groups them by category. Unstructured TODO comments reduce planning quality and make automated reporting less reliable.
+
+### Reasoning
+Standardized TODO tags create a reliable bridge between code-level tradeoffs and backlog planning. Requiring TODOs for intentional shortcuts prevents silent technical debt and improves handoff quality for future contributors.
+
+### Alternatives Considered
+- **Free-form TODOs:** easy to write, hard to aggregate and prioritize.
+- **External backlog only (no inline TODOs):** cleaner source files but loses local rationale at the exact implementation point.
+
+### Implications
+- New TODO comments should use `TODO(<category>): ...` format.
+- `vision/todos.md` remains the canonical aggregate view for TODO planning.
+- Session/bootstrap prompts should remind contributors to add categorized TODOs when deferring important work.

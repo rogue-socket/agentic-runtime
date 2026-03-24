@@ -9,6 +9,7 @@ Tasks:
    - progress made in this session
    - files modified
    - key implementation details
+   - active local environment context (include conda env `agent_runtime`)
    - remaining tasks
    - known bugs or issues
    - recommended next steps
@@ -24,7 +25,16 @@ Each decision should include:
 - reasoning
 - implications
 
-4. Generate a short "next session bootstrap prompt" that can be pasted into a new Copilot chat.
+4. Capture TODO follow-ups using repo taxonomy from `vision/todos.md`.
+For any deferred work from this session, require categorized TODO format in notes/code:
+- `TODO(roadmap): ...`
+- `TODO(pain-point): ...`
+- `TODO(ux): ...`
+- `TODO(security): ...`
+- `TODO(eng): ...`
+- or explicit milestone tags like `TODO(0.2.0): ...`
+
+5. Generate a short "next session bootstrap prompt" that can be pasted into a new Copilot chat.
 
 Output format:
 
