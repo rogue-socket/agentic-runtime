@@ -37,6 +37,7 @@ TODO(ux): ICP is solo dev / small team building an agent. The CLI
 import argparse
 import getpass
 import os
+from pprint import pformat
 import re
 import sys
 from typing import Any, Dict, List, Optional
@@ -2240,22 +2241,58 @@ if __name__ == "__main__":
 
 
 def _diff_state(before: dict, after: dict) -> dict:
-    """Return top-level state diff summary for CLI output."""
-    # TODO(ux): Improve diff granularity beyond top-level keys.
+    """Return state diff summary for CLI output.
+
+    Uses nested path-level diffs when available, with truncation to keep
+    inspect output readable in terminals.
+    """
+    # TODO(eng): list-diff - RuntimeState.diff_paths currently treats lists as
+    #   atomic values, so large list mutations show as one changed path rather
+    #   than item-level edits.
+    # TODO(ux): Add --diff-limit / --full flags so users can control truncation.
     # TODO(ux): Add CLI graph visualization for branching workflows.
-    return RuntimeState.diff(before, after)
+    changes = RuntimeState.diff_paths(before, after)
+    if not changes:
+        return {"added": [], "removed": [], "changed": []}
+
+    added: list[str] = [c["path"] for c in changes if c.get("op") == "+"]
+    removed: list[str] = [c["path"] for c in changes if c.get("op") == "-"]
+    changed: list[str] = [c["path"] for c in changes if c.get("op") == "~"]
+
+    max_items = 20
+
+    def _truncate(items: list[str]) -> list[str]:
+        if len(items) <= max_items:
+            return items
+        remaining = len(items) - max_items
+        return items[:max_items] + [f"... (+{remaining} more)"]
+
+    return {
+        "added": _truncate(added),
+        "removed": _truncate(removed),
+        "changed": _truncate(changed),
+    }
+
+
+def _format_redacted_for_cli(value: Any, *, max_chars: int = 6000) -> str:
+    """Pretty-format redacted content and cap output size for terminal safety."""
+    text = pformat(_redact(value), width=100, sort_dicts=True)
+    if len(text) <= max_chars:
+        return text
+    omitted = len(text) - max_chars
+    return f"{text[:max_chars]}\n... [truncated {omitted} chars]"
 
 
 def _print_state_history(steps, latest_state) -> None:
     """Print per-step state mutation summary for inspect command."""
     # TODO(eng): Support snapshot compression for large states.
-    # TODO(ux): Handle large state output safely (pagination or truncation).
+    # TODO(ux): Add interactive pager mode for long histories (--pager).
     if not steps:
         return
     initial = steps[0].state_before or latest_state
     print("\nState history:")
     print("Initial state:")
-    print(_redact(initial))
+    print(_format_redacted_for_cli(initial))
     print("\n----------------------------------------")
     for idx, step in enumerate(steps, start=1):
         print(f"Step {idx} {step.step_id}")
@@ -2276,10 +2313,10 @@ def _print_state_history(steps, latest_state) -> None:
             print("(no changes)")
         if step.output is not None:
             print("Output:")
-            print(_redact(step.output))
+            print(_format_redacted_for_cli(step.output))
         if step.state_after is not None:
             print("State after:")
-            print(_redact(step.state_after))
+            print(_format_redacted_for_cli(step.state_after))
         print("\n----------------------------------------")
 
 
