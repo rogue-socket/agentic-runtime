@@ -251,6 +251,131 @@ def test_retry_policy_succeeds() -> None:
     assert run.state.data["steps"]["flaky"]["ok"] is True
 
 
+def test_retry_emits_step_retry_event() -> None:
+    storage = make_storage()
+    tool_registry = ToolRegistry()
+    events = []
+
+    attempts = {"count": 0}
+
+    def flaky_function(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        attempts["count"] += 1
+        if attempts["count"] < 2:
+            raise ValueError("transient")
+        return {"ok": True}
+
+    steps = [
+        StepDefinition(
+            step_id="flaky",
+            step_type="function",
+            function_callable=flaky_function,
+            retry=RetryPolicy(attempts=2, backoff="fixed", initial_delay=0),
+        )
+    ]
+
+    def on_event(event: str, payload: Dict[str, Any]) -> None:
+        events.append((event, payload))
+
+    executor = Executor(
+        steps,
+        storage,
+        None,
+        make_memory_manager(),
+        tool_registry,
+        on_event=on_event,
+    )
+
+    run = executor.run("wf", {"issue": "x"})
+    assert run.status == StepStatus.COMPLETED
+
+    retry_events = [payload for event, payload in events if event == "STEP_RETRY"]
+    assert len(retry_events) == 1
+    assert retry_events[0]["attempt"] == 1
+    assert retry_events[0]["next_attempt"] == 2
+    assert retry_events[0]["max_attempts"] == 2
+
+
+def test_optional_step_uses_default_output_and_continues() -> None:
+    storage = make_storage()
+    tool_registry = ToolRegistry()
+
+    def enrich_fails(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        raise ValueError("enrichment backend unavailable")
+
+    def consume_summary(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return {"final": f"used={inputs['summary']}"}
+
+    steps = [
+        StepDefinition(
+            step_id="enrich",
+            step_type="function",
+            function_callable=enrich_fails,
+            output_contract=["summary"],
+            optional=True,
+            default_output={"summary": "fallback"},
+        ),
+        StepDefinition(
+            step_id="consume",
+            step_type="function",
+            function_callable=consume_summary,
+            input_spec={"summary": "steps.enrich.summary"},
+        ),
+    ]
+
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
+    run = executor.run("wf", {"issue": "x"})
+
+    assert run.status == StepStatus.COMPLETED
+    assert run.state.data["steps"]["enrich"]["summary"] == "fallback"
+    assert run.state.data["steps"]["consume"]["final"] == "used=fallback"
+
+    persisted_steps = storage.load_steps(run.run_id)
+    enrich_exec = next(step for step in persisted_steps if step.step_id == "enrich")
+    assert enrich_exec.status == StepStatus.COMPLETED
+    assert enrich_exec.last_error is not None
+    assert "ValueError" in enrich_exec.last_error
+
+
+def test_heartbeat_emitted_for_long_running_tool_step() -> None:
+    storage = make_storage()
+    tool_registry = ToolRegistry()
+    events = []
+
+    class SlowTool:
+        name = "tools.slow"
+        description = "slow"
+        input_schema = {"type": "object", "properties": {}}
+        timeout = None
+        retries = None
+
+        async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+            await asyncio.sleep(0.08)
+            return ToolResult(success=True, output={"ok": True}, error=None, metadata=None)
+
+    tool_registry.register(SlowTool())
+
+    steps = [StepDefinition(step_id="slow", step_type="tool", tool_name="tools.slow", raw_input={})]
+
+    def on_event(event: str, payload: Dict[str, Any]) -> None:
+        events.append((event, payload))
+
+    executor = Executor(
+        steps,
+        storage,
+        None,
+        make_memory_manager(),
+        tool_registry,
+        on_event=on_event,
+        heartbeat_interval_s=0.005,
+    )
+
+    run = executor.run("wf", {"issue": "x"})
+    assert run.status == StepStatus.COMPLETED
+
+    heartbeat_events = [payload for event, payload in events if event == "STEP_HEARTBEAT"]
+    assert heartbeat_events
+
+
 def test_state_snapshots_persisted() -> None:
     storage = make_storage()
     tool_registry = ToolRegistry()

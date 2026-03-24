@@ -80,6 +80,12 @@ def _validate_step(step: Dict[str, Any]) -> None:
             raise WorkflowValidationError("Step outputs must be a list of strings.")
     if "next" in step and not isinstance(step["next"], list):
         raise WorkflowValidationError("Step next must be a list of rules.")
+    if "optional" in step and not isinstance(step["optional"], bool):
+        raise WorkflowValidationError("Step optional must be a boolean.")
+    if "default" in step and not isinstance(step["default"], dict):
+        raise WorkflowValidationError("Step default must be a mapping.")
+    if "default" in step and not step.get("optional", False):
+        raise WorkflowValidationError("Step default requires optional: true.")
 
 
 def _extract_workflow_identity(raw: Dict[str, Any]) -> Tuple[str, Optional[str]]:
@@ -233,6 +239,10 @@ def _parse_workflow(
         timeout_ms = step.get("timeout_ms")
         if timeout_ms is not None and (not isinstance(timeout_ms, int) or timeout_ms < 0):
             raise WorkflowValidationError("timeout_ms must be a non-negative integer.")
+        optional = bool(step.get("optional", False))
+        default_output = step.get("default")
+        if optional and default_output is None:
+            default_output = {}
 
         retry_cfg = step.get("retry")
         retry = None
@@ -306,6 +316,19 @@ def _parse_workflow(
                         )
 
         output_contract = step.get("outputs")
+        if output_contract and optional and default_output is not None:
+            expected = set(output_contract)
+            actual = set(default_output.keys())
+            missing = expected - actual
+            extra = actual - expected
+            if missing:
+                raise WorkflowValidationError(
+                    f"Step {step['id']} default output missing contract keys: {sorted(missing)}"
+                )
+            if extra:
+                raise WorkflowValidationError(
+                    f"Step {step['id']} default output has undeclared keys: {sorted(extra)}"
+                )
         if output_contract:
             for output_key in output_contract:
                 if output_key in produced_by:
@@ -332,6 +355,8 @@ def _parse_workflow(
                     input_contract=input_contract,
                     output_contract=output_contract,
                     next_rules=next_rules,
+                    optional=optional,
+                    default_output=default_output,
                     timeout_ms=timeout_ms,
                 )
             )
@@ -353,6 +378,8 @@ def _parse_workflow(
                     input_contract=input_contract,
                     output_contract=output_contract,
                     next_rules=next_rules,
+                    optional=optional,
+                    default_output=default_output,
                     timeout_ms=timeout_ms,
                 )
             )
@@ -368,6 +395,8 @@ def _parse_workflow(
                     input_contract=input_contract,
                     output_contract=output_contract,
                     next_rules=next_rules,
+                    optional=optional,
+                    default_output=default_output,
                     timeout_ms=timeout_ms,
                 )
             )

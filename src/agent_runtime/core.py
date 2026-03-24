@@ -128,6 +128,8 @@ class StepDefinition:
     input_contract: Optional[List[str]] = None
     output_contract: Optional[List[str]] = None
     next_rules: Optional[List["NextRule"]] = None
+    optional: bool = False
+    default_output: Optional[Dict[str, Any]] = None
     # Step-level execution time limit declared in
     # workflow YAML as `timeout_ms: 30000`. Parsed in workflow.py and stored
     # here. The executor wraps agent/tool dispatch with:
@@ -262,6 +264,7 @@ class Executor:
         agent_registry: Any = None,
         llm_client: Any = None,
         default_model: str = "",
+        heartbeat_interval_s: float = 5.0,
     ) -> None:
         """Initialize executor dependencies and step lookup tables."""
         self.steps = steps
@@ -276,12 +279,8 @@ class Executor:
         self.agent_registry = agent_registry
         self.llm_client = llm_client
         self.default_model = default_model
+        self.heartbeat_interval_s = max(0.05, float(heartbeat_interval_s))
 
-    # TODO(pain-point): Heartbeats for Long-Running Workflows - A react
-    #   agent iterating 5 times with tool calls can take 30+ seconds. Behind a
-    #   load balancer or API gateway, the connection times out. Add a WebSocket/SSE
-    #   adapter for `on_event` that streams STEP_START/STEP_COMPLETE/agent iteration
-    #   progress to clients in real-time — not just a final result.
     def _emit(self, event: str, payload: Dict[str, Any]) -> None:
         """Fire the on_event callback if registered."""
         if self.on_event is not None:
@@ -493,6 +492,7 @@ class Executor:
 
                 output = None
                 last_error: Optional[Exception] = None
+                degraded_error: Optional[str] = None
                 handler_duration_ms: Optional[int] = None
                 tool_duration_ms: Optional[int] = None
                 for attempt in range(1, max_attempts + 1):
@@ -555,8 +555,15 @@ class Executor:
                             )
                             agent_input = step_input if step_def.input_spec is not None else snapshot
                             call_start = time.monotonic()
-                            
-                            coro = agent_executor.execute(agent_def, agent_input, agent_ctx)
+
+                            coro = self._await_with_heartbeat(
+                                agent_executor.execute(agent_def, agent_input, agent_ctx),
+                                run_id=run.run_id,
+                                step_id=step_def.step_id,
+                                step_type=step_def.step_type,
+                                execution_index=execution_index,
+                                attempt=attempt,
+                            )
                             if step_def.timeout_ms:
                                 t_sec = float(step_def.timeout_ms) / 1000.0
                                 try:
@@ -565,7 +572,7 @@ class Executor:
                                     raise StepExecutionError(f"Agent step timed out after {step_def.timeout_ms}ms")
                             else:
                                 agent_result = await coro
-                                
+
                             handler_duration_ms = int((time.monotonic() - call_start) * 1000)
                             output = agent_result.outputs
                             execution.token_usage = agent_result.token_usage
@@ -612,7 +619,14 @@ class Executor:
                             tool = self.tool_registry.get(step_def.tool_name)
                             tool_input = step_input if step_def.input_spec is not None else format_template(step_def.raw_input or {}, snapshot)
                             
-                            coro = self._execute_tool_async(tool, tool_input, run.run_id, step_def.step_id, snapshot)
+                            coro = self._await_with_heartbeat(
+                                self._execute_tool_async(tool, tool_input, run.run_id, step_def.step_id, snapshot),
+                                run_id=run.run_id,
+                                step_id=step_def.step_id,
+                                step_type=step_def.step_type,
+                                execution_index=execution_index,
+                                attempt=attempt,
+                            )
                             if step_def.timeout_ms:
                                 t_sec = float(step_def.timeout_ms) / 1000.0
                                 try:
@@ -630,17 +644,31 @@ class Executor:
                         last_error = exc
                         execution.last_error = f"{type(exc).__name__}: {exc}"
                         if attempt < max_attempts:
-                            # TODO(pain-point): Retry-Aware Observability - Emit a
-                            #   structured STEP_RETRY event here so logs distinguish
-                            #   transient failures (recovered by retry) from real
-                            #   failures. Without this, monitoring dashboards overcount
-                            #   errors — retries that succeed look like 75% error rates.
                             delay = _compute_backoff_delay(attempt, backoff, initial_delay)
+                            self._emit("STEP_RETRY", {
+                                "run_id": run.run_id,
+                                "step_id": step_def.step_id,
+                                "step_type": step_def.step_type,
+                                "execution_index": execution_index,
+                                "attempt": attempt,
+                                "next_attempt": attempt + 1,
+                                "max_attempts": max_attempts,
+                                "error": execution.last_error,
+                                "backoff": backoff,
+                                "delay_ms": int(delay * 1000),
+                            })
                             if delay > 0:
                                 await asyncio.sleep(delay)
 
                 if last_error is not None:
-                    raise last_error
+                    if step_def.optional:
+                        degraded_error = f"{type(last_error).__name__}: {last_error}"
+                        execution.last_error = degraded_error
+                        output = copy.deepcopy(step_def.default_output) if step_def.default_output is not None else {}
+                        if not isinstance(output, dict):
+                            raise StepExecutionError("Optional step default output must be a dict.")
+                    else:
+                        raise last_error
 
                 if output is None or not isinstance(output, dict):
                     raise StepExecutionError("Step handler must return a dict.")
@@ -668,11 +696,6 @@ class Executor:
                 # - Prevent modification of "inputs"
                 # - Prevent overwriting existing step outputs unless explicitly allowed
                 # - Add collision validation policy
-                # TODO(pain-point): No Graceful Degradation - on_error is
-                #   workflow-level. But sometimes step 3 is a nice-to-have enrichment
-                #   that shouldn't kill the run. Add per-step `optional: true` with a
-                #   `default` output value, so failures use the fallback and continue
-                #   without marking the whole run as COMPLETED_WITH_ERRORS.
                 if "inputs" in output:
                     raise StepExecutionError("Step output cannot include reserved key: inputs")
                 if step_def.step_id in run.state.data.get("steps", {}):
@@ -685,6 +708,15 @@ class Executor:
                 execution.status = StepStatus.COMPLETED
                 execution.handler_duration_ms = handler_duration_ms
                 execution.tool_duration_ms = tool_duration_ms
+                if degraded_error is not None:
+                    self._emit("STEP_DEGRADED", {
+                        "run_id": run.run_id,
+                        "step_id": step_def.step_id,
+                        "step_type": step_def.step_type,
+                        "execution_index": execution_index,
+                        "error": degraded_error,
+                        "default_output_used": True,
+                    })
             except Exception as exc:  # noqa: BLE001
                 execution.status = StepStatus.FAILED
                 execution.error = f"{type(exc).__name__}: {exc}"
@@ -706,6 +738,8 @@ class Executor:
                     "run_id": run.run_id,
                     "step_id": step_def.step_id,
                     "step_type": step_def.step_type,
+                    "attempt_count": execution.attempt_count,
+                    "last_error": execution.last_error,
                     "duration_ms": execution.duration_ms,
                     "handler_duration_ms": execution.handler_duration_ms,
                     "tool_duration_ms": execution.tool_duration_ms,
@@ -716,6 +750,8 @@ class Executor:
                     "step_id": step_def.step_id,
                     "step_type": step_def.step_type,
                     "error": execution.error,
+                    "attempt_count": execution.attempt_count,
+                    "last_error": execution.last_error,
                     "duration_ms": execution.duration_ms,
                     "handler_duration_ms": execution.handler_duration_ms,
                     "tool_duration_ms": execution.tool_duration_ms,
@@ -778,6 +814,36 @@ class Executor:
         })
 
         return run
+
+    async def _await_with_heartbeat(
+        self,
+        coro: Any,
+        *,
+        run_id: str,
+        step_id: str,
+        step_type: str,
+        execution_index: int,
+        attempt: int,
+    ) -> Any:
+        """Await a coroutine while periodically emitting step heartbeat events."""
+        task = asyncio.create_task(coro)
+        started = time.monotonic()
+        try:
+            while True:
+                done, _ = await asyncio.wait({task}, timeout=self.heartbeat_interval_s)
+                if task in done:
+                    return await task
+                self._emit("STEP_HEARTBEAT", {
+                    "run_id": run_id,
+                    "step_id": step_id,
+                    "step_type": step_type,
+                    "execution_index": execution_index,
+                    "attempt": attempt,
+                    "elapsed_ms": int((time.monotonic() - started) * 1000),
+                })
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
 
     async def _execute_tool_async(
         self,

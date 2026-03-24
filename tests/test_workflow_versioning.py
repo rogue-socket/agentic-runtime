@@ -126,3 +126,35 @@ def test_run_persists_workflow_version() -> None:
     loaded = storage.load_run(run.run_id)
     assert loaded.workflow_id == "code_review_agent"
     assert loaded.workflow_version == "v3"
+
+
+def test_workflow_parses_optional_default_step_fields() -> None:
+    raw = """
+name: optional_flow
+steps:
+  - id: enrich
+    type: function
+    function: stubs.generate_summary
+    optional: true
+    default:
+      summary: fallback
+    outputs: [summary]
+"""
+    workflow = load_workflow_from_text(raw, functions_dir=functions_dir())
+    step = workflow["steps"][0]
+    assert step.optional is True
+    assert step.default_output == {"summary": "fallback"}
+
+
+def test_workflow_rejects_default_without_optional() -> None:
+    raw = """
+name: invalid_optional
+steps:
+  - id: enrich
+    type: function
+    function: stubs.generate_summary
+    default:
+      summary: fallback
+"""
+    with pytest.raises(WorkflowValidationError):
+        load_workflow_from_text(raw, functions_dir=functions_dir())
