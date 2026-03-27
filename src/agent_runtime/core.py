@@ -286,6 +286,33 @@ class Executor:
         if self.on_event is not None:
             self.on_event(event, payload)
 
+    def _emit_step_progress(
+        self,
+        *,
+        run_id: str,
+        step_id: str,
+        step_type: str,
+        execution_index: int,
+        attempt: int,
+        phase: str,
+        elapsed_ms: Optional[int] = None,
+        error: Optional[str] = None,
+    ) -> None:
+        """Emit a normalized progress event for long-running step execution."""
+        payload: Dict[str, Any] = {
+            "run_id": run_id,
+            "step_id": step_id,
+            "step_type": step_type,
+            "execution_index": execution_index,
+            "attempt": attempt,
+            "phase": phase,
+        }
+        if elapsed_ms is not None:
+            payload["elapsed_ms"] = elapsed_ms
+        if error:
+            payload["error"] = error
+        self._emit("STEP_PROGRESS", payload)
+
     def run(
         self,
         workflow_id: str,
@@ -564,6 +591,15 @@ class Executor:
                             )
                             agent_input = step_input if step_def.input_spec is not None else snapshot
                             call_start = time.monotonic()
+                            self._emit_step_progress(
+                                run_id=run.run_id,
+                                step_id=step_def.step_id,
+                                step_type=step_def.step_type,
+                                execution_index=execution_index,
+                                attempt=attempt,
+                                phase="dispatch",
+                                elapsed_ms=0,
+                            )
 
                             coro = self._await_with_heartbeat(
                                 agent_executor.execute(agent_def, agent_input, agent_ctx),
@@ -578,11 +614,30 @@ class Executor:
                                 try:
                                     agent_result = await asyncio.wait_for(coro, timeout=t_sec)
                                 except asyncio.TimeoutError:
+                                    self._emit_step_progress(
+                                        run_id=run.run_id,
+                                        step_id=step_def.step_id,
+                                        step_type=step_def.step_type,
+                                        execution_index=execution_index,
+                                        attempt=attempt,
+                                        phase="timeout",
+                                        elapsed_ms=int((time.monotonic() - call_start) * 1000),
+                                        error=f"Agent step timed out after {step_def.timeout_ms}ms",
+                                    )
                                     raise StepExecutionError(f"Agent step timed out after {step_def.timeout_ms}ms")
                             else:
                                 agent_result = await coro
 
                             handler_duration_ms = int((time.monotonic() - call_start) * 1000)
+                            self._emit_step_progress(
+                                run_id=run.run_id,
+                                step_id=step_def.step_id,
+                                step_type=step_def.step_type,
+                                execution_index=execution_index,
+                                attempt=attempt,
+                                phase="complete",
+                                elapsed_ms=handler_duration_ms,
+                            )
                             output = agent_result.outputs
                             execution.token_usage = agent_result.token_usage
                             # store agent trace for observability
@@ -627,6 +682,16 @@ class Executor:
                                 raise StepExecutionError("Missing tool name.")
                             tool = self.tool_registry.get(step_def.tool_name)
                             tool_input = step_input if step_def.input_spec is not None else format_template(step_def.raw_input or {}, snapshot)
+                            call_start = time.monotonic()
+                            self._emit_step_progress(
+                                run_id=run.run_id,
+                                step_id=step_def.step_id,
+                                step_type=step_def.step_type,
+                                execution_index=execution_index,
+                                attempt=attempt,
+                                phase="dispatch",
+                                elapsed_ms=0,
+                            )
                             
                             coro = self._await_with_heartbeat(
                                 self._execute_tool_async(tool, tool_input, run.run_id, step_def.step_id, snapshot),
@@ -641,9 +706,28 @@ class Executor:
                                 try:
                                     output, tool_duration_ms = await asyncio.wait_for(coro, timeout=t_sec)
                                 except asyncio.TimeoutError:
+                                    self._emit_step_progress(
+                                        run_id=run.run_id,
+                                        step_id=step_def.step_id,
+                                        step_type=step_def.step_type,
+                                        execution_index=execution_index,
+                                        attempt=attempt,
+                                        phase="timeout",
+                                        elapsed_ms=int((time.monotonic() - call_start) * 1000),
+                                        error=f"Tool step timed out after {step_def.timeout_ms}ms",
+                                    )
                                     raise StepExecutionError(f"Tool step timed out after {step_def.timeout_ms}ms")
                             else:
                                 output, tool_duration_ms = await coro
+                            self._emit_step_progress(
+                                run_id=run.run_id,
+                                step_id=step_def.step_id,
+                                step_type=step_def.step_type,
+                                execution_index=execution_index,
+                                attempt=attempt,
+                                phase="complete",
+                                elapsed_ms=tool_duration_ms if tool_duration_ms is not None else int((time.monotonic() - call_start) * 1000),
+                            )
                         else:
                             raise StepExecutionError(f"Unknown step type: {step_def.step_type}")
 
@@ -652,6 +736,16 @@ class Executor:
                     except Exception as exc:  # noqa: BLE001
                         last_error = exc
                         execution.last_error = f"{type(exc).__name__}: {exc}"
+                        if step_def.step_type in {"agent", "tool"}:
+                            self._emit_step_progress(
+                                run_id=run.run_id,
+                                step_id=step_def.step_id,
+                                step_type=step_def.step_type,
+                                execution_index=execution_index,
+                                attempt=attempt,
+                                phase="error",
+                                error=execution.last_error,
+                            )
                         if attempt < max_attempts:
                             delay = _compute_backoff_delay(attempt, backoff, initial_delay)
                             self._emit("STEP_RETRY", {
@@ -850,6 +944,15 @@ class Executor:
                     "attempt": attempt,
                     "elapsed_ms": int((time.monotonic() - started) * 1000),
                 })
+                self._emit_step_progress(
+                    run_id=run_id,
+                    step_id=step_id,
+                    step_type=step_type,
+                    execution_index=execution_index,
+                    attempt=attempt,
+                    phase="heartbeat",
+                    elapsed_ms=int((time.monotonic() - started) * 1000),
+                )
         except asyncio.CancelledError:
             task.cancel()
             raise

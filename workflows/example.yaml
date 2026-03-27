@@ -2,8 +2,8 @@
 # Purpose: Quickstart workflow that uses agent steps and tools.
 # Description: Summarizes an issue, estimates priority, proposes next steps,
 #   builds a report, and echoes results.
-# Dependencies: agents/summarizer.yaml, tools.echo, tools.report_builder, tools.priority_heuristic
-# Inputs/Outputs: Reads inputs.issue; produces summary, priority, next_steps, report.
+# Dependencies: agents/summarizer.yaml, functions/stubs.py, tools.echo, tools.report_builder, tools.priority_heuristic
+# Inputs/Outputs: Reads inputs.issue; produces summary, priority, severity, next_steps, report.
 # Side Effects: Makes HTTP calls to the configured LLM provider API.
 
 workflow:                     # workflow metadata
@@ -23,6 +23,11 @@ steps:                         # ordered steps (a list)
   - id: priority
     type: tool                 # tool step uses a tool class
     tool: tools.priority_heuristic  # quick heuristic tool
+    inputs:
+      issue: inputs.issue
+  - id: classify
+    type: function             # function step calls a plain Python function
+    function: stubs.classify_severity  # defined in functions/stubs.py
     inputs:
       issue: inputs.issue
   - id: next_steps

@@ -375,6 +375,13 @@ def test_heartbeat_emitted_for_long_running_tool_step() -> None:
     heartbeat_events = [payload for event, payload in events if event == "STEP_HEARTBEAT"]
     assert heartbeat_events
 
+    progress_events = [payload for event, payload in events if event == "STEP_PROGRESS"]
+    assert progress_events
+    phases = {payload.get("phase") for payload in progress_events}
+    assert "dispatch" in phases
+    assert "heartbeat" in phases
+    assert "complete" in phases
+
 
 def test_state_snapshots_persisted() -> None:
     storage = make_storage()
