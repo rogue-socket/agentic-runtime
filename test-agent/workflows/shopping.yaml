@@ -11,7 +11,7 @@
 #   - LLM provider configured (run `ai setup` first)
 #
 # Run:
-#   cd agent-one
+#   cd test-agent
 #   ai run shopping -i shopping_list="Buy a good book and some electronics under 50 dollars"
 
 workflow:

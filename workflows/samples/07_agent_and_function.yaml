@@ -1,7 +1,7 @@
 # Sample workflow: agent + function step types
 #
 # Demonstrates:
-#   - type: agent — delegates to an agent definition (code_reviewer)
+#   - type: agent — delegates to an agent definition (summarizer)
 #   - type: function — calls a plain Python function from functions/
 #   - type: tool — direct tool invocation (existing)
 #
@@ -10,8 +10,9 @@
 #   - functions/formatters.py must exist with format_markdown()
 #
 
-name: agent_function_demo
-version: v1
+workflow:
+  id: agent_function_demo
+  version: v1
 
 inputs:
   text:

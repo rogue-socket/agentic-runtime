@@ -29,7 +29,9 @@ class EchoTool:
 
 def test_branch_bug_path() -> None:
     yaml_text = """
-name: triage
+workflow:
+  id: triage
+  version: v1
 steps:
   - id: classify
     type: function
@@ -59,7 +61,9 @@ steps:
 
 def test_branch_default_path() -> None:
     yaml_text = """
-name: triage
+workflow:
+  id: triage
+  version: v1
 steps:
   - id: classify
     type: function
@@ -89,7 +93,9 @@ steps:
 
 def test_invalid_branch_target() -> None:
     yaml_text = """
-name: triage
+workflow:
+  id: triage
+  version: v1
 steps:
   - id: classify
     type: function

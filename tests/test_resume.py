@@ -33,7 +33,7 @@ def test_resume_from_failed_step() -> None:
     ]
 
     executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
-    run = executor.run("wf", {"issue": "x"})
+    run = executor.run("wf", {"issue": "x"}, workflow_hash="hash_v1")
     assert run.status == StepStatus.FAILED
 
     executions = storage.load_steps(run.run_id)
@@ -51,7 +51,14 @@ def test_resume_from_failed_step() -> None:
     resume_executor = Executor(resume_steps, storage, None, make_memory_manager(), tool_registry)
     state = storage.load_latest_state(run.run_id)
     state_version = storage.load_latest_state_version(run.run_id)
-    resumed = resume_executor.resume(run, state, "step_two", on_error="fail_fast", state_version=state_version)
+    resumed = resume_executor.resume(
+        run,
+        state,
+        "step_two",
+        on_error="fail_fast",
+        state_version=state_version,
+        workflow_hash="hash_v1",
+    )
     assert resumed.status == StepStatus.COMPLETED
     assert resumed.state.data["steps"]["step_two"]["two"] is True
 

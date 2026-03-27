@@ -89,32 +89,25 @@ def _validate_step(step: Dict[str, Any]) -> None:
 
 
 def _extract_workflow_identity(raw: Dict[str, Any]) -> Tuple[str, Optional[str]]:
-    """Extract workflow id/version from modern or legacy schema.
+    """Extract workflow id/version from the required modern schema.
 
-    Supports `workflow.id` + `workflow.version` and legacy `name` for
-    backwards compatibility with older sample/tests.
+    Requires a top-level ``workflow`` mapping with non-empty
+    ``workflow.id`` and ``workflow.version`` values.
 
     Example:
         >>> _extract_workflow_identity({"workflow": {"id": "w", "version": "v1"}})
         ('w', 'v1')
     """
     workflow_meta = raw.get("workflow")
-    if workflow_meta is not None:
-        if not isinstance(workflow_meta, dict):
-            raise WorkflowValidationError("workflow must be a mapping when provided.")
-        workflow_id = workflow_meta.get("id")
-        workflow_version = workflow_meta.get("version")
-        if not isinstance(workflow_id, str) or not workflow_id.strip():
-            raise WorkflowValidationError("workflow.id must be a non-empty string.")
-        if not isinstance(workflow_version, str) or not workflow_version.strip():
-            raise WorkflowValidationError("workflow.version must be a non-empty string.")
-        return workflow_id, workflow_version
-
-    # Backward compatibility for older workflow files.
-    legacy_name = raw.get("name")
-    if not isinstance(legacy_name, str) or not legacy_name.strip():
-        raise WorkflowValidationError("Workflow must include workflow.id/version or a legacy name.")
-    return legacy_name, None
+    if not isinstance(workflow_meta, dict):
+        raise WorkflowValidationError("Workflow must include a top-level workflow mapping.")
+    workflow_id = workflow_meta.get("id")
+    workflow_version = workflow_meta.get("version")
+    if not isinstance(workflow_id, str) or not workflow_id.strip():
+        raise WorkflowValidationError("workflow.id must be a non-empty string.")
+    if not isinstance(workflow_version, str) or not workflow_version.strip():
+        raise WorkflowValidationError("workflow.version must be a non-empty string.")
+    return workflow_id, workflow_version
 
 
 def _parse_inputs(raw_inputs: Any) -> Dict[str, Dict[str, Any]]:
@@ -192,7 +185,7 @@ def _parse_workflow(
     workflow hash.
 
     Example:
-        >>> wf = _parse_workflow("name: w\\nsteps:\\n  - id: a\\n    type: tool\\n    tool: tools.echo\\n")
+        >>> wf = _parse_workflow("workflow:\\n  id: w\\n  version: v1\\nsteps:\\n  - id: a\\n    type: tool\\n    tool: tools.echo\\n")
         >>> wf["workflow_id"]
         'w'
     """
@@ -210,15 +203,9 @@ def _parse_workflow(
 
     # --- Parse workflow-level input declarations ---
     raw_inputs_block = raw.get("inputs")
-    legacy_contract = raw.get("inputs_contract")
     if raw_inputs_block is not None:
         workflow_inputs = _parse_inputs(raw_inputs_block)
         available_inputs = set(workflow_inputs.keys())
-    elif legacy_contract is not None:
-        if not isinstance(legacy_contract, list) or not all(isinstance(v, str) for v in legacy_contract):
-            raise WorkflowValidationError("inputs_contract must be a list of strings.")
-        workflow_inputs = {name: {"required": True} for name in legacy_contract}
-        available_inputs = set(legacy_contract)
     else:
         workflow_inputs = {}
         available_inputs = _infer_inputs(raw["steps"])
@@ -446,7 +433,7 @@ def load_workflow_from_text(
     stored in the database instead of read from filesystem.
 
     Example:
-        >>> load_workflow_from_text("name: w\\nsteps:\\n  - id: a\\n    type: tool\\n    tool: tools.echo\\n")["workflow_id"]
+        >>> load_workflow_from_text("workflow:\\n  id: w\\n  version: v1\\nsteps:\\n  - id: a\\n    type: tool\\n    tool: tools.echo\\n")["workflow_id"]
         'w'
     """
     return _parse_workflow(raw_text, functions_dir=functions_dir)

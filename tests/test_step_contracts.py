@@ -18,8 +18,10 @@ from conftest import make_storage, make_memory_manager, functions_dir
 
 def test_contract_future_read_rejected() -> None:
     raw = """
-name: contracts
-inputs_contract: [issue]
+workflow:
+    id: contracts
+    version: v1
+inputs: [issue]
 steps:
   - id: classify
     type: function
@@ -38,8 +40,10 @@ steps:
 
 def test_contract_output_collision_rejected() -> None:
     raw = """
-name: contracts
-inputs_contract: [issue]
+workflow:
+    id: contracts
+    version: v1
+inputs: [issue]
 steps:
   - id: s1
     type: function
@@ -81,8 +85,10 @@ def test_runtime_output_contract_enforced() -> None:
 
 def test_contract_inputs_list_maps_correctly() -> None:
     raw = """
-name: contracts
-inputs_contract: [issue]
+workflow:
+    id: contracts
+    version: v1
+inputs: [issue]
 steps:
   - id: summarize
     type: function

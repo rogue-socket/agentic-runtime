@@ -371,7 +371,7 @@ Built-in tools (`tools.echo`, `tools.http`, `tools.file`, `tools.shell`) are alw
 workflow:
   id: contracts_demo
   version: v1
-inputs_contract: [issue]
+inputs: [issue]
 steps:
   - id: classify
     type: function

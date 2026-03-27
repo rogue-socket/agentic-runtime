@@ -26,6 +26,7 @@ This document summarizes all inline TODOs found in the codebase, categorized for
 
 ## Pain-point
   - `agent_runtime/config.py:60`: TODO(pain-point): Config Drift Between Environments - Dev uses
+  - `agent_runtime/core.py` (run API semantics): TODO(pain-point): Workflow `inputs.*.default` values are not auto-applied when calling `Executor.run` directly. Consider applying declared defaults in core execution path (or expose a helper) so SDK behavior matches CLI ergonomics.
   - `agent_runtime/resume.py:86`: TODO(pain-point): Selective Step Re-Execution - Resume works for
   - `agent_runtime/__init__.py:79`: TODO(pain-point): Export/Wire-Into-Product -
   - `agent_runtime/core.py:169`: TODO(pain-point): Latency Budgets - duration_ms tracks how long
@@ -69,7 +70,15 @@ This document summarizes all inline TODOs found in the codebase, categorized for
   - `agent_runtime/agent/strategies.py:535`: TODO(eng): make accumulation configurable (option: clean slate per iteration)
   - `agent_runtime/agent/strategies.py:547`: TODO(eng): make referencing configurable (options: named ids, positional prev.*, accumulator)
   - `agent_runtime/storage/sqlite.py:118`: TODO(eng): Use SAVEPOINT for nested transactions if callers
+  - `workflows/example.yaml`, `agent-one/workflows/example.yaml`, `test-agent/workflows/example.yaml`: TODO(eng): Deduplicate quickstart example workflow definitions or generate them from one source to avoid behavior drift.
+  - `workflows/branching_triage.yaml`, `agent-one/workflows/branching_triage.yaml`, `test-agent/workflows/branching_triage.yaml`: TODO(eng): Consolidate duplicated deterministic quickstart workflows into a shared template/build step.
+  - `workflows/data_pipeline.yaml`, `agent-one/workflows/data_pipeline.yaml`, `test-agent/workflows/data_pipeline.yaml`: TODO(eng): Consolidate duplicated data pipeline workflow copies and enforce sync via CI drift check.
+  - `tests/test_workflow_file_coverage.py`: TODO(eng): Add a CI guard that fails when a new workflow file is added without execution/parse coverage.
 
 ## Uncategorized
   - `agent_runtime/memory/semantic.py:19`: implemented.  See the TODO at the bottom of this file for the
+
+## Audit Findings (2026-03-28)
+  - `workflows/samples/07_agent_and_function.yaml:4`: TODO(ux): Keep sample header comments aligned with actual step agent ids; add doc lint if possible.
+  - `test-agent/workflows/shopping.yaml:14`: TODO(ux): Keep embedded run instructions scoped to the containing project folder to avoid copy-paste confusion.
 

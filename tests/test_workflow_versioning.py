@@ -37,19 +37,6 @@ steps:
     assert workflow["workflow_version"] == "v2"
 
 
-def test_workflow_legacy_name_compatibility() -> None:
-    raw = """
-name: legacy_workflow
-steps:
-  - id: generate_summary
-    type: function
-    function: stubs.generate_summary
-"""
-    workflow = load_workflow_from_text(raw, functions_dir=functions_dir())
-    assert workflow["workflow_id"] == "legacy_workflow"
-    assert workflow["workflow_version"] is None
-
-
 def test_workflow_registry_latest_version_resolution(tmp_path) -> None:
     wf_dir = tmp_path / "workflows"
     wf_dir.mkdir()
@@ -130,7 +117,9 @@ def test_run_persists_workflow_version() -> None:
 
 def test_workflow_parses_optional_default_step_fields() -> None:
     raw = """
-name: optional_flow
+workflow:
+  id: optional_flow
+  version: v1
 steps:
   - id: enrich
     type: function
@@ -148,7 +137,9 @@ steps:
 
 def test_workflow_rejects_default_without_optional() -> None:
     raw = """
-name: invalid_optional
+workflow:
+  id: invalid_optional
+  version: v1
 steps:
   - id: enrich
     type: function

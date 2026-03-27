@@ -497,16 +497,18 @@ class TestWorkflowStepValidation:
 
 class TestWorkflowParsing:
     def test_parse_agent_step(self):
-        yaml_text = textwrap.dedent("""\
-            name: test_wf
-            steps:
-              - id: review
-                type: agent
-                agent: code_reviewer
-                inputs:
-                  diff: inputs.pr_diff
-                outputs: [summary, issues]
-        """)
+        yaml_text = (
+            "workflow:\n"
+            "  id: test_wf\n"
+            "  version: v1\n"
+            "steps:\n"
+            "  - id: review\n"
+            "    type: agent\n"
+            "    agent: code_reviewer\n"
+            "    inputs:\n"
+            "      diff: inputs.pr_diff\n"
+            "    outputs: [summary, issues]\n"
+        )
         wf = load_workflow_from_text(yaml_text)
         step = wf["steps"][0]
         assert step.step_type == "agent"
@@ -514,13 +516,15 @@ class TestWorkflowParsing:
         assert step.agent_version is None
 
     def test_parse_agent_step_with_version(self):
-        yaml_text = textwrap.dedent("""\
-            name: test_wf
-            steps:
-              - id: review
-                type: agent
-                agent: code_reviewer@v2
-        """)
+        yaml_text = (
+            "workflow:\n"
+            "  id: test_wf\n"
+            "  version: v1\n"
+            "steps:\n"
+            "  - id: review\n"
+            "    type: agent\n"
+            "    agent: code_reviewer@v2\n"
+        )
         wf = load_workflow_from_text(yaml_text)
         step = wf["steps"][0]
         assert step.agent_id == "code_reviewer"
@@ -528,16 +532,18 @@ class TestWorkflowParsing:
 
     def test_parse_function_step_without_dir(self):
         """Function step parses but callable is None without functions_dir."""
-        yaml_text = textwrap.dedent("""\
-            name: test_wf
-            steps:
-              - id: format
-                type: function
-                function: format_markdown
-                inputs:
-                  text: inputs.raw
-                outputs: [report]
-        """)
+        yaml_text = (
+            "workflow:\n"
+            "  id: test_wf\n"
+            "  version: v1\n"
+            "steps:\n"
+            "  - id: format\n"
+            "    type: function\n"
+            "    function: format_markdown\n"
+            "    inputs:\n"
+            "      text: inputs.raw\n"
+            "    outputs: [report]\n"
+        )
         wf = load_workflow_from_text(yaml_text)
         step = wf["steps"][0]
         assert step.step_type == "function"
@@ -549,13 +555,15 @@ class TestWorkflowParsing:
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "formatters.py"), "w") as f:
                 f.write("def format_markdown(inputs):\n    return {'report': inputs['text']}\n")
-            yaml_text = textwrap.dedent("""\
-                name: test_wf
-                steps:
-                  - id: format
-                    type: function
-                    function: formatters.format_markdown
-            """)
+            yaml_text = (
+                "workflow:\n"
+                "  id: test_wf\n"
+                "  version: v1\n"
+                "steps:\n"
+                "  - id: format\n"
+                "    type: function\n"
+                "    function: formatters.format_markdown\n"
+            )
             wf = load_workflow_from_text(yaml_text, functions_dir=d)
             step = wf["steps"][0]
             assert step.function_callable is not None
@@ -563,18 +571,20 @@ class TestWorkflowParsing:
 
     def test_mixed_step_types(self):
         """Workflow can contain agent, function, and tool steps together."""
-        yaml_text = textwrap.dedent("""\
-            name: test_wf
-            steps:
-              - id: review
-                type: agent
-                agent: reviewer
-              - id: echo
-                type: tool
-                tool: tools.echo
-                inputs:
-                  message: steps.review.summary
-        """)
+        yaml_text = (
+            "workflow:\n"
+            "  id: test_wf\n"
+            "  version: v1\n"
+            "steps:\n"
+            "  - id: review\n"
+            "    type: agent\n"
+            "    agent: reviewer\n"
+            "  - id: echo\n"
+            "    type: tool\n"
+            "    tool: tools.echo\n"
+            "    inputs:\n"
+            "      message: steps.review.summary\n"
+        )
         wf = load_workflow_from_text(yaml_text)
         assert wf["steps"][0].step_type == "agent"
         assert wf["steps"][1].step_type == "tool"

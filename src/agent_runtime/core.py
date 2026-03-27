@@ -412,7 +412,16 @@ class Executor:
         workflow_hash: Optional[str] = None,
     ) -> Run:
         """Async: resume a failed run from a starting step id."""
-        if run.workflow_hash and workflow_hash and run.workflow_hash != workflow_hash:
+        if not run.workflow_hash:
+            raise WorkflowIntegrityError(
+                "Cannot safely resume because the original run does not have a stored workflow hash. "
+                "Re-run the workflow from the start under the current runtime."
+            )
+        if not workflow_hash:
+            raise WorkflowIntegrityError(
+                "Cannot safely resume without a workflow hash for the current workflow definition."
+            )
+        if run.workflow_hash != workflow_hash:
             raise WorkflowIntegrityError(
                 f"Workflow has been modified since original run. "
                 f"Original hash: {run.workflow_hash}, current hash: {workflow_hash}. "
