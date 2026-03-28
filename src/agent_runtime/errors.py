@@ -21,6 +21,8 @@ Side Effects:
 - None.
 """
 
+from typing import Dict, Tuple, Type
+
 class RuntimeErrorBase(Exception):
     """Root runtime exception.
 
@@ -130,3 +132,85 @@ class ConfigValidationError(RuntimeErrorBase):
 
 class StorageValidationError(RuntimeErrorBase):
     """Raised when storage schema/version checks fail."""
+
+
+_ERROR_TAXONOMY: Dict[Type[BaseException], Tuple[str, str]] = {
+    WorkflowValidationError: (
+        "AR-WORKFLOW-VALIDATION",
+        "Workflow definition is invalid. Check workflow schema, step fields, and references.",
+    ),
+    StepExecutionError: (
+        "AR-STEP-EXECUTION",
+        "A workflow step failed during execution. Inspect run steps for the failing step and error details.",
+    ),
+    ToolNotFoundError: (
+        "AR-TOOL-NOT-FOUND",
+        "Referenced tool is not registered. Verify tool name and runtime tools directory configuration.",
+    ),
+    BranchResolutionError: (
+        "AR-BRANCH-RESOLUTION",
+        "Branch conditions did not resolve to a valid next step. Check next rules and defaults in workflow YAML.",
+    ),
+    RunNotFoundError: (
+        "AR-RUN-NOT-FOUND",
+        "Run id was not found in storage. Verify run id and selected database path.",
+    ),
+    ReplayDataMissingError: (
+        "AR-REPLAY-DATA-MISSING",
+        "Run cannot be replayed because required step/state history is missing.",
+    ),
+    ReplayMismatchError: (
+        "AR-REPLAY-MISMATCH",
+        "Replay verification found state drift. The stored run history may be inconsistent.",
+    ),
+    WorkflowIntegrityError: (
+        "AR-WORKFLOW-INTEGRITY",
+        "Workflow definition changed after run start. Resume is blocked to preserve determinism.",
+    ),
+    AgentValidationError: (
+        "AR-AGENT-VALIDATION",
+        "Agent definition is invalid. Check agent schema, required fields, and prompt references.",
+    ),
+    ConfigValidationError: (
+        "AR-CONFIG-VALIDATION",
+        "Runtime configuration is invalid. Check runtime.yaml schema and values.",
+    ),
+    StorageValidationError: (
+        "AR-STORAGE-VALIDATION",
+        "Storage schema/version is incompatible with this runtime.",
+    ),
+    FileNotFoundError: (
+        "AR-FILE-NOT-FOUND",
+        "A required file was not found. Verify path and working directory.",
+    ),
+    ValueError: (
+        "AR-VALUE-ERROR",
+        "An input or stored value is invalid for this command.",
+    ),
+    RuntimeError: (
+        "AR-RUNTIME-ERROR",
+        "Runtime operation failed unexpectedly. Inspect logs and step details.",
+    ),
+    Exception: (
+        "AR-UNEXPECTED",
+        "Unexpected runtime failure. Inspect logs and run details for root cause.",
+    ),
+}
+
+
+def get_error_info(exc: BaseException) -> Tuple[str, str]:
+    """Resolve stable error code and user-facing remediation message."""
+    for cls in type(exc).mro():
+        if cls in _ERROR_TAXONOMY:
+            return _ERROR_TAXONOMY[cls]
+    return _ERROR_TAXONOMY[Exception]
+
+
+def get_error_code(exc: BaseException) -> str:
+    """Return stable error code for an exception."""
+    return get_error_info(exc)[0]
+
+
+def get_user_message(exc: BaseException) -> str:
+    """Return user-facing remediation message for an exception."""
+    return get_error_info(exc)[1]

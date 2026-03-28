@@ -36,6 +36,7 @@ import asyncio
 from .errors import BranchResolutionError, StepExecutionError, WorkflowIntegrityError
 from .logging import StructuredLogger
 from .memory.base import MemoryManager
+from .observability import serialize_agent_trace
 from .state import RuntimeState
 from .storage.base import Storage
 from .tools.base import RuntimeContext, ToolResult
@@ -700,21 +701,7 @@ class Executor:
                             #   add an optional `grounding_validator` hook that cross-
                             #   checks agent output against source input — catching
                             #   invented data before it flows into your database.
-                            execution.agent_trace = [
-                                {
-                                    "iteration": t.iteration,
-                                    "llm_request": t.llm_request,
-                                    "llm_response_text": t.llm_response.text if t.llm_response else None,
-                                    "tool_calls": [
-                                        {"tool": tc.tool_name, "input": tc.tool_input,
-                                         "success": tc.result.success if tc.result else None,
-                                         "duration_ms": tc.duration_ms}
-                                        for tc in t.tool_calls
-                                    ],
-                                    "observation": t.observation,
-                                }
-                                for t in agent_result.trace
-                            ]
+                            execution.agent_trace = serialize_agent_trace(agent_result.trace)
                         elif step_def.step_type == "function":
                             if step_def.function_callable is None:
                                 raise StepExecutionError("Function step missing resolved callable.")

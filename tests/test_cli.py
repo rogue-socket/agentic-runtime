@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from unittest.mock import patch
@@ -16,6 +17,7 @@ from agent_runtime.cli import (
     _init_project,
     run_cli,
 )
+from conftest import make_storage
 
 
 # ── _coerce_value ──────────────────────────────────────────────────
@@ -215,5 +217,20 @@ class TestRunCLIList:
             code = run_cli(["list", "--agents-dir", d])
             assert code == 0
             assert "No agents found" in capsys.readouterr().out
+
+
+class TestRunCLIMetrics:
+    def test_metrics_json_output(self, capsys) -> None:
+        storage = make_storage()
+        try:
+            code = run_cli(["metrics", "--db-path", storage.db_path, "--json"])
+            assert code == 0
+            out = capsys.readouterr().out
+            payload = json.loads(out)
+            assert "runs" in payload
+            assert "steps" in payload
+            assert "errors" in payload
+        finally:
+            storage.close()
 
 

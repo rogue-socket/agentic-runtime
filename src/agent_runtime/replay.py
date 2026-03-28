@@ -16,6 +16,7 @@ import copy
 
 from .core import StepStatus
 from .errors import ReplayDataMissingError, ReplayMismatchError, RunNotFoundError
+from .observability import normalize_agent_trace
 from .storage.base import Storage
 
 
@@ -105,15 +106,18 @@ class RunReplayer:
             )
 
             if getattr(step, "agent_trace", None):
-                self.printer(f"  agent_trace: {len(step.agent_trace)} turn(s)")
-                for t_idx, turn in enumerate(step.agent_trace, start=1):
+                normalized_trace = normalize_agent_trace(step.agent_trace)
+                self.printer(f"  agent_trace: {len(normalized_trace)} event(s)")
+                for t_idx, turn in enumerate(normalized_trace, start=1):
                     turn_type = turn.get("type", "unknown")
                     if turn_type == "model":
                         model = turn.get("model", "")
-                        self.printer(f"    {t_idx}. [model] {model}")
+                        text_preview = (turn.get("response_text") or "")[:120]
+                        self.printer(f"    {t_idx}. [model] {model}: {text_preview}")
                     elif turn_type == "tool":
                         tool_name = turn.get("tool", "")
-                        self.printer(f"    {t_idx}. [tool] {tool_name}")
+                        success = turn.get("success", "")
+                        self.printer(f"    {t_idx}. [tool] {tool_name} -> success={success}")
                     else:
                         self.printer(f"    {t_idx}. [{turn_type}]")
 

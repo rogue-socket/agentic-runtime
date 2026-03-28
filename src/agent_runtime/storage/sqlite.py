@@ -29,8 +29,10 @@ from contextlib import contextmanager
 from typing import Any, Dict, Generator, Optional, TYPE_CHECKING
 import sqlite3
 import threading
+from datetime import datetime
 
 from ..errors import StorageValidationError
+from ..observability import percentile
 from ..schema_versioning import STORAGE_SCHEMA_VERSION_CURRENT
 from ..storage.base import Storage
 from ..utils import json_dumps, json_loads
@@ -495,3 +497,119 @@ class SQLiteStorage(Storage):
                 error=row["error"],
             ))
         return runs
+
+    def build_observability_report(self, top_steps: int = 10) -> Dict[str, Any]:
+        """Build aggregate support metrics for fast root-cause analysis."""
+        run_rows = self._conn.execute(
+            "SELECT id, status, started_at, completed_at, error FROM runs"
+        ).fetchall()
+        total_runs = len(run_rows)
+        status_counts: Dict[str, int] = {}
+        run_durations_ms: list[float] = []
+        failed_runs = 0
+
+        for row in run_rows:
+            status = str(row["status"] or "UNKNOWN")
+            status_counts[status] = status_counts.get(status, 0) + 1
+            if status == "FAILED":
+                failed_runs += 1
+
+            started = row["started_at"]
+            completed = row["completed_at"]
+            if started and completed:
+                try:
+                    start_dt = datetime.fromisoformat(started)
+                    end_dt = datetime.fromisoformat(completed)
+                    run_durations_ms.append(max(0.0, (end_dt - start_dt).total_seconds() * 1000.0))
+                except ValueError:
+                    pass
+
+        step_rows = self._conn.execute(
+            "SELECT step_id, status, duration_ms, error, last_error, token_usage_json FROM steps"
+        ).fetchall()
+        step_agg: Dict[str, Dict[str, Any]] = {}
+        error_classes: Dict[str, int] = {}
+        total_tokens = 0
+        total_steps = 0
+        failed_steps = 0
+
+        for row in step_rows:
+            total_steps += 1
+            step_id = str(row["step_id"] or "unknown")
+            status = str(row["status"] or "UNKNOWN")
+            duration_ms = row["duration_ms"]
+            error = row["error"] or row["last_error"]
+
+            agg = step_agg.setdefault(step_id, {
+                "executions": 0,
+                "failed": 0,
+                "durations": [],
+            })
+            agg["executions"] += 1
+            if isinstance(duration_ms, (int, float)):
+                agg["durations"].append(float(duration_ms))
+
+            if status == "FAILED":
+                failed_steps += 1
+                agg["failed"] += 1
+
+            if isinstance(error, str) and error:
+                error_class = error.split(":", 1)[0].strip() or "UnknownError"
+                error_classes[error_class] = error_classes.get(error_class, 0) + 1
+
+            token_usage_raw = row["token_usage_json"]
+            if token_usage_raw:
+                try:
+                    usage = json_loads(token_usage_raw)
+                    tokens = usage.get("total_tokens")
+                    if tokens is None:
+                        prompt = usage.get("prompt_tokens", usage.get("input_tokens", 0))
+                        completion = usage.get("completion_tokens", usage.get("output_tokens", 0))
+                        tokens = int(prompt or 0) + int(completion or 0)
+                    total_tokens += int(tokens or 0)
+                except Exception:  # noqa: BLE001
+                    pass
+
+        per_step = []
+        for step_id, agg in step_agg.items():
+            executions = int(agg["executions"])
+            failed = int(agg["failed"])
+            durations = agg["durations"]
+            per_step.append({
+                "step_id": step_id,
+                "executions": executions,
+                "failed": failed,
+                "failure_rate": (failed / executions) if executions else 0.0,
+                "avg_duration_ms": (sum(durations) / len(durations)) if durations else None,
+                "p95_duration_ms": percentile(durations, 95) if durations else None,
+            })
+
+        per_step.sort(key=lambda item: (item["failed"], item["failure_rate"], item["executions"]), reverse=True)
+
+        top_errors = sorted(error_classes.items(), key=lambda item: item[1], reverse=True)
+
+        return {
+            "runs": {
+                "total": total_runs,
+                "failed": failed_runs,
+                "failure_rate": (failed_runs / total_runs) if total_runs else 0.0,
+                "status_counts": status_counts,
+                "avg_duration_ms": (sum(run_durations_ms) / len(run_durations_ms)) if run_durations_ms else None,
+                "p95_duration_ms": percentile(run_durations_ms, 95) if run_durations_ms else None,
+            },
+            "steps": {
+                "total": total_steps,
+                "failed": failed_steps,
+                "failure_rate": (failed_steps / total_steps) if total_steps else 0.0,
+                "top_failing": per_step[: max(1, int(top_steps))],
+            },
+            "llm": {
+                "total_tokens": total_tokens,
+            },
+            "errors": {
+                "top_classes": [
+                    {"error_class": name, "count": count}
+                    for name, count in top_errors[: max(1, int(top_steps))]
+                ],
+            },
+        }

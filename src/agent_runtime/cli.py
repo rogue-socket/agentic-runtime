@@ -36,6 +36,7 @@ TODO(ux): ICP is solo dev / small team building an agent. The CLI
 
 import argparse
 import getpass
+import json
 import os
 from pprint import pformat
 import re
@@ -58,7 +59,13 @@ from .tools.http import HttpTool
 from .tools.file import FileTool
 from .tools.shell import ShellTool
 from .tools.discovery import register_discovered_tools
-from .errors import WorkflowValidationError, RunNotFoundError
+from .errors import (
+    RunNotFoundError,
+    WorkflowValidationError,
+    get_error_code,
+    get_user_message,
+)
+from .observability import normalize_agent_trace
 from .workflow import load_workflow, load_workflow_from_text
 from .workflow_registry import WorkflowRegistry, parse_workflow_reference
 from .visualization import GraphBuilder, RunLoader, TimelineBuilder, render_ascii, render_html
@@ -120,6 +127,15 @@ def _parse_env_line(line: str) -> Optional[tuple[str, str]]:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
         value = value[1:-1]
     return key, value
+
+
+def _print_cli_exception(exc: BaseException, *, stream=sys.stderr) -> None:
+    """Print normalized user-facing error with stable taxonomy code."""
+    code = get_error_code(exc)
+    message = get_user_message(exc)
+    detail = str(exc).strip() or type(exc).__name__
+    print(f"Error [{code}]: {message}", file=stream)
+    print(f"Detail: {detail}", file=stream)
 
 
 # [Pain Point Solved] #N11 .env File in the Repo: .env is gitignored. This loader
@@ -1759,6 +1775,14 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     runs_parser.add_argument("--html", action="store_true", help="Generate browsable HTML dashboard")
     runs_parser.add_argument("--no-open", action="store_true", help="Do not auto-open HTML in browser")
 
+    metrics_parser = subparsers.add_parser(
+        "metrics",
+        help="Show aggregate run/step metrics for observability and support",
+    )
+    metrics_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
+    metrics_parser.add_argument("--top-steps", type=int, default=10, help="Top failing steps/errors to show")
+    metrics_parser.add_argument("--json", action="store_true", help="Print full report as JSON")
+
     args = parser.parse_args(argv)
 
     if args.command == "init":
@@ -1906,6 +1930,52 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         print(f"Visualize: ai visualize <run_id>")
         return 0
 
+    if args.command == "metrics":
+        storage = SQLiteStorage(cfg.db_path)
+        report = storage.build_observability_report(top_steps=args.top_steps)
+
+        if args.json:
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+
+        runs_section = report.get("runs", {})
+        steps_section = report.get("steps", {})
+        llm_section = report.get("llm", {})
+        errors_section = report.get("errors", {})
+
+        print("Observability Metrics")
+        print(f"  Runs: total={runs_section.get('total', 0)} failed={runs_section.get('failed', 0)} "
+              f"failure_rate={runs_section.get('failure_rate', 0.0):.2%}")
+        print(f"  Run latency: avg={runs_section.get('avg_duration_ms')}ms "
+              f"p95={runs_section.get('p95_duration_ms')}ms")
+        print(f"  Steps: total={steps_section.get('total', 0)} failed={steps_section.get('failed', 0)} "
+              f"failure_rate={steps_section.get('failure_rate', 0.0):.2%}")
+        print(f"  LLM total tokens: {llm_section.get('total_tokens', 0)}")
+
+        top_failing = steps_section.get("top_failing", [])
+        print("\nTop Failing Steps:")
+        if top_failing:
+            for item in top_failing:
+                print(
+                    "  - "
+                    f"{item.get('step_id')} executions={item.get('executions')} "
+                    f"failed={item.get('failed')} "
+                    f"failure_rate={item.get('failure_rate', 0.0):.2%} "
+                    f"avg={item.get('avg_duration_ms')}ms "
+                    f"p95={item.get('p95_duration_ms')}ms"
+                )
+        else:
+            print("  (no step data)")
+
+        top_errors = errors_section.get("top_classes", [])
+        print("\nTop Error Classes:")
+        if top_errors:
+            for item in top_errors:
+                print(f"  - {item.get('error_class')}: {item.get('count')}")
+        else:
+            print("  (no error data)")
+        return 0
+
     if args.command == "run":
         log_level = "info" if getattr(args, "verbose", False) else "warning"
         logger = StructuredLogger(stream=sys.stderr, level=log_level)
@@ -1928,13 +1998,13 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                 )
                 input_state = _build_input_state(args.input, workflow.get("inputs", {}))
         except FileNotFoundError:
-            print(f"Error: workflow file not found: {args.workflow}", file=sys.stderr)
+            _print_cli_exception(FileNotFoundError(f"workflow file not found: {args.workflow}"))
             return 1
         except yaml.YAMLError as exc:
-            print(f"Error: invalid YAML in workflow file: {exc}", file=sys.stderr)
+            _print_cli_exception(exc)
             return 1
         except WorkflowValidationError as exc:
-            print(f"Error: workflow validation failed: {exc}", file=sys.stderr)
+            _print_cli_exception(exc)
             return 1
 
         steps = workflow["steps"]
@@ -1983,16 +2053,20 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             default_model=cfg.default_model,
         )
 
-        run = executor.run(
-            workflow_id=workflow["workflow_id"],
-            workflow_version=workflow.get("workflow_version"),
-            initial_state=input_state,
-            on_error=workflow.get("on_error", "fail_fast"),
-            workflow_hash=workflow.get("workflow_hash"),
-            workflow_yaml=workflow.get("workflow_yaml"),
-            workflow_steps=workflow.get("workflow_steps"),
-            input_hash=sha256_json(input_state),
-        )
+        try:
+            run = executor.run(
+                workflow_id=workflow["workflow_id"],
+                workflow_version=workflow.get("workflow_version"),
+                initial_state=input_state,
+                on_error=workflow.get("on_error", "fail_fast"),
+                workflow_hash=workflow.get("workflow_hash"),
+                workflow_yaml=workflow.get("workflow_yaml"),
+                workflow_steps=workflow.get("workflow_steps"),
+                input_hash=sha256_json(input_state),
+            )
+        except Exception as exc:  # noqa: BLE001
+            _print_cli_exception(exc)
+            return 1
         print(f"Run {run.run_id} status: {run.status}")
         if run.status == "FAILED" and run.error:
             print(f"Error: {run.error}")
@@ -2004,7 +2078,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         try:
             run = storage.load_run(args.run_id)
         except ValueError:
-            print(f"Error: run not found: {args.run_id}")
+            _print_cli_exception(RunNotFoundError(f"run not found: {args.run_id}"))
             return 1
         steps = storage.load_steps(args.run_id)
         latest_state = storage.load_latest_state(args.run_id)
@@ -2032,7 +2106,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                     print(f"token_usage: {step.token_usage}")
                 if getattr(step, "agent_trace", None):
                     print("agent_trace:")
-                    for t_idx, turn in enumerate(step.agent_trace, start=1):
+                    normalized_trace = normalize_agent_trace(step.agent_trace)
+                    for t_idx, turn in enumerate(normalized_trace, start=1):
                         turn_type = turn.get("type", "unknown")
                         if turn_type == "model":
                             model = turn.get("model", "")
@@ -2068,7 +2143,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         try:
             run = storage.load_run(args.run_id)
         except ValueError:
-            print(f"Error: run not found: {args.run_id}")
+            _print_cli_exception(RunNotFoundError(f"run not found: {args.run_id}"))
             return 1
         validate_resume(run.status)
 
@@ -2089,29 +2164,35 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                     input_keys = list(state.get("inputs", {}).keys())
                     workflow = _workflow_from_definition(resolved, input_keys=input_keys)
                 else:
-                    raise SystemExit(
-                        f"Cannot reconstruct workflow for agent '{agent_id}'. "
-                        "Provide --workflow to resume."
+                    _print_cli_exception(
+                        RuntimeError(
+                            f"Cannot reconstruct workflow for agent '{agent_id}'. Provide --workflow to resume."
+                        )
                     )
+                    return 1
             elif args.workflow:
                 workflow = load_workflow(args.workflow, functions_dir=functions_dir_resume)
             else:
-                raise SystemExit("Workflow YAML not stored; provide --workflow to resume.")
+                _print_cli_exception(RuntimeError("Workflow YAML not stored; provide --workflow to resume."))
+                return 1
         else:
             workflow = load_workflow_from_text(workflow_text, functions_dir=functions_dir_resume)
 
         if args.workflow:
             current = load_workflow(args.workflow, functions_dir=functions_dir_resume)
             if run.workflow_hash and current.get("workflow_hash") != run.workflow_hash:
-                raise SystemExit("Workflow hash mismatch; cannot resume.")
+                _print_cli_exception(RuntimeError("Workflow hash mismatch; cannot resume."))
+                return 1
 
         if run.workflow_hash and workflow.get("workflow_hash") != run.workflow_hash:
-            raise SystemExit("Stored workflow hash mismatch; cannot resume.")
+            _print_cli_exception(RuntimeError("Stored workflow hash mismatch; cannot resume."))
+            return 1
 
         steps = storage.load_steps(args.run_id)
         resume_step = determine_resume_step(workflow["steps"], steps)
         if resume_step is None:
-            raise SystemExit("No resumable step found.")
+            _print_cli_exception(RuntimeError("No resumable step found."))
+            return 1
 
         state = storage.load_latest_state(args.run_id)
         state_version = storage.load_latest_state_version(args.run_id)
@@ -2159,7 +2240,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                 verify_state=args.verify_state,
             )
         except (ValueError, RunNotFoundError):
-            print(f"Error: run not found: {args.run_id}")
+            _print_cli_exception(RunNotFoundError(f"run not found: {args.run_id}"))
             return 1
         return 0
 
@@ -2168,7 +2249,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         try:
             run = storage.load_run(args.run_id)
         except ValueError:
-            print(f"Error: run not found: {args.run_id}")
+            _print_cli_exception(RunNotFoundError(f"run not found: {args.run_id}"))
             return 1
         steps = storage.load_steps(args.run_id)
         if args.step:
@@ -2203,14 +2284,14 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         if run_id == "latest":
             recent = storage.list_runs(limit=1)
             if not recent:
-                print("Error: No runs found in database.")
+                _print_cli_exception(RunNotFoundError("No runs found in database."))
                 return 1
             run_id = recent[0].run_id
 
         try:
             data = RunLoader(storage).load(run_id)
         except ValueError:
-            print(f"Error: run not found: {run_id}")
+            _print_cli_exception(RunNotFoundError(f"run not found: {run_id}"))
             return 1
         graph = GraphBuilder().build(data)
         timeline = TimelineBuilder().build(data)
