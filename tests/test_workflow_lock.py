@@ -97,3 +97,38 @@ def test_resume_allowed_when_workflow_hash_matches() -> None:
     assert resumed.status == StepStatus.COMPLETED
 
 
+def test_resume_blocked_when_original_run_has_no_workflow_hash() -> None:
+    """Resume is rejected if the original run didn't persist a workflow hash."""
+    storage = make_storage()
+    tool_registry = ToolRegistry()
+
+    def step_one(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return {"one": True}
+
+    def step_two_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        raise ValueError("boom")
+
+    steps = [
+        StepDefinition(step_id="s1", step_type="function", function_callable=step_one),
+        StepDefinition(step_id="s2", step_type="function", function_callable=step_two_fail),
+    ]
+
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
+    run = executor.run("wf", {"issue": "x"})
+    assert run.status == StepStatus.FAILED
+    assert run.workflow_hash is None
+
+    state = storage.load_latest_state(run.run_id)
+    state_version = storage.load_latest_state_version(run.run_id)
+
+    with pytest.raises(WorkflowIntegrityError):
+        executor.resume(
+            run=run,
+            resume_state=state,
+            start_step_id="s2",
+            on_error="fail_fast",
+            state_version=state_version,
+            workflow_hash="hash_v1",
+        )
+
+

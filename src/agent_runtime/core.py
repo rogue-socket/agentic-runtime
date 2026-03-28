@@ -283,8 +283,51 @@ class Executor:
 
     def _emit(self, event: str, payload: Dict[str, Any]) -> None:
         """Fire the on_event callback if registered."""
-        if self.on_event is not None:
+        if self.on_event is None:
+            return
+        try:
             self.on_event(event, payload)
+        except Exception as exc:  # noqa: BLE001
+            if self.logger:
+                self.logger.error(
+                    "EVENT_CALLBACK_ERROR",
+                    {
+                        "event": event,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    },
+                )
+
+    def _mark_run_failed_best_effort(self, run: Run, error: str) -> Optional[Exception]:
+        """Set run to FAILED and persist status without masking original failures."""
+        if run.status != StepStatus.FAILED:
+            run.set_status(StepStatus.FAILED, error=error, completed_at=utc_now().isoformat())
+        else:
+            if run.completed_at is None:
+                run.completed_at = utc_now().isoformat()
+            if not run.error:
+                run.error = error
+
+        try:
+            self.storage.update_run_status(
+                run.run_id,
+                run.status,
+                run.error,
+                completed_at=run.completed_at,
+            )
+            return None
+        except Exception as storage_exc:  # noqa: BLE001
+            if self.logger:
+                self.logger.error(
+                    "RUN_STATUS_PERSIST_ERROR",
+                    {
+                        "run_id": run.run_id,
+                        "status": run.status,
+                        "error": f"{type(storage_exc).__name__}: {storage_exc}",
+                    },
+                )
+            return storage_exc
+        finally:
+            run.freeze()
 
     def _emit_step_progress(
         self,
@@ -480,13 +523,17 @@ class Executor:
             return await self.__execute_steps_loop(
                 run, current_step_id, on_error, state_version, had_errors, execution_index
             )
-        except Exception:
-            if run.status == StepStatus.RUNNING:
-                run.set_status(StepStatus.FAILED, error="Unexpected runtime error", completed_at=utc_now().isoformat())
-                self.storage.update_run_status(
-                    run.run_id, run.status, run.error, completed_at=run.completed_at
-                )
-                run.freeze()
+        except Exception as exc:  # noqa: BLE001
+            persist_error = self._mark_run_failed_best_effort(
+                run,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            if persist_error is not None and persist_error is not exc:
+                if hasattr(exc, "add_note"):
+                    exc.add_note(
+                        "Additionally failed to persist FAILED run status: "
+                        f"{type(persist_error).__name__}: {persist_error}"
+                    )
             raise
 
     async def __execute_steps_loop(

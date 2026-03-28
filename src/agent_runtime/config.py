@@ -57,6 +57,13 @@ class RuntimeConfig:
     # Default model for agent steps that don't specify one
     default_model: str = ""
 
+    # LLM runtime controls (0/None disables the limit)
+    llm_rate_limit_rpm: int = 0
+    llm_max_requests_per_run: int = 0
+    llm_max_total_tokens_per_run: int = 0
+    llm_max_cost_usd_per_run: float = 0.0
+    llm_pricing_usd_per_1k_tokens: Dict[str, Dict[str, float]] = field(default_factory=dict)
+
     # TODO(pain-point): Config Drift Between Environments - Dev uses
     #   gemini/flash with temp=0.2, prod needs openai/gpt-4o with temp=0.0
     #   and a different db_path. Add environment-aware config layering:
@@ -93,8 +100,38 @@ def load_config(config_path: str = "runtime.yaml") -> RuntimeConfig:
     if isinstance(raw.get("model"), dict):
         cfg.model = raw["model"]
 
+    def _apply_limits_block(limits_block: Any) -> None:
+        if isinstance(limits_block, dict):
+            if "rate_limit_rpm" in limits_block:
+                cfg.llm_rate_limit_rpm = int(limits_block["rate_limit_rpm"])
+            if "max_requests_per_run" in limits_block:
+                cfg.llm_max_requests_per_run = int(limits_block["max_requests_per_run"])
+            if "max_total_tokens_per_run" in limits_block:
+                cfg.llm_max_total_tokens_per_run = int(limits_block["max_total_tokens_per_run"])
+            if "max_cost_usd_per_run" in limits_block:
+                cfg.llm_max_cost_usd_per_run = float(limits_block["max_cost_usd_per_run"])
+            pricing_block = limits_block.get("pricing_usd_per_1k_tokens")
+            if isinstance(pricing_block, dict):
+                cleaned: Dict[str, Dict[str, float]] = {}
+                for model_ref, prices in pricing_block.items():
+                    if not isinstance(model_ref, str) or not isinstance(prices, dict):
+                        continue
+                    input_rate = prices.get("input")
+                    output_rate = prices.get("output")
+                    out: Dict[str, float] = {}
+                    if isinstance(input_rate, (int, float)):
+                        out["input"] = float(input_rate)
+                    if isinstance(output_rate, (int, float)):
+                        out["output"] = float(output_rate)
+                    if out:
+                        cleaned[model_ref] = out
+                cfg.llm_pricing_usd_per_1k_tokens = cleaned
+
     if isinstance(raw.get("llm"), dict):
         cfg.llm_registry = LLMRegistry.from_config(raw["llm"])
+        _apply_limits_block(raw["llm"].get("limits"))
+
+    _apply_limits_block(raw.get("llm_limits"))
 
     # Apply top-level default_llm_provider if the llm section didn't set one
     if cfg.default_llm_provider and not cfg.llm_registry.default_provider:
@@ -136,5 +173,17 @@ def apply_cli_overrides(cfg: RuntimeConfig, args: Any) -> RuntimeConfig:
     # --db-path overrides config if explicitly passed
     if hasattr(args, "db_path") and args.db_path is not None:
         cfg.db_path = args.db_path
+
+    if hasattr(args, "llm_rate_limit_rpm") and args.llm_rate_limit_rpm is not None:
+        cfg.llm_rate_limit_rpm = int(args.llm_rate_limit_rpm)
+
+    if hasattr(args, "max_llm_requests") and args.max_llm_requests is not None:
+        cfg.llm_max_requests_per_run = int(args.max_llm_requests)
+
+    if hasattr(args, "max_llm_tokens") and args.max_llm_tokens is not None:
+        cfg.llm_max_total_tokens_per_run = int(args.max_llm_tokens)
+
+    if hasattr(args, "max_llm_cost_usd") and args.max_llm_cost_usd is not None:
+        cfg.llm_max_cost_usd_per_run = float(args.max_llm_cost_usd)
 
     return cfg

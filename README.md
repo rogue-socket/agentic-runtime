@@ -114,6 +114,8 @@ ai run example_workflow                   # run by id (latest version)
 ai run example_workflow@v2               # pin to a specific version
 ai run example_workflow -i topic="AI"    # pass runtime inputs
 ai run example_workflow -v               # verbose structured logs
+ai run example_workflow --max-llm-requests 20 --max-llm-tokens 50000
+ai run example_workflow --llm-rate-limit-rpm 120 --max-llm-cost-usd 1.50
 
 # Debug
 ai inspect <run_id>                      # full run details
@@ -148,6 +150,33 @@ Configure in `runtime.yaml` — API keys resolved from environment variables or 
 | **Local** | Any OpenAI-compatible server | `LOCAL_LLM_KEY` |
 
 All adapters support structured multi-turn `history` for ReAct agents. All use stdlib `urllib` — no third-party HTTP libraries required.
+
+### Runtime LLM Limits
+
+You can configure limits in `runtime.yaml` under `llm.limits` (or `llm_limits`) and override them per invocation with CLI flags.
+
+```yaml
+llm:
+  limits:
+    rate_limit_rpm: 120
+    max_requests_per_run: 20
+    max_total_tokens_per_run: 50000
+    max_cost_usd_per_run: 1.5
+    pricing_usd_per_1k_tokens:
+      openai/gpt-4o:
+        input: 0.005
+        output: 0.015
+      openai/*:
+        input: 0.003
+        output: 0.006
+```
+
+CLI overrides for `ai run` and `ai resume`:
+
+- `--llm-rate-limit-rpm`
+- `--max-llm-requests`
+- `--max-llm-tokens`
+- `--max-llm-cost-usd`
 
 ---
 

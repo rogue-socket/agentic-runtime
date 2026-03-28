@@ -383,6 +383,171 @@ def test_heartbeat_emitted_for_long_running_tool_step() -> None:
     assert "complete" in phases
 
 
+def test_tool_step_timeout_retries_and_fails_cleanly() -> None:
+    storage = make_storage()
+    tool_registry = ToolRegistry()
+
+    class SlowTool:
+        name = "tools.slow"
+        description = "slow"
+        input_schema = {"type": "object", "properties": {}}
+        timeout = None
+        retries = None
+
+        async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+            await asyncio.sleep(0.08)
+            return ToolResult(success=True, output={"ok": True}, error=None, metadata=None)
+
+    tool_registry.register(SlowTool())
+
+    steps = [
+        StepDefinition(
+            step_id="slow",
+            step_type="tool",
+            tool_name="tools.slow",
+            raw_input={},
+            timeout_ms=10,
+            retry=RetryPolicy(attempts=2, backoff="fixed", initial_delay=0),
+        )
+    ]
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
+
+    run = executor.run("wf", {"issue": "x"})
+    assert run.status == StepStatus.FAILED
+    assert run.error is not None
+    assert "timed out" in run.error
+
+    persisted = storage.load_steps(run.run_id)
+    assert len(persisted) == 1
+    assert persisted[0].attempt_count == 2
+    assert persisted[0].last_error is not None
+    assert "timed out" in persisted[0].last_error
+
+
+def test_event_callback_failure_is_non_fatal() -> None:
+    storage = make_storage()
+    tool_registry = ToolRegistry()
+
+    def ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return {"ok": True}
+
+    def on_event(event: str, payload: Dict[str, Any]) -> None:
+        raise RuntimeError("observer unavailable")
+
+    steps = [
+        StepDefinition(
+            step_id="ok",
+            step_type="function",
+            function_callable=ok,
+        )
+    ]
+    executor = Executor(
+        steps,
+        storage,
+        None,
+        make_memory_manager(),
+        tool_registry,
+        on_event=on_event,
+    )
+
+    run = executor.run("wf", {"issue": "x"})
+    assert run.status == StepStatus.COMPLETED
+    assert run.state.data["steps"]["ok"]["ok"] is True
+
+
+def test_storage_append_failure_marks_run_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    storage = make_storage()
+    tool_registry = ToolRegistry()
+    captured_run_id: Dict[str, str] = {}
+
+    def ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return {"ok": True}
+
+    original_create_run = storage.create_run
+
+    def track_create_run(run) -> None:
+        captured_run_id["id"] = run.run_id
+        original_create_run(run)
+
+    monkeypatch.setattr(storage, "create_run", track_create_run)
+
+    failure_once = {"raised": False}
+
+    def fail_append_step(run_id: str, step) -> None:
+        if not failure_once["raised"]:
+            failure_once["raised"] = True
+            raise RuntimeError("append write failed")
+
+    monkeypatch.setattr(storage, "append_step", fail_append_step)
+
+    steps = [StepDefinition(step_id="ok", step_type="function", function_callable=ok)]
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
+
+    with pytest.raises(RuntimeError, match="append write failed"):
+        executor.run("wf", {"issue": "x"})
+
+    persisted = storage.load_run(captured_run_id["id"])
+    assert persisted.status == StepStatus.FAILED
+    assert persisted.error is not None
+    assert "append write failed" in persisted.error
+    assert persisted.completed_at is not None
+
+
+def test_original_error_is_preserved_when_status_persist_also_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    storage = make_storage()
+    tool_registry = ToolRegistry()
+
+    def ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return {"ok": True}
+
+    def fail_append_step(run_id: str, step) -> None:
+        raise RuntimeError("append write failed")
+
+    def fail_update_run_status(
+        run_id: str,
+        status: str,
+        error: str | None,
+        started_at: str | None = None,
+        completed_at: str | None = None,
+    ) -> None:
+        raise RuntimeError("status persist failed")
+
+    monkeypatch.setattr(storage, "append_step", fail_append_step)
+    monkeypatch.setattr(storage, "update_run_status", fail_update_run_status)
+
+    steps = [StepDefinition(step_id="ok", step_type="function", function_callable=ok)]
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
+
+    with pytest.raises(RuntimeError, match="append write failed"):
+        executor.run("wf", {"issue": "x"})
+
+
+def test_on_error_continue_completes_with_errors() -> None:
+    storage = make_storage()
+    tool_registry = ToolRegistry()
+
+    def fail_step(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        raise ValueError("boom")
+
+    def success_step(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return {"ok": True}
+
+    steps = [
+        StepDefinition(step_id="fail", step_type="function", function_callable=fail_step),
+        StepDefinition(step_id="succeed", step_type="function", function_callable=success_step),
+    ]
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
+
+    run = executor.run("wf", {"issue": "x"}, on_error="continue")
+    assert run.status == StepStatus.COMPLETED_WITH_ERRORS
+    assert run.state.data["steps"]["succeed"]["ok"] is True
+
+    persisted = storage.load_steps(run.run_id)
+    assert [step.status for step in persisted] == [StepStatus.FAILED, StepStatus.COMPLETED]
+
+
 def test_state_snapshots_persisted() -> None:
     storage = make_storage()
     tool_registry = ToolRegistry()

@@ -493,6 +493,18 @@ functions_dir: functions
 #         mock-model:
 #           temperature: 0.0
 #           max_tokens: 1024
+#   limits:
+#     rate_limit_rpm: 0                 # 0 disables global request throttling
+#     max_requests_per_run: 0           # 0 disables run request cap
+#     max_total_tokens_per_run: 0       # 0 disables run token cap
+#     max_cost_usd_per_run: 0.0         # 0 disables run cost cap
+#     pricing_usd_per_1k_tokens:
+#       openai/gpt-4o:
+#         input: 0.005
+#         output: 0.015
+#       openai/*:
+#         input: 0.003
+#         output: 0.006
 
 # ─── Memory ───────────────────────────────────────────────────────────
 # Working memory: ephemeral per-run scratch space.
@@ -1057,7 +1069,15 @@ def _default_memory_manager(
 
 def _default_llm_client(cfg: RuntimeConfig, logger: Optional[StructuredLogger] = None) -> LLMClient:
     """Create an LLM client using the configured registry."""
-    return LLMClient(registry=cfg.llm_registry, logger=logger)
+    return LLMClient(
+        registry=cfg.llm_registry,
+        logger=logger,
+        rate_limit_rpm=cfg.llm_rate_limit_rpm,
+        max_requests_per_run=cfg.llm_max_requests_per_run,
+        max_total_tokens_per_run=cfg.llm_max_total_tokens_per_run,
+        max_cost_usd_per_run=cfg.llm_max_cost_usd_per_run,
+        pricing_usd_per_1k_tokens=cfg.llm_pricing_usd_per_1k_tokens,
+    )
 
 
 def _default_agent_registry(agents_dir: str = "agents") -> AgentRegistry:
@@ -1645,6 +1665,32 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     )
     onboard_parser.add_argument("--path", default=".", help="Project root (contains runtime.yaml)")
 
+    def _add_llm_control_args(cmd_parser: argparse.ArgumentParser) -> None:
+        cmd_parser.add_argument(
+            "--llm-rate-limit-rpm",
+            type=int,
+            default=None,
+            help="Global LLM requests-per-minute cap for this invocation (0 disables)",
+        )
+        cmd_parser.add_argument(
+            "--max-llm-requests",
+            type=int,
+            default=None,
+            help="Max LLM requests allowed for one run (0 disables)",
+        )
+        cmd_parser.add_argument(
+            "--max-llm-tokens",
+            type=int,
+            default=None,
+            help="Max total LLM tokens allowed for one run (0 disables)",
+        )
+        cmd_parser.add_argument(
+            "--max-llm-cost-usd",
+            type=float,
+            default=None,
+            help="Max estimated LLM cost in USD allowed for one run (0 disables)",
+        )
+
     run_parser = subparsers.add_parser("run", help="Run a workflow")
     run_parser.add_argument("workflow", help="Workflow path or workflow_id[@version]")
     run_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
@@ -1653,6 +1699,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     run_parser.add_argument("-i", "--input", action="append", default=[],
                             metavar="KEY=VALUE",
                             help="Workflow input (repeatable, e.g. -i issue=\"bug report\")")
+    _add_llm_control_args(run_parser)
 
     # [Pain Point Solved] #4 Debugging is Blind: inspect, state-diff, replay, and
     #   visualize give full post-mortem observability without print() statements.
@@ -1666,6 +1713,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     resume_parser.add_argument("run_id", help="Run ID")
     resume_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
     resume_parser.add_argument("--workflow", help="Optional workflow YAML path to validate against stored hash")
+    _add_llm_control_args(resume_parser)
 
     replay_parser = subparsers.add_parser("replay", help="Deterministically replay a run")
     replay_parser.add_argument("run_id", help="Run ID")
