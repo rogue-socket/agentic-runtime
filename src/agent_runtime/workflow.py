@@ -42,6 +42,40 @@ from .utils import sha256_text
 #   not imperative Python. A teammate can understand the pipeline in 10 seconds.
 VALID_STEP_TYPES = {"agent", "function", "tool"}
 
+WORKFLOW_SCHEMA_VERSION_CURRENT = 2
+
+
+def _parse_schema_version(raw: Dict[str, Any]) -> int:
+    """Parse schema_version and enforce the runtime's single supported schema."""
+    raw_schema = raw.get("schema_version")
+
+    if raw_schema is None:
+        raise WorkflowValidationError(
+            f"workflow schema_version is required and must be v{WORKFLOW_SCHEMA_VERSION_CURRENT}."
+        )
+
+    if isinstance(raw_schema, int):
+        schema_version = raw_schema
+    elif isinstance(raw_schema, str):
+        value = raw_schema.strip().lower()
+        if value.startswith("v"):
+            value = value[1:]
+        if not value.isdigit():
+            raise WorkflowValidationError(
+                f"schema_version must be an integer or vN string, got: {raw_schema}"
+            )
+        schema_version = int(value)
+    else:
+        raise WorkflowValidationError("schema_version must be an integer or string.")
+
+    if schema_version != WORKFLOW_SCHEMA_VERSION_CURRENT:
+        raise WorkflowValidationError(
+            f"Unsupported schema_version v{schema_version}. "
+            f"This runtime requires v{WORKFLOW_SCHEMA_VERSION_CURRENT}."
+        )
+
+    return schema_version
+
 
 def _validate_step(step: Dict[str, Any]) -> None:
     """Validate one raw step mapping.
@@ -78,6 +112,8 @@ def _validate_step(step: Dict[str, Any]) -> None:
     if "outputs" in step:
         if not isinstance(step["outputs"], list) or not all(isinstance(v, str) for v in step["outputs"]):
             raise WorkflowValidationError("Step outputs must be a list of strings.")
+    if "input" in step:
+        raise WorkflowValidationError("Step field 'input' is not supported; use 'inputs'.")
     if "next" in step and not isinstance(step["next"], list):
         raise WorkflowValidationError("Step next must be a list of rules.")
     if "optional" in step and not isinstance(step["optional"], bool):
@@ -101,6 +137,7 @@ def _extract_workflow_identity(raw: Dict[str, Any]) -> Tuple[str, Optional[str]]
     workflow_meta = raw.get("workflow")
     if not isinstance(workflow_meta, dict):
         raise WorkflowValidationError("Workflow must include a top-level workflow mapping.")
+
     workflow_id = workflow_meta.get("id")
     workflow_version = workflow_meta.get("version")
     if not isinstance(workflow_id, str) or not workflow_id.strip():
@@ -195,6 +232,7 @@ def _parse_workflow(
         raise WorkflowValidationError("Workflow YAML must be a mapping.")
     if "steps" not in raw or not isinstance(raw["steps"], list):
         raise WorkflowValidationError("Workflow must include a steps list.")
+    schema_version = _parse_schema_version(raw)
     workflow_id, workflow_version = _extract_workflow_identity(raw)
 
     on_error = raw.get("on_error", "fail_fast")
@@ -376,7 +414,7 @@ def _parse_workflow(
                     step_id=step["id"],
                     step_type="tool",
                     tool_name=step["tool"],
-                    raw_input=step.get("input"),
+                    raw_input=None,
                     retry=retry,
                     input_spec=input_spec if isinstance(input_spec, dict) else None,
                     input_contract=input_contract,
@@ -397,6 +435,7 @@ def _parse_workflow(
     return {
         "workflow_id": workflow_id,
         "workflow_version": workflow_version,
+        "workflow_schema_version": schema_version,
         "inputs": workflow_inputs,
         "steps": steps,
         "on_error": on_error,

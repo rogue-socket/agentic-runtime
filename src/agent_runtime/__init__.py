@@ -159,7 +159,15 @@ async def run_workflow_async(
         register_discovered_tools(tool_registry, cfg.tools_dir)
 
         # Build agent registry and LLM client
-        llm_client = LLMClient(registry=cfg.llm_registry, logger=logger)
+        llm_client = LLMClient(
+            registry=cfg.llm_registry,
+            logger=logger,
+            rate_limit_rpm=cfg.llm_rate_limit_rpm,
+            max_requests_per_run=cfg.llm_max_requests_per_run,
+            max_total_tokens_per_run=cfg.llm_max_total_tokens_per_run,
+            max_cost_usd_per_run=cfg.llm_max_cost_usd_per_run,
+            pricing_usd_per_1k_tokens=cfg.llm_pricing_usd_per_1k_tokens,
+        )
         agent_registry = AgentRegistry()
         agents_dir = getattr(cfg, "agents_dir", "agents")
         if os.path.isdir(agents_dir):

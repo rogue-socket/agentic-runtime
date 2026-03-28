@@ -1,3 +1,4 @@
+schema_version: 2
 # File: workflows/samples/versioning/code_review_agent_v2.yaml
 # Purpose: Versioned workflow sample (v2) extending v1.
 # Description: Adds a finalization step to illustrate workflow evolution across versions.

@@ -1,3 +1,4 @@
+schema_version: 2
 # File: workflows/samples/06_gemini_call.yaml
 # Purpose: Demonstrate a Gemini-backed workflow using type: agent.
 # Description: Summarizes an issue via a Gemini-configured agent, then echoes the summary.

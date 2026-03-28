@@ -1,3 +1,4 @@
+schema_version: 2
 # File: workflows/samples/01_linear_issue_summary.yaml
 # Purpose: Minimal linear workflow sample.
 # Description: Runs a summary function step then echoes the result through a tool.

@@ -223,7 +223,8 @@ def _prompt_int(prompt: str, min_value: int, max_value: int, default: int) -> in
         return value
 
 
-EXAMPLE_WORKFLOW = """workflow:                     # workflow metadata
+EXAMPLE_WORKFLOW = """schema_version: 2             # workflow schema version
+workflow:                     # workflow metadata
   id: example_workflow         # unique workflow id
   version: v1                  # version tag
 inputs:                        # declared inputs
@@ -791,6 +792,7 @@ _QS_BRANCHING_WORKFLOW = """\
 #   or: ai run workflows/branching_triage.yaml
 #   or: ai run workflows/branching_triage.yaml -i issue="Server is slow under load"
 
+schema_version: 2
 workflow:
   id: branching_triage
   version: v1
@@ -846,6 +848,7 @@ _QS_RESEARCH_WORKFLOW = """\
 #   or: ai run workflows/research.yaml
 #   or: ai run workflows/research.yaml -i topic="Microservices vs monoliths"
 
+schema_version: 2
 workflow:
   id: research_report
   version: v1
@@ -897,6 +900,7 @@ _QS_PIPELINE_WORKFLOW = """\
 #   or: ai run workflows/data_pipeline.yaml
 #   or: ai run workflows/data_pipeline.yaml -i data="humidity, 85.2, weather"
 
+schema_version: 2
 workflow:
   id: data_pipeline
   version: v1

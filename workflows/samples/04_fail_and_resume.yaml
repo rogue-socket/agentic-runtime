@@ -1,3 +1,4 @@
+schema_version: 2
 # File: workflows/samples/04_fail_and_resume.yaml
 # Purpose: Demonstrates failure handling and resume semantics.
 # Description: Intentionally references a missing tool adapter to force a failed run state.

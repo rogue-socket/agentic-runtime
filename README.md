@@ -178,6 +178,14 @@ CLI overrides for `ai run` and `ai resume`:
 - `--max-llm-tokens`
 - `--max-llm-cost-usd`
 
+### Workflow Schema Stability
+
+Workflows use explicit schema versioning with a single supported runtime schema:
+
+- `schema_version: 2` is current and stable.
+- `schema_version` is required on every workflow file.
+- Older/legacy schema forms are intentionally not supported.
+
 ---
 
 ## Docs

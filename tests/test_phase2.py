@@ -498,6 +498,7 @@ class TestWorkflowStepValidation:
 class TestWorkflowParsing:
     def test_parse_agent_step(self):
         yaml_text = (
+            "schema_version: 2\n"
             "workflow:\n"
             "  id: test_wf\n"
             "  version: v1\n"
@@ -517,6 +518,7 @@ class TestWorkflowParsing:
 
     def test_parse_agent_step_with_version(self):
         yaml_text = (
+            "schema_version: 2\n"
             "workflow:\n"
             "  id: test_wf\n"
             "  version: v1\n"
@@ -533,6 +535,7 @@ class TestWorkflowParsing:
     def test_parse_function_step_without_dir(self):
         """Function step parses but callable is None without functions_dir."""
         yaml_text = (
+            "schema_version: 2\n"
             "workflow:\n"
             "  id: test_wf\n"
             "  version: v1\n"
@@ -556,6 +559,7 @@ class TestWorkflowParsing:
             with open(os.path.join(d, "formatters.py"), "w") as f:
                 f.write("def format_markdown(inputs):\n    return {'report': inputs['text']}\n")
             yaml_text = (
+                "schema_version: 2\n"
                 "workflow:\n"
                 "  id: test_wf\n"
                 "  version: v1\n"
@@ -572,6 +576,7 @@ class TestWorkflowParsing:
     def test_mixed_step_types(self):
         """Workflow can contain agent, function, and tool steps together."""
         yaml_text = (
+            "schema_version: 2\n"
             "workflow:\n"
             "  id: test_wf\n"
             "  version: v1\n"

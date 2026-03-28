@@ -1,3 +1,4 @@
+schema_version: 2
 # File: workflows/samples/02_retry_and_backoff.yaml
 # Purpose: Demonstrates per-step retry and backoff configuration.
 # Description: Configures exponential backoff on the function step before delivering output.

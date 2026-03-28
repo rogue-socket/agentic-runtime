@@ -24,6 +24,7 @@ def _generate_summary(inputs: dict) -> dict:
 
 def test_workflow_parses_id_and_version() -> None:
     raw = """
+schema_version: 2
 workflow:
   id: code_review_agent
   version: v2
@@ -43,6 +44,7 @@ def test_workflow_registry_latest_version_resolution(tmp_path) -> None:
 
     (wf_dir / "triage_v1.yaml").write_text(
         """
+schema_version: 2
 workflow:
   id: triage
   version: v1
@@ -55,6 +57,7 @@ steps:
     )
     (wf_dir / "triage_v2.yaml").write_text(
         """
+schema_version: 2
 workflow:
   id: triage
   version: v2
@@ -117,6 +120,7 @@ def test_run_persists_workflow_version() -> None:
 
 def test_workflow_parses_optional_default_step_fields() -> None:
     raw = """
+schema_version: 2
 workflow:
   id: optional_flow
   version: v1
@@ -137,6 +141,7 @@ steps:
 
 def test_workflow_rejects_default_without_optional() -> None:
     raw = """
+schema_version: 2
 workflow:
   id: invalid_optional
   version: v1

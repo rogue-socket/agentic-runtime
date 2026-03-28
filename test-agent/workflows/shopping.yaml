@@ -1,3 +1,4 @@
+schema_version: 2
 # Shopping Workflow
 # ─────────────────────────────────────────────────────────────────────
 # An autonomous shopping agent workflow that:

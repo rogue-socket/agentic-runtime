@@ -1,3 +1,4 @@
+schema_version: 2
 # Quickstart 2: Branching Triage
 # Demonstrates: conditional branching, multiple function steps, no LLM required.
 # Run: ai quickstart2
