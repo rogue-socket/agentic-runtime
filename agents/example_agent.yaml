@@ -1,3 +1,4 @@
+schema_version: v1
 # Agent definition — describes an LLM-backed agent.
 # Referenced from workflow steps via `type: agent` + `agent: example_agent`.
 agent:

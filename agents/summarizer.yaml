@@ -1,3 +1,4 @@
+schema_version: v1
 agent:
   id: summarizer
   version: v1

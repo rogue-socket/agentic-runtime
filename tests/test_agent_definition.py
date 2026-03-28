@@ -154,6 +154,8 @@ class TestAgentDefinition:
             mode="w", suffix=".yaml", delete=False
         ) as f:
             f.write(textwrap.dedent("""\
+                schema_version: v1
+
                 agent:
                   id: test_agent
                   version: v1
@@ -167,6 +169,7 @@ class TestAgentDefinition:
             path = f.name
         try:
             defn = load_agent_definition(path)
+            assert defn.schema_version == "v1"
             assert defn.agent_id == "test_agent"
             assert defn.version == "v1"
             assert defn.model == "openai/gpt-4"
@@ -183,6 +186,8 @@ class TestAgentDefinition:
             mode="w", suffix=".yaml", delete=False
         ) as f:
             f.write(textwrap.dedent("""\
+                schema_version: v1
+
                 agent:
                   id: reviewer
                   version: v2
@@ -216,6 +221,7 @@ class TestAgentDefinition:
             path = f.name
         try:
             defn = load_agent_definition(path)
+            assert defn.schema_version == "v1"
             assert defn.agent_id == "reviewer"
             assert defn.version == "v2"
             assert defn.description == "Code reviewer"
@@ -242,11 +248,24 @@ class TestAgentDefinition:
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
-            f.write("agent:\n  id: x\n")
+            f.write("schema_version: v1\nagent:\n  id: x\n")
             f.flush()
             path = f.name
         try:
             with pytest.raises(AgentValidationError, match="missing required field 'version'"):
+                load_agent_definition(path)
+        finally:
+            os.unlink(path)
+
+    def test_load_missing_schema_version(self):
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        ) as f:
+            f.write("agent:\n  id: x\n  version: v1\n")
+            f.flush()
+            path = f.name
+        try:
+            with pytest.raises(AgentValidationError, match="schema_version is required"):
                 load_agent_definition(path)
         finally:
             os.unlink(path)
@@ -282,6 +301,7 @@ class TestAgentDefinition:
             pipeline=_simple_pipeline(),
         )
         d = defn.to_dict()
+        assert d["schema_version"] == "v1"
         assert d["agent"]["id"] == "test"
         assert d["agent"]["tools"] == ["tools.echo"]
         assert len(d["agent"]["pipeline"]) == 1
@@ -292,6 +312,8 @@ class TestAgentDefinition:
             mode="w", suffix=".yaml", delete=False
         ) as f:
             f.write(textwrap.dedent("""\
+                schema_version: v1
+
                 agent:
                   id: t
                   version: v1
@@ -315,6 +337,8 @@ class TestAgentDefinition:
             mode="w", suffix=".yaml", delete=False
         ) as f:
             f.write(textwrap.dedent("""\
+                schema_version: v1
+
                 agent:
                   id: t
                   version: v1
@@ -338,6 +362,8 @@ class TestAgentDefinition:
             mode="w", suffix=".yaml", delete=False
         ) as f:
             f.write(textwrap.dedent("""\
+                schema_version: v1
+
                 agent:
                   id: t
                   version: v1
@@ -409,6 +435,8 @@ class TestAgentRegistry:
             path = os.path.join(d, "agent.yaml")
             with open(path, "w") as f:
                 f.write(textwrap.dedent("""\
+                    schema_version: v1
+
                     agent:
                       id: disc_agent
                       version: v1
@@ -429,6 +457,8 @@ class TestAgentRegistry:
             good = os.path.join(d, "good.yaml")
             with open(good, "w") as f:
                 f.write(textwrap.dedent("""\
+                    schema_version: v1
+
                     agent:
                       id: ok
                       version: v1

@@ -1,3 +1,4 @@
+schema_version: v1
 db_path: runtime.db
 workflows_dir: workflows
 tools_dir: tools

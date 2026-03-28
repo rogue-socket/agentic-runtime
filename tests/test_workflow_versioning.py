@@ -24,7 +24,7 @@ def _generate_summary(inputs: dict) -> dict:
 
 def test_workflow_parses_id_and_version() -> None:
     raw = """
-schema_version: 2
+schema_version: v1
 workflow:
   id: code_review_agent
   version: v2
@@ -44,7 +44,7 @@ def test_workflow_registry_latest_version_resolution(tmp_path) -> None:
 
     (wf_dir / "triage_v1.yaml").write_text(
         """
-schema_version: 2
+schema_version: v1
 workflow:
   id: triage
   version: v1
@@ -57,7 +57,7 @@ steps:
     )
     (wf_dir / "triage_v2.yaml").write_text(
         """
-schema_version: 2
+schema_version: v1
 workflow:
   id: triage
   version: v2
@@ -76,6 +76,56 @@ steps:
 
     v1 = registry.get("triage", "v1")
     assert v1["workflow_version"] == "v1"
+
+
+def test_workflow_registry_latest_version_resolution_with_minor_versions(tmp_path) -> None:
+    wf_dir = tmp_path / "workflows"
+    wf_dir.mkdir()
+
+    (wf_dir / "triage_v1.yaml").write_text(
+        """
+schema_version: v1
+workflow:
+  id: triage
+  version: v1
+steps:
+  - id: generate_summary
+    type: function
+    function: stubs.generate_summary
+""",
+        encoding="utf-8",
+    )
+    (wf_dir / "triage_v1_2.yaml").write_text(
+        """
+schema_version: v1
+workflow:
+  id: triage
+  version: v1.2
+steps:
+  - id: generate_summary
+    type: function
+    function: stubs.generate_summary
+""",
+        encoding="utf-8",
+    )
+    (wf_dir / "triage_v1_10.yaml").write_text(
+        """
+schema_version: v1
+workflow:
+  id: triage
+  version: v1.10
+steps:
+  - id: generate_summary
+    type: function
+    function: stubs.generate_summary
+""",
+        encoding="utf-8",
+    )
+
+    registry = WorkflowRegistry.from_directory(str(wf_dir))
+
+    latest = registry.get("triage")
+    assert latest["workflow_version"] == "v1.10"
 
 
 def test_workflow_registry_duplicate_version_rejected() -> None:
@@ -120,7 +170,7 @@ def test_run_persists_workflow_version() -> None:
 
 def test_workflow_parses_optional_default_step_fields() -> None:
     raw = """
-schema_version: 2
+schema_version: v1
 workflow:
   id: optional_flow
   version: v1
@@ -141,7 +191,7 @@ steps:
 
 def test_workflow_rejects_default_without_optional() -> None:
     raw = """
-schema_version: 2
+schema_version: v1
 workflow:
   id: invalid_optional
   version: v1

@@ -32,6 +32,7 @@ Running AI agents in production is a mess. LLM calls fail mid-workflow. State ge
 Define your entire agent pipeline in YAML. Mix LLM agents, Python functions, and external tools. The runtime handles everything else: execution, memory, branching, retry, persistence, replay, and resume — with full state history at every step.
 
 ```yaml
+schema_version: v1
 workflow:
   id: research_and_act
   version: v1
@@ -178,13 +179,13 @@ CLI overrides for `ai run` and `ai resume`:
 - `--max-llm-tokens`
 - `--max-llm-cost-usd`
 
-### Workflow Schema Stability
+### Unified Schema Versioning
 
-Workflows use explicit schema versioning with a single supported runtime schema:
+Schema-bearing components use one shared baseline and one versioning policy:
 
-- `schema_version: 2` is current and stable.
-- `schema_version` is required on every workflow file.
-- Older/legacy schema forms are intentionally not supported.
+- Baseline is `v1` for workflow YAML, agent YAML, runtime config YAML, and SQLite storage metadata.
+- Component-local schema updates should increment minor versions (`v1.1`, `v1.2`, ...).
+- Broad cross-system schema changes should increment major version (`v2`).
 
 ---
 

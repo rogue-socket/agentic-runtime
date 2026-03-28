@@ -41,7 +41,7 @@ class AgentRegistry:
 
     def list_agents(self) -> Dict[str, List[str]]:
         """Return ``{agent_id: [versions]}``."""
-        return {aid: sorted(vs.keys()) for aid, vs in self._agents.items()}
+        return {aid: sorted(vs.keys(), key=_version_sort_key) for aid, vs in self._agents.items()}
 
     @classmethod
     def from_directory(cls, agents_dir: str) -> "AgentRegistry":

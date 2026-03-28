@@ -17,13 +17,19 @@ from typing import Any, Dict
 
 import yaml
 
+from .errors import ConfigValidationError
 from .llm import LLMRegistry
+from .schema_versioning import (
+    RUNTIME_CONFIG_SCHEMA_VERSION_CURRENT,
+    parse_required_schema_version,
+)
 
 
 @dataclass
 class RuntimeConfig:
     """Resolved runtime configuration."""
 
+    schema_version: str = RUNTIME_CONFIG_SCHEMA_VERSION_CURRENT
     db_path: str = "runtime.db"
     workflows_dir: str = "workflows"
     tools_dir: str = "tools"
@@ -92,6 +98,15 @@ def load_config(config_path: str = "runtime.yaml") -> RuntimeConfig:
 
     if not isinstance(raw, dict):
         return cfg
+
+    try:
+        cfg.schema_version = parse_required_schema_version(
+            raw,
+            expected_version=RUNTIME_CONFIG_SCHEMA_VERSION_CURRENT,
+            component_name="runtime config",
+        )
+    except ValueError as exc:
+        raise ConfigValidationError(str(exc)) from exc
 
     for key in _FLAT_KEYS:
         if key in raw:

@@ -333,9 +333,10 @@ def sha256_json(data: Any) -> str:
 
 
 def version_sort_key(v: str):
-    """Sort key that handles 'v1', 'v2', ..., 'v10' correctly."""
-    stripped = v.lstrip("vV")
+    """Sort key that handles versions like `v1`, `v1.1`, and `v10` correctly."""
+    from .schema_versioning import version_components
+
     try:
-        return (0, int(stripped))
+        return (0, version_components(v))
     except ValueError:
         return (1, v)

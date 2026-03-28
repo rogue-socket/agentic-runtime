@@ -4,14 +4,21 @@ from __future__ import annotations
 
 import os
 import tempfile
+import pytest
 
 from agent_runtime.config import RuntimeConfig, load_config, apply_cli_overrides
+from agent_runtime.errors import ConfigValidationError
+
+
+def _with_schema(body: str) -> str:
+    return "schema_version: v1\n" + body
 
 
 class TestDefaults:
 
     def test_default_values(self) -> None:
         cfg = RuntimeConfig()
+        assert cfg.schema_version == "v1"
         assert cfg.db_path == "runtime.db"
         assert cfg.workflows_dir == "workflows"
         assert cfg.tools_dir == "tools"
@@ -48,7 +55,7 @@ class TestLoadConfig:
 
     def test_flat_keys_override(self) -> None:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write("db_path: custom.db\nworkflows_dir: my_workflows\noverwrite_policy: strict\n")
+            f.write(_with_schema("db_path: custom.db\nworkflows_dir: my_workflows\noverwrite_policy: strict\n"))
             f.flush()
             cfg = load_config(f.name)
         os.unlink(f.name)
@@ -57,7 +64,7 @@ class TestLoadConfig:
         assert cfg.overwrite_policy == "strict"
 
     def test_logging_block(self) -> None:
-        yaml_text = "logging:\n  level: debug\n  format: text\n"
+        yaml_text = _with_schema("logging:\n  level: debug\n  format: text\n")
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_text)
             f.flush()
@@ -67,7 +74,7 @@ class TestLoadConfig:
         assert cfg.log_format == "text"
 
     def test_memory_block(self) -> None:
-        yaml_text = "memory:\n  working:\n    max_entries: 100\n    max_scratch_bytes: 500000\n"
+        yaml_text = _with_schema("memory:\n  working:\n    max_entries: 100\n    max_scratch_bytes: 500000\n")
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_text)
             f.flush()
@@ -77,7 +84,7 @@ class TestLoadConfig:
         assert cfg.working_memory_max_scratch_bytes == 500_000
 
     def test_shell_block(self) -> None:
-        yaml_text = "shell:\n  allowlist:\n    - echo\n    - cat\n  denylist:\n    - rm\n"
+        yaml_text = _with_schema("shell:\n  allowlist:\n    - echo\n    - cat\n  denylist:\n    - rm\n")
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_text)
             f.flush()
@@ -88,6 +95,7 @@ class TestLoadConfig:
 
     def test_llm_provider_wiring(self) -> None:
         yaml_text = (
+            "schema_version: v1\n"
             "default_llm_provider: gemini\n"
             "llm:\n"
             "  providers:\n"
@@ -108,6 +116,7 @@ class TestLoadConfig:
 
     def test_llm_limits_block(self) -> None:
         yaml_text = (
+            "schema_version: v1\n"
             "llm:\n"
             "  limits:\n"
             "    rate_limit_rpm: 120\n"
@@ -134,6 +143,7 @@ class TestLoadConfig:
 
     def test_top_level_llm_limits_block(self) -> None:
         yaml_text = (
+            "schema_version: v1\n"
             "llm_limits:\n"
             "  rate_limit_rpm: 30\n"
             "  max_requests_per_run: 3\n"
@@ -161,12 +171,23 @@ class TestLoadConfig:
 
     def test_unknown_keys_ignored(self) -> None:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write("unknown_setting: 42\ndb_path: test.db\n")
+            f.write(_with_schema("unknown_setting: 42\ndb_path: test.db\n"))
             f.flush()
             cfg = load_config(f.name)
         os.unlink(f.name)
         assert cfg.db_path == "test.db"
         assert not hasattr(cfg, "unknown_setting")
+
+    def test_missing_schema_version_is_rejected_for_non_empty_mapping(self) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write("db_path: custom.db\n")
+            f.flush()
+            path = f.name
+        try:
+            with pytest.raises(ConfigValidationError, match="schema_version is required"):
+                load_config(path)
+        finally:
+            os.unlink(path)
 
 
 class TestCLIOverrides:

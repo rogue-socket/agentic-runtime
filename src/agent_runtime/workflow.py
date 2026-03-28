@@ -30,6 +30,11 @@ import yaml
 
 from .core import NextRule, RetryPolicy, StepDefinition
 from .errors import WorkflowValidationError
+from .schema_versioning import (
+    WORKFLOW_SCHEMA_VERSION_CURRENT,
+    normalize_version,
+    parse_required_schema_version,
+)
 from .utils import sha256_text
 
 # Valid step types for workflow steps
@@ -42,39 +47,16 @@ from .utils import sha256_text
 #   not imperative Python. A teammate can understand the pipeline in 10 seconds.
 VALID_STEP_TYPES = {"agent", "function", "tool"}
 
-WORKFLOW_SCHEMA_VERSION_CURRENT = 2
-
-
-def _parse_schema_version(raw: Dict[str, Any]) -> int:
+def _parse_schema_version(raw: Dict[str, Any]) -> str:
     """Parse schema_version and enforce the runtime's single supported schema."""
-    raw_schema = raw.get("schema_version")
-
-    if raw_schema is None:
-        raise WorkflowValidationError(
-            f"workflow schema_version is required and must be v{WORKFLOW_SCHEMA_VERSION_CURRENT}."
+    try:
+        return parse_required_schema_version(
+            raw,
+            expected_version=WORKFLOW_SCHEMA_VERSION_CURRENT,
+            component_name="workflow",
         )
-
-    if isinstance(raw_schema, int):
-        schema_version = raw_schema
-    elif isinstance(raw_schema, str):
-        value = raw_schema.strip().lower()
-        if value.startswith("v"):
-            value = value[1:]
-        if not value.isdigit():
-            raise WorkflowValidationError(
-                f"schema_version must be an integer or vN string, got: {raw_schema}"
-            )
-        schema_version = int(value)
-    else:
-        raise WorkflowValidationError("schema_version must be an integer or string.")
-
-    if schema_version != WORKFLOW_SCHEMA_VERSION_CURRENT:
-        raise WorkflowValidationError(
-            f"Unsupported schema_version v{schema_version}. "
-            f"This runtime requires v{WORKFLOW_SCHEMA_VERSION_CURRENT}."
-        )
-
-    return schema_version
+    except ValueError as exc:
+        raise WorkflowValidationError(str(exc)) from exc
 
 
 def _validate_step(step: Dict[str, Any]) -> None:
@@ -124,7 +106,7 @@ def _validate_step(step: Dict[str, Any]) -> None:
         raise WorkflowValidationError("Step default requires optional: true.")
 
 
-def _extract_workflow_identity(raw: Dict[str, Any]) -> Tuple[str, Optional[str]]:
+def _extract_workflow_identity(raw: Dict[str, Any]) -> Tuple[str, str]:
     """Extract workflow id/version from the required modern schema.
 
     Requires a top-level ``workflow`` mapping with non-empty
@@ -144,7 +126,10 @@ def _extract_workflow_identity(raw: Dict[str, Any]) -> Tuple[str, Optional[str]]
         raise WorkflowValidationError("workflow.id must be a non-empty string.")
     if not isinstance(workflow_version, str) or not workflow_version.strip():
         raise WorkflowValidationError("workflow.version must be a non-empty string.")
-    return workflow_id, workflow_version
+    try:
+        return workflow_id, normalize_version(workflow_version, field_name="workflow.version")
+    except ValueError as exc:
+        raise WorkflowValidationError(str(exc)) from exc
 
 
 def _parse_inputs(raw_inputs: Any) -> Dict[str, Dict[str, Any]]:

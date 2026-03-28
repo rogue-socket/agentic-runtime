@@ -30,6 +30,8 @@ from typing import Any, Dict, Generator, Optional, TYPE_CHECKING
 import sqlite3
 import threading
 
+from ..errors import StorageValidationError
+from ..schema_versioning import STORAGE_SCHEMA_VERSION_CURRENT
 from ..storage.base import Storage
 from ..utils import json_dumps, json_loads
 
@@ -207,10 +209,35 @@ class SQLiteStorage(Storage):
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(run_id) REFERENCES runs(id)
             );
+            CREATE TABLE IF NOT EXISTS runtime_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
             """
         )
         self._ensure_runs_columns(self._conn)
         self._ensure_steps_columns(self._conn)
+        self._ensure_storage_schema_version(self._conn)
+
+    def _ensure_storage_schema_version(self, conn: sqlite3.Connection) -> None:
+        """Initialize and verify storage schema version contract."""
+        row = conn.execute(
+            "SELECT value FROM runtime_metadata WHERE key = ?",
+            ("storage_schema_version",),
+        ).fetchone()
+        if row is None:
+            conn.execute(
+                "INSERT INTO runtime_metadata (key, value) VALUES (?, ?)",
+                ("storage_schema_version", STORAGE_SCHEMA_VERSION_CURRENT),
+            )
+            return
+
+        stored_version = row["value"]
+        if stored_version != STORAGE_SCHEMA_VERSION_CURRENT:
+            raise StorageValidationError(
+                "Unsupported storage schema version "
+                f"{stored_version}. This runtime requires {STORAGE_SCHEMA_VERSION_CURRENT}."
+            )
 
     def _ensure_steps_columns(self, conn: sqlite3.Connection) -> None:
         """Add missing `steps` table columns for backward compatibility."""

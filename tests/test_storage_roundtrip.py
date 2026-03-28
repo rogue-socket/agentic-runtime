@@ -6,8 +6,14 @@ converted to NULL (the truthiness bug fixed in append_step).
 
 from __future__ import annotations
 
+import os
+import sqlite3
+import tempfile
+import pytest
 
 from agent_runtime.core import Run, StepExecution, StepStatus
+from agent_runtime.errors import StorageValidationError
+from agent_runtime.schema_versioning import STORAGE_SCHEMA_VERSION_CURRENT
 from agent_runtime.storage.sqlite import SQLiteStorage
 from conftest import make_storage
 
@@ -171,3 +177,44 @@ class TestAgentTraceRoundtrip:
 
         loaded = storage.load_steps("run1")
         assert loaded[0].agent_trace == []
+
+
+class TestStorageSchemaVersion:
+    def test_schema_version_metadata_is_written(self) -> None:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
+            db_path = tmp.name
+        try:
+            storage = SQLiteStorage(db_path)
+            storage.close()
+
+            conn = sqlite3.connect(db_path)
+            row = conn.execute(
+                "SELECT value FROM runtime_metadata WHERE key = ?",
+                ("storage_schema_version",),
+            ).fetchone()
+            conn.close()
+
+            assert row is not None
+            assert row[0] == STORAGE_SCHEMA_VERSION_CURRENT
+        finally:
+            os.unlink(db_path)
+
+    def test_schema_version_mismatch_is_rejected(self) -> None:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
+            db_path = tmp.name
+        try:
+            storage = SQLiteStorage(db_path)
+            storage.close()
+
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                "UPDATE runtime_metadata SET value = ? WHERE key = ?",
+                ("v9", "storage_schema_version"),
+            )
+            conn.commit()
+            conn.close()
+
+            with pytest.raises(StorageValidationError, match="Unsupported storage schema version"):
+                SQLiteStorage(db_path)
+        finally:
+            os.unlink(db_path)

@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: v1
 workflow:                     # workflow metadata
   id: example_workflow         # unique workflow id
   version: v1                  # version tag

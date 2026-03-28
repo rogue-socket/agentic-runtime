@@ -17,6 +17,11 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from ..errors import AgentValidationError
+from ..schema_versioning import (
+    AGENT_SCHEMA_VERSION_CURRENT,
+    normalize_version,
+    parse_required_schema_version,
+)
 from .prompts import PromptEntry, PromptRegistry
 
 # -- strategy config -------------------------------------------------------
@@ -101,6 +106,7 @@ class AgentDefinition:
 
     agent_id: str
     version: str
+    schema_version: str = AGENT_SCHEMA_VERSION_CURRENT
     model: str = ""  # resolved from runtime config when empty
     description: str = ""
 
@@ -160,6 +166,7 @@ class AgentDefinition:
             pipeline_data.append(entry)
 
         result: Dict[str, Any] = {
+            "schema_version": self.schema_version,
             "agent": {
                 "id": self.agent_id,
                 "version": self.version,
@@ -196,10 +203,24 @@ def load_agent_definition(path: str) -> AgentDefinition:
         raw = yaml.safe_load(f)
     if not isinstance(raw, dict) or "agent" not in raw:
         raise AgentValidationError(f"{path}: missing top-level 'agent' key")
-    return _parse_agent(raw["agent"], path, raw)
+    try:
+        schema_version = parse_required_schema_version(
+            raw,
+            expected_version=AGENT_SCHEMA_VERSION_CURRENT,
+            component_name="agent definition",
+        )
+    except ValueError as exc:
+        raise AgentValidationError(f"{path}: {exc}") from exc
+    return _parse_agent(raw["agent"], path, raw, schema_version=schema_version)
 
 
-def _parse_agent(data: dict, path: str, raw: Optional[dict] = None) -> AgentDefinition:
+def _parse_agent(
+    data: dict,
+    path: str,
+    raw: Optional[dict] = None,
+    *,
+    schema_version: str,
+) -> AgentDefinition:
     """Parse the ``agent:`` block into an AgentDefinition."""
     for key in ("id", "version"):
         if key not in data:
@@ -217,9 +238,15 @@ def _parse_agent(data: dict, path: str, raw: Optional[dict] = None) -> AgentDefi
             f"{path}: agent must define a 'pipeline' with at least one step"
         )
 
+    try:
+        normalized_agent_version = normalize_version(data["version"], field_name="agent.version")
+    except ValueError as exc:
+        raise AgentValidationError(f"{path}: {exc}") from exc
+
     return AgentDefinition(
         agent_id=data["id"],
-        version=str(data["version"]),
+        version=normalized_agent_version,
+        schema_version=schema_version,
         model=data.get("model", ""),
         description=data.get("description", ""),
         system=data.get("system", ""),
@@ -358,10 +385,15 @@ def _register_prompt_item(
             raise AgentValidationError(
                 f"{path}: prompt missing required field '{key}'"
             )
+    try:
+        prompt_version = normalize_version(item.get("version", "v1"), field_name="prompt.version")
+    except ValueError as exc:
+        raise AgentValidationError(f"{path}: {exc}") from exc
+
     registry.register(
         PromptEntry(
             prompt_id=item["id"],
-            version=str(item.get("version", "v1")),
+            version=prompt_version,
             text=item["text"],
             description=item.get("description", ""),
         )

@@ -7,14 +7,14 @@ Index workflow definitions by id/version and resolve references.
 
 Description:
 Scans workflow directories, registers validated workflows, and resolves
-either explicit versions or latest numeric `vN` versions on demand.
+either explicit versions or latest semantic-like versions on demand.
 
 Key Components:
 - `WorkflowRegistry`
 - `WorkflowReference` and `parse_workflow_reference`
 
 Dependencies:
-- `pathlib`, regex, workflow loader
+- `pathlib`, workflow loader
 
 Inputs/Outputs:
 - Input: directory roots and workflow refs like `id@v2`
@@ -27,13 +27,10 @@ Side Effects:
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional
-import re
 
 from .errors import WorkflowValidationError
+from .schema_versioning import version_components
 from .workflow import load_workflow
-
-
-_VERSION_RE = re.compile(r"^v(\d+)$")
 
 
 @dataclass(frozen=True)
@@ -104,7 +101,7 @@ class WorkflowRegistry:
     def get(self, workflow_id: str, version: Optional[str] = None) -> Dict[str, object]:
         """Resolve workflow by id and optional version.
 
-        When version is omitted, latest numeric `vN` is selected.
+        When version is omitted, latest semantic-like version is selected.
         Raises validation error for unknown id/version combinations.
         """
         versions = self._workflows.get(workflow_id)
@@ -118,10 +115,7 @@ class WorkflowRegistry:
         return workflow
 
     def get_latest_version(self, workflow_id: str) -> str:
-        """Return latest numeric version string for a workflow id.
-
-        Version values must match `vN` format to keep ordering stable.
-        """
+        """Return latest semantic-like version string for a workflow id."""
         versions = self._workflows.get(workflow_id)
         if not versions:
             raise WorkflowValidationError(f"Workflow id not found: {workflow_id}")
@@ -129,12 +123,14 @@ class WorkflowRegistry:
         version_keys = list(versions.keys())
         numeric_versions = []
         for version in version_keys:
-            match = _VERSION_RE.match(version)
-            if match is None:
+            try:
+                parts = version_components(version)
+            except ValueError:
                 raise WorkflowValidationError(
-                    f"Unsupported workflow version format for latest resolution: {workflow_id}@{version}. Expected vN."
+                    f"Unsupported workflow version format for latest resolution: {workflow_id}@{version}. "
+                    "Expected v<major>[.<minor>...]."
                 )
-            numeric_versions.append((int(match.group(1)), version))
+            numeric_versions.append((parts, version))
 
         numeric_versions.sort(key=lambda item: item[0])
         return numeric_versions[-1][1]

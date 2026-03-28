@@ -28,7 +28,7 @@ class FlakyTool:
 
 def test_resume_after_branch_follows_same_path() -> None:
     yaml_text = """
-schema_version: 2
+schema_version: v1
 workflow:
   id: triage
   version: v1

@@ -122,3 +122,11 @@ class WorkflowIntegrityError(RuntimeErrorBase):
 
 class AgentValidationError(RuntimeErrorBase):
     """Raised when an agent definition is invalid."""
+
+
+class ConfigValidationError(RuntimeErrorBase):
+    """Raised when runtime configuration is invalid."""
+
+
+class StorageValidationError(RuntimeErrorBase):
+    """Raised when storage schema/version checks fail."""

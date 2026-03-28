@@ -100,6 +100,8 @@ class TestPipelineParsing:
             mode="w", suffix=".yaml", delete=False
         ) as f:
             f.write(textwrap.dedent("""\
+                schema_version: v1
+
                 agent:
                   id: multi
                   version: v1
@@ -139,6 +141,8 @@ class TestPipelineParsing:
             mode="w", suffix=".yaml", delete=False
         ) as f:
             f.write(textwrap.dedent("""\
+                schema_version: v1
+
                 agent:
                   id: dup
                   version: v1
@@ -164,6 +168,8 @@ class TestPipelineParsing:
             mode="w", suffix=".yaml", delete=False
         ) as f:
             f.write(textwrap.dedent("""\
+                schema_version: v1
+
                 agent:
                   id: bad
                   version: v1
@@ -498,7 +504,7 @@ class TestWorkflowStepValidation:
 class TestWorkflowParsing:
     def test_parse_agent_step(self):
         yaml_text = (
-            "schema_version: 2\n"
+            "schema_version: v1\n"
             "workflow:\n"
             "  id: test_wf\n"
             "  version: v1\n"
@@ -518,7 +524,7 @@ class TestWorkflowParsing:
 
     def test_parse_agent_step_with_version(self):
         yaml_text = (
-            "schema_version: 2\n"
+            "schema_version: v1\n"
             "workflow:\n"
             "  id: test_wf\n"
             "  version: v1\n"
@@ -535,7 +541,7 @@ class TestWorkflowParsing:
     def test_parse_function_step_without_dir(self):
         """Function step parses but callable is None without functions_dir."""
         yaml_text = (
-            "schema_version: 2\n"
+            "schema_version: v1\n"
             "workflow:\n"
             "  id: test_wf\n"
             "  version: v1\n"
@@ -559,7 +565,7 @@ class TestWorkflowParsing:
             with open(os.path.join(d, "formatters.py"), "w") as f:
                 f.write("def format_markdown(inputs):\n    return {'report': inputs['text']}\n")
             yaml_text = (
-                "schema_version: 2\n"
+                "schema_version: v1\n"
                 "workflow:\n"
                 "  id: test_wf\n"
                 "  version: v1\n"
@@ -576,7 +582,7 @@ class TestWorkflowParsing:
     def test_mixed_step_types(self):
         """Workflow can contain agent, function, and tool steps together."""
         yaml_text = (
-            "schema_version: 2\n"
+            "schema_version: v1\n"
             "workflow:\n"
             "  id: test_wf\n"
             "  version: v1\n"

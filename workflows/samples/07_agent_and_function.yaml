@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: v1
 # Sample workflow: agent + function step types
 #
 # Demonstrates:

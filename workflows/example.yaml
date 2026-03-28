@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: v1
 # File: workflows/example.yaml
 # Purpose: Quickstart workflow that uses agent steps and tools.
 # Description: Summarizes an issue, estimates priority, proposes next steps,

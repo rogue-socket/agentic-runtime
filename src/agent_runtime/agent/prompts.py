@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from ..schema_versioning import normalize_version
+
 
 @dataclass
 class PromptEntry:
@@ -66,7 +68,7 @@ class PromptRegistry:
 
     def list_prompts(self) -> Dict[str, List[str]]:
         """Return ``{prompt_id: [versions]}``."""
-        return {pid: sorted(vs.keys()) for pid, vs in self._prompts.items()}
+        return {pid: sorted(vs.keys(), key=_version_sort_key) for pid, vs in self._prompts.items()}
 
     def resolve(self, ref: str) -> str:
         """Resolve a prompt reference and return the prompt text.
@@ -153,7 +155,7 @@ def _load_prompt_file(path: str) -> List[PromptEntry]:
         entries.append(
             PromptEntry(
                 prompt_id=item["id"],
-                version=str(item.get("version", "v1")),
+                version=normalize_version(item.get("version", "v1"), field_name="prompt.version"),
                 text=item["text"],
                 description=item.get("description", ""),
                 metadata={

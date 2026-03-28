@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: v1
 # File: workflows/samples/03_branching_triage.yaml
 # Purpose: Demonstrates deterministic conditional branch routing.
 # Description: Classifies input issue text and routes to bug/feature/default tool steps.

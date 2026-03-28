@@ -8,9 +8,9 @@ from agent_runtime.errors import WorkflowValidationError
 from agent_runtime.workflow import WORKFLOW_SCHEMA_VERSION_CURRENT, load_workflow_from_text
 
 
-def test_schema_v2_parses() -> None:
+def test_schema_v1_parses() -> None:
     raw = """
-schema_version: 2
+schema_version: v1
 workflow:
   id: stable_flow
   version: v1
@@ -22,7 +22,7 @@ steps:
       message: "hi"
 """
     workflow = load_workflow_from_text(raw)
-    assert workflow["workflow_schema_version"] == 2
+    assert workflow["workflow_schema_version"] == "v1"
 
 
 def test_missing_schema_version_is_rejected() -> None:
@@ -43,7 +43,7 @@ steps:
 
 def test_legacy_name_version_identity_is_rejected() -> None:
     raw = """
-schema_version: 2
+schema_version: v1
 name: old_style_flow
 version: v7
 steps:
@@ -59,7 +59,7 @@ steps:
 
 def test_rejects_non_current_schema_version() -> None:
     raw = """
-schema_version: 1
+schema_version: v2
 workflow:
   id: old_flow
   version: v1
@@ -74,7 +74,7 @@ steps:
 
 def test_step_input_field_is_rejected() -> None:
     raw = """
-schema_version: 2
+schema_version: v1
 workflow:
   id: bad_step_input
   version: v1
@@ -90,4 +90,4 @@ steps:
 
 
 def test_constant_tracks_current_schema() -> None:
-    assert WORKFLOW_SCHEMA_VERSION_CURRENT == 2
+    assert WORKFLOW_SCHEMA_VERSION_CURRENT == "v1"

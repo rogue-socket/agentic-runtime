@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: v1
 # Quickstart 3: Multi-Agent Research
 # Demonstrates: two LLM agents collaborating, react strategy, agent-function-tool chain.
 # Requires: LLM provider configured (run `ai setup` first).

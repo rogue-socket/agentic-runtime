@@ -18,7 +18,7 @@ from conftest import make_storage, make_memory_manager, functions_dir
 
 def test_contract_future_read_rejected() -> None:
     raw = """
-schema_version: 2
+schema_version: v1
 workflow:
     id: contracts
     version: v1
@@ -41,7 +41,7 @@ steps:
 
 def test_contract_output_collision_rejected() -> None:
     raw = """
-schema_version: 2
+schema_version: v1
 workflow:
     id: contracts
     version: v1
@@ -87,7 +87,7 @@ def test_runtime_output_contract_enforced() -> None:
 
 def test_contract_inputs_list_maps_correctly() -> None:
     raw = """
-schema_version: 2
+schema_version: v1
 workflow:
     id: contracts
     version: v1

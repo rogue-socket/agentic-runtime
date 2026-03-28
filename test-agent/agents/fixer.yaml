@@ -1,3 +1,4 @@
+schema_version: v1
 # Agent definition — proposes fixes for issues.
 # Referenced from workflow steps via `type: agent` + `agent: fixer`.
 agent:

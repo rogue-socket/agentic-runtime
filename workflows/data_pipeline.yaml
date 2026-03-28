@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: v1
 # Quickstart 4: Data Pipeline
 # Demonstrates: pure function chain, data transformation, no LLM required.
 # Run: ai quickstart4

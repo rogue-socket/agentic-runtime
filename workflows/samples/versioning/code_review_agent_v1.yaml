@@ -1,4 +1,4 @@
-schema_version: 2
+schema_version: v1
 # File: workflows/samples/versioning/code_review_agent_v1.yaml
 # Purpose: Versioned workflow sample (v1) for registry resolution tests.
 # Description: Baseline two-step code review workflow for version comparison demos.

@@ -223,7 +223,7 @@ def _prompt_int(prompt: str, min_value: int, max_value: int, default: int) -> in
         return value
 
 
-EXAMPLE_WORKFLOW = """schema_version: 2             # workflow schema version
+EXAMPLE_WORKFLOW = """schema_version: v1             # workflow schema version
 workflow:                     # workflow metadata
   id: example_workflow         # unique workflow id
   version: v1                  # version tag
@@ -434,6 +434,9 @@ RUNTIME_YAML_TEMPLATE = """# Runtime configuration for agentic-runtime.
 # CLI flags override values set here.
 # Uncomment and edit sections as needed.
 
+# Schema version for runtime.yaml format.
+schema_version: v1
+
 # ─── Storage ──────────────────────────────────────────────────────────
 # SQLite database path for run persistence.
 db_path: runtime.db
@@ -535,6 +538,8 @@ functions_dir: functions
 
 EXAMPLE_AGENT_DEFINITION = """# Agent definition — describes an LLM-backed agent.
 # Referenced from workflow steps via `type: agent` + `agent: summarizer`.
+schema_version: v1
+
 agent:
   id: summarizer
   version: v1
@@ -557,6 +562,8 @@ agent:
 
 EXAMPLE_FIXER_DEFINITION = """# Agent definition — proposes fixes for issues.
 # Referenced from workflow steps via `type: agent` + `agent: fixer`.
+schema_version: v1
+
 agent:
   id: fixer
   version: v1
@@ -792,7 +799,7 @@ _QS_BRANCHING_WORKFLOW = """\
 #   or: ai run workflows/branching_triage.yaml
 #   or: ai run workflows/branching_triage.yaml -i issue="Server is slow under load"
 
-schema_version: 2
+schema_version: v1
 workflow:
   id: branching_triage
   version: v1
@@ -848,7 +855,7 @@ _QS_RESEARCH_WORKFLOW = """\
 #   or: ai run workflows/research.yaml
 #   or: ai run workflows/research.yaml -i topic="Microservices vs monoliths"
 
-schema_version: 2
+schema_version: v1
 workflow:
   id: research_report
   version: v1
@@ -900,7 +907,7 @@ _QS_PIPELINE_WORKFLOW = """\
 #   or: ai run workflows/data_pipeline.yaml
 #   or: ai run workflows/data_pipeline.yaml -i data="humidity, 85.2, weather"
 
-schema_version: 2
+schema_version: v1
 workflow:
   id: data_pipeline
   version: v1
@@ -951,6 +958,8 @@ steps:
 """
 
 _QS_RESEARCHER_AGENT = """\
+schema_version: v1
+
 agent:
   id: researcher
   version: v1
@@ -976,6 +985,8 @@ agent:
 """
 
 _QS_ADVISOR_AGENT = """\
+schema_version: v1
+
 agent:
   id: advisor
   version: v1
