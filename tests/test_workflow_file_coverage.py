@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -16,8 +15,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 WORKFLOW_SOURCES = (
     (ROOT / "workflows", ROOT / "functions", ROOT / "agents"),
-    (ROOT / "agent-one" / "workflows", ROOT / "agent-one" / "functions", ROOT / "agent-one" / "agents"),
-    (ROOT / "test-agent" / "workflows", ROOT / "test-agent" / "functions", ROOT / "test-agent" / "agents"),
 )
 
 
@@ -30,81 +27,6 @@ def _all_workflow_specs() -> list[tuple[Path, Path, Path]]:
 
 
 ALL_WORKFLOW_SPECS = _all_workflow_specs()
-
-
-DUPLICATE_WORKFLOW_GROUPS = [
-    (
-        "example",
-        "workflows/example.yaml",
-        "agent-one/workflows/example.yaml",
-        "test-agent/workflows/example.yaml",
-    ),
-    (
-        "branching_triage",
-        "workflows/branching_triage.yaml",
-        "agent-one/workflows/branching_triage.yaml",
-        "test-agent/workflows/branching_triage.yaml",
-    ),
-    (
-        "data_pipeline",
-        "workflows/data_pipeline.yaml",
-        "agent-one/workflows/data_pipeline.yaml",
-        "test-agent/workflows/data_pipeline.yaml",
-    ),
-]
-
-
-def _functions_dir_for_workflow(rel_path: str) -> Path:
-    if rel_path.startswith("agent-one/"):
-        return ROOT / "agent-one" / "functions"
-    if rel_path.startswith("test-agent/"):
-        return ROOT / "test-agent" / "functions"
-    return ROOT / "functions"
-
-
-def _normalize_step(step: Any) -> dict[str, Any]:
-    retry = None
-    if step.retry is not None:
-        retry = {
-            "attempts": step.retry.attempts,
-            "backoff": step.retry.backoff,
-            "initial_delay": step.retry.initial_delay,
-        }
-
-    next_rules = None
-    if step.next_rules:
-        next_rules = [
-            {"when": r.when, "goto": r.goto, "is_default": r.is_default}
-            for r in step.next_rules
-        ]
-
-    return {
-        "step_id": step.step_id,
-        "step_type": step.step_type,
-        "tool_name": step.tool_name,
-        "agent_id": step.agent_id,
-        "agent_version": step.agent_version,
-        "function_ref": step.function_ref,
-        "raw_input": step.raw_input,
-        "retry": retry,
-        "input_spec": step.input_spec,
-        "input_contract": step.input_contract,
-        "output_contract": step.output_contract,
-        "next_rules": next_rules,
-        "optional": step.optional,
-        "default_output": step.default_output,
-        "timeout_ms": step.timeout_ms,
-    }
-
-
-def _normalize_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "workflow_id": workflow["workflow_id"],
-        "workflow_version": workflow["workflow_version"],
-        "inputs": workflow.get("inputs", {}),
-        "on_error": workflow.get("on_error", "fail_fast"),
-        "steps": [_normalize_step(step) for step in workflow["steps"]],
-    }
 
 
 def _initial_state_from_workflow(workflow: dict) -> dict:
@@ -152,10 +74,6 @@ EXECUTABLE_NO_LLM_CASES = [
     ("workflows/samples/04_fail_and_resume.yaml", StepStatus.FAILED),
     ("workflows/samples/versioning/code_review_agent_v1.yaml", StepStatus.COMPLETED),
     ("workflows/samples/versioning/code_review_agent_v2.yaml", StepStatus.COMPLETED),
-    ("agent-one/workflows/branching_triage.yaml", StepStatus.COMPLETED),
-    ("agent-one/workflows/data_pipeline.yaml", StepStatus.COMPLETED),
-    ("test-agent/workflows/branching_triage.yaml", StepStatus.COMPLETED),
-    ("test-agent/workflows/data_pipeline.yaml", StepStatus.COMPLETED),
 ]
 
 
@@ -169,13 +87,7 @@ def test_no_llm_workflows_execute(
     expected_status: str,
 ) -> None:
     workflow_path = ROOT / workflow_rel_path
-
-    if workflow_rel_path.startswith("agent-one/"):
-        functions_dir = ROOT / "agent-one" / "functions"
-    elif workflow_rel_path.startswith("test-agent/"):
-        functions_dir = ROOT / "test-agent" / "functions"
-    else:
-        functions_dir = ROOT / "functions"
+    functions_dir = ROOT / "functions"
 
     workflow = load_workflow(str(workflow_path), functions_dir=str(functions_dir))
 
@@ -203,29 +115,3 @@ def test_no_llm_workflows_execute(
     assert run.status == expected_status, run.error
     if expected_status == StepStatus.FAILED:
         assert run.error is not None
-
-
-@pytest.mark.parametrize(
-    "group_name,root_rel,agent_one_rel,test_agent_rel",
-    DUPLICATE_WORKFLOW_GROUPS,
-    ids=[group[0] for group in DUPLICATE_WORKFLOW_GROUPS],
-)
-def test_duplicated_workflows_stay_semantically_in_sync(
-    group_name: str,
-    root_rel: str,
-    agent_one_rel: str,
-    test_agent_rel: str,
-) -> None:
-    _ = group_name  # for readable parametrized test ids
-    rel_paths = [root_rel, agent_one_rel, test_agent_rel]
-
-    normalized: list[dict[str, Any]] = []
-    for rel_path in rel_paths:
-        workflow_path = ROOT / rel_path
-        workflow = load_workflow(
-            str(workflow_path),
-            functions_dir=str(_functions_dir_for_workflow(rel_path)),
-        )
-        normalized.append(_normalize_workflow(workflow))
-
-    assert normalized[0] == normalized[1] == normalized[2]
