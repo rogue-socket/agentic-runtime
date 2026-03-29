@@ -26,7 +26,15 @@ ai quickstart
 
 `ai quickstart` initializes the project (if needed), configures an LLM provider, writes `.env`, and runs a starter workflow.
 
-Prefer non-interactive setup?
+No API key yet? Use:
+
+```bash
+ai quickstart --sample branching
+```
+
+This keeps the same onboarding flow and guarantees a first successful run without external credentials.
+
+Advanced alternatives (optional):
 
 ```bash
 ai init

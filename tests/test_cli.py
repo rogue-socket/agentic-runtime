@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import tempfile
 from unittest.mock import patch
 
@@ -232,5 +233,27 @@ class TestRunCLIMetrics:
             assert "errors" in payload
         finally:
             storage.close()
+
+
+class TestRunCLIQuickstart:
+    def test_quickstart_branching_sample_first_success(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            code = run_cli(["quickstart", "--path", d, "--sample", "branching"])
+            assert code == 0
+            db_path = os.path.join(d, "runtime.db")
+            assert os.path.isfile(db_path)
+
+            with sqlite3.connect(db_path) as conn:
+                statuses = [row[0] for row in conn.execute("SELECT status FROM runs").fetchall()]
+
+            assert "COMPLETED" in statuses
+
+    def test_quickstart2_alias_warns_and_still_runs(self, capsys) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            code = run_cli(["quickstart2", "--path", d])
+            assert code == 0
+            out = capsys.readouterr().out
+            assert "deprecated" in out.lower()
+            assert "ai quickstart --sample branching" in out
 
 

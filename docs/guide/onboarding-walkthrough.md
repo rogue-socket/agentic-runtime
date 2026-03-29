@@ -4,7 +4,7 @@ This walkthrough is a guided path for a first-time user, designed to match
 the "single-command onboarding" style common in modern CLIs. It pairs a
 quickstart wizard with optional manual steps for folks who prefer scripts.
 
-## Quickstart (Interactive)
+## Quickstart (Golden Path)
 
 If you do not have a project folder yet, create one first:
 
@@ -13,19 +13,25 @@ mkdir my-agent
 cd my-agent
 ```
 
-Run either of the following in your project root:
+Run this in your project root:
 
 ```bash
-ai
+ai quickstart
 ```
 
-or:
+If you do not have an API key yet:
+
+```bash
+ai quickstart --sample branching
+```
+
+Optional guided mode is still available with:
 
 ```bash
 ai onboard
 ```
 
-The home screen will offer numbered actions; choose **Guided setup** to launch the wizard.
+The wizard and quickstart both initialize project structure and walk provider setup.
 
 The wizard will:
 1. Initialize the project structure if missing.

@@ -90,33 +90,44 @@ steps:
 ```bash
 # 1. Install
 conda activate agent_runtime
+pip install -r requirements.txt
 pip install -e .
 
-# 2. Scaffold a new project
+# 2. Golden path (new project + first successful run)
 mkdir my-agent && cd my-agent
-ai quickstart          # creates workflows/, agents/, functions/, tools/, runtime.yaml
+ai quickstart
 
-# 3. Configure your LLM provider (.env or runtime.yaml)
-echo "GEMINI_API_KEY=your-key" > .env
-
-# 4. Run
-ai run example_workflow
+# 3. Follow-up commands
+ai runs
+ai inspect <run_id> --steps
+ai visualize <run_id> --html
 ```
 
-> Already have a project? Just `cd` into it and run `ai run <workflow_id>`.
+No API key yet? Use a deterministic first run with:
+
+```bash
+ai quickstart --sample branching
+```
+
+Already have a project? Just cd into it and run ai run workflows/example.yaml.
 
 ---
 
 ## CLI Reference
 
 ```bash
+# Golden path onboarding
+ai quickstart
+ai quickstart --sample branching          # first success without API key
+
 # Run
+ai run workflows/example.yaml             # run by file path
 ai run example_workflow                   # run by id (latest version)
-ai run example_workflow@v2               # pin to a specific version
-ai run example_workflow -i topic="AI"    # pass runtime inputs
-ai run example_workflow -v               # verbose structured logs
-ai run example_workflow --max-llm-requests 20 --max-llm-tokens 50000
-ai run example_workflow --llm-rate-limit-rpm 120 --max-llm-cost-usd 1.50
+ai run example_workflow@v2                # pin to a specific version
+ai run workflows/example.yaml -i issue="AI"  # pass runtime inputs
+ai run workflows/example.yaml -v          # verbose structured logs
+ai run workflows/example.yaml --max-llm-requests 20 --max-llm-tokens 50000
+ai run workflows/example.yaml --llm-rate-limit-rpm 120 --max-llm-cost-usd 1.50
 
 # Debug
 ai inspect <run_id>                      # full run details

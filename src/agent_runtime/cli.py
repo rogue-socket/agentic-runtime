@@ -811,7 +811,7 @@ def extract_action_items(inputs: dict) -> dict:
 _QS_BRANCHING_WORKFLOW = """\
 # Quickstart 2: Branching Triage
 # Demonstrates: conditional branching, multiple function steps, no LLM required.
-# Run: ai quickstart2
+# Run: ai quickstart --sample branching
 #   or: ai run workflows/branching_triage.yaml
 #   or: ai run workflows/branching_triage.yaml -i issue="Server is slow under load"
 
@@ -867,7 +867,7 @@ _QS_RESEARCH_WORKFLOW = """\
 # Quickstart 3: Multi-Agent Research
 # Demonstrates: two LLM agents collaborating, react strategy, agent-function-tool chain.
 # Requires: LLM provider configured (run `ai setup` first).
-# Run: ai quickstart3
+# Run: ai quickstart --sample research
 #   or: ai run workflows/research.yaml
 #   or: ai run workflows/research.yaml -i topic="Microservices vs monoliths"
 
@@ -919,7 +919,7 @@ steps:
 _QS_PIPELINE_WORKFLOW = """\
 # Quickstart 4: Data Pipeline
 # Demonstrates: pure function chain, data transformation, no LLM required.
-# Run: ai quickstart4
+# Run: ai quickstart --sample pipeline
 #   or: ai run workflows/data_pipeline.yaml
 #   or: ai run workflows/data_pipeline.yaml -i data="humidity, 85.2, weather"
 
@@ -1463,15 +1463,63 @@ def _run_onboard_flow(project_root: str) -> int:
     return 0
 
 
-def _run_quickstart(project_root: str) -> int:
-    print("\nQuickstart: set up and run a starter workflow.\n")
+def _normalize_quickstart_sample(sample: str) -> str:
+    normalized = (sample or "starter").strip().lower().replace("_", "-")
+    aliases = {
+        "starter": "starter",
+        "default": "starter",
+        "example": "starter",
+        "branching": "branching",
+        "branching-triage": "branching",
+        "triage": "branching",
+        "quickstart2": "branching",
+        "research": "research",
+        "multi-agent": "research",
+        "multi-agent-research": "research",
+        "quickstart3": "research",
+        "pipeline": "pipeline",
+        "data": "pipeline",
+        "data-pipeline": "pipeline",
+        "quickstart4": "pipeline",
+    }
+    if normalized not in aliases:
+        raise SystemExit(
+            "Unsupported quickstart sample. "
+            "Choose one of: starter, branching, research, pipeline."
+        )
+    return aliases[normalized]
 
-    # TODO(0.2.0): Quickstart Fallback - If the user hasn't set an API key,
-    #   'ai quickstart' crashes with a Missing API Key error.
-    #   We need to detect the missing key, prompt the user if they want to
-    #   use a local stub/mock LLM fallback, and if so, dynamically inject a
-    #   mock provider into the registry just for this run, so they get a
-    #   successful output visualised even without an internet connection/key.
+
+def _run_quickstart(project_root: str, *, sample: str = "starter") -> int:
+    sample_name = _normalize_quickstart_sample(sample)
+
+    if sample_name != "starter":
+        sample_config = {
+            "branching": {
+                "workflow": "branching_triage.yaml",
+                "label": "branching triage",
+                "needs_llm": False,
+            },
+            "research": {
+                "workflow": "research.yaml",
+                "label": "multi-agent research",
+                "needs_llm": True,
+            },
+            "pipeline": {
+                "workflow": "data_pipeline.yaml",
+                "label": "data pipeline",
+                "needs_llm": False,
+            },
+        }[sample_name]
+        print(f"\nQuickstart sample: {sample_name}\n")
+        return _run_quickstart_sample(
+            project_root,
+            sample_config["workflow"],
+            sample_config["label"],
+            needs_llm=sample_config["needs_llm"],
+        )
+
+    print("\nQuickstart (golden path): initialize, configure, and run starter workflow.\n")
 
     if not os.path.isdir(project_root):
         raise SystemExit(f"Project path does not exist: {project_root}")
@@ -1480,9 +1528,15 @@ def _run_quickstart(project_root: str) -> int:
     example_workflow = os.path.join(project_root, "workflows", "example.yaml")
     needs_init = (not os.path.exists(runtime_path)) or (not os.path.exists(example_workflow))
 
+    if needs_init:
+        _init_project(project_root)
+        print(f"Initialized project at {project_root}")
+    else:
+        _scaffold_quickstart_samples(project_root)
+
     _load_dotenv(os.path.join(project_root, ".env"))
 
-    setup_info = _run_setup_flow(
+    _run_setup_flow(
         project_root,
         provider=None,
         api_key_env=None,
@@ -1495,13 +1549,6 @@ def _run_quickstart(project_root: str) -> int:
         no_default=False,
     )
 
-
-    if needs_init:
-        _init_project(project_root)
-        print(f"Initialized project at {project_root}")
-    else:
-        _scaffold_quickstart_samples(project_root)
-
     # Load config to check credentials
     cfg = load_config(runtime_path)
     creds = cfg.llm_registry.check_credentials()
@@ -1509,17 +1556,19 @@ def _run_quickstart(project_root: str) -> int:
 
     if not has_creds:
         print("\n[!] No LLM API keys found in .env or environment.")
-        use_mock = _prompt_yes_no("Would you like to use a local mock LLM for this quickstart?", default=True)
-        if use_mock:
-            from agent_runtime.llm.registry import LLMProvider, ModelConfig
-            mock_provider = LLMProvider(name="mock", api_key_env="ANY")
-            mock_provider.add_model(ModelConfig(model_id="mock-model"))
-            cfg.llm_registry.register_provider(mock_provider)
-            cfg.llm_registry.default_provider = "mock"
-            print("Using mock LLM. (No API calls will be made)")
-        else:
-            print("\nPlease set an API key (e.g. OPENAI_API_KEY) in .env and try again.")
-            return 1
+        use_no_key_sample = _prompt_yes_no(
+            "Run a no-key sample now (branching triage)?",
+            default=True,
+        )
+        if use_no_key_sample:
+            return _run_quickstart_sample(
+                project_root,
+                "branching_triage.yaml",
+                "branching triage",
+                needs_llm=False,
+            )
+        print("\nPlease set an API key (for example OPENAI_API_KEY) in .env and run ai quickstart again.")
+        return 1
     else:
         # We have creds, but let's ensure the default provider is set if not already
         if not cfg.llm_registry.default_provider:
@@ -1540,21 +1589,13 @@ def _run_quickstart(project_root: str) -> int:
     cwd = os.getcwd()
     try:
         os.chdir(project_root)
-        # If we opted for mock, we might need to tell 'ai run' but it re-loads config.
-        # However, run_cli re-parses config. If we want it to work end-to-end,
-        # we'd need to mock the config loader or pass a mock flag.
-        # For now, let's just run it; if the user chose mock, it works because 
-        # LLMClient has a built-in mock adapter for any 'mock' provider it gets
-        # from the registry.
-        
-        # We need to ensure the registry in the NEW run call has the mock provider.
-        # Since 'run' re-loads runtime.yaml, we'll actually ADD mock to the template.
-        
         res = run_cli(["run", example_workflow])
         if res == 0:
-            print("\n\u2728 Run complete!")
-            print("To see the results visually, run:")
-            print("  ai visualize status")
+            print("\nQuickstart completed successfully.")
+            print("Next commands:")
+            print("  ai runs")
+            print("  ai inspect <run_id> --steps")
+            print("  ai visualize <run_id> --html")
         return res
     finally:
         os.chdir(cwd)
@@ -1654,25 +1695,33 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
     quickstart_parser = subparsers.add_parser(
         "quickstart",
-        help="Initialize, configure, and run a starter workflow",
+        help="Golden path: initialize, configure, and run your first workflow",
     )
     quickstart_parser.add_argument("--path", default=".", help="Project root")
+    quickstart_parser.add_argument(
+        "--sample",
+        default="starter",
+        help=(
+            "Starter workflow to run. "
+            "Options: starter (recommended), branching, research, pipeline"
+        ),
+    )
 
     qs2_parser = subparsers.add_parser(
         "quickstart2",
-        help="Branching triage workflow (no LLM required)",
+        help=argparse.SUPPRESS,
     )
     qs2_parser.add_argument("--path", default=".", help="Project root")
 
     qs3_parser = subparsers.add_parser(
         "quickstart3",
-        help="Multi-agent research workflow (LLM required)",
+        help=argparse.SUPPRESS,
     )
     qs3_parser.add_argument("--path", default=".", help="Project root")
 
     qs4_parser = subparsers.add_parser(
         "quickstart4",
-        help="Data pipeline workflow (no LLM required)",
+        help=argparse.SUPPRESS,
     )
     qs4_parser.add_argument("--path", default=".", help="Project root")
 
@@ -1792,31 +1841,22 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "quickstart":
         project_root = os.path.abspath(args.path)
-        return _run_quickstart(project_root)
+        return _run_quickstart(project_root, sample=args.sample)
 
     if args.command == "quickstart2":
         project_root = os.path.abspath(args.path)
-        print("\nQuickstart 2: Branching Triage (no LLM required)\n")
-        return _run_quickstart_sample(
-            project_root, "branching_triage.yaml",
-            "branching triage", needs_llm=False,
-        )
+        print("Warning: ai quickstart2 is deprecated. Use: ai quickstart --sample branching")
+        return _run_quickstart(project_root, sample="quickstart2")
 
     if args.command == "quickstart3":
         project_root = os.path.abspath(args.path)
-        print("\nQuickstart 3: Multi-Agent Research (LLM required)\n")
-        return _run_quickstart_sample(
-            project_root, "research.yaml",
-            "multi-agent research", needs_llm=True,
-        )
+        print("Warning: ai quickstart3 is deprecated. Use: ai quickstart --sample research")
+        return _run_quickstart(project_root, sample="quickstart3")
 
     if args.command == "quickstart4":
         project_root = os.path.abspath(args.path)
-        print("\nQuickstart 4: Data Pipeline (no LLM required)\n")
-        return _run_quickstart_sample(
-            project_root, "data_pipeline.yaml",
-            "data pipeline", needs_llm=False,
-        )
+        print("Warning: ai quickstart4 is deprecated. Use: ai quickstart --sample pipeline")
+        return _run_quickstart(project_root, sample="quickstart4")
 
     if args.command == "setup":
         project_root = os.path.abspath(args.path)
