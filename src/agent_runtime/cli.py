@@ -1788,6 +1788,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     inspect_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
     inspect_parser.add_argument("--steps", action="store_true", help="Show step details")
     inspect_parser.add_argument("--state-history", action="store_true", help="Show state evolution per step")
+    inspect_parser.add_argument("--diff-limit", type=int, default=20, help="Maximum number of changed paths per category to display")
+    inspect_parser.add_argument("--full", action="store_true", help="Show full diff output without truncation")
 
     resume_parser = subparsers.add_parser("resume", help="Resume a failed run")
     resume_parser.add_argument("run_id", help="Run ID")
@@ -1806,6 +1808,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     state_diff_parser.add_argument("run_id", help="Run ID")
     state_diff_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
     state_diff_parser.add_argument("--step", help="Optional step id filter")
+    state_diff_parser.add_argument("--diff-limit", type=int, default=20, help="Maximum number of changed paths to display per step")
+    state_diff_parser.add_argument("--full", action="store_true", help="Show full diff output without truncation")
 
     visualize_parser = subparsers.add_parser("visualize", aliases=["viz"], help="Visualize run execution")
     visualize_parser.add_argument("run_id", help="Run ID")
@@ -2286,7 +2290,9 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             if resume_step:
                 print(f"Resume point: step {resume_step}")
         if args.state_history:
-            _print_state_history(steps, latest_state)
+            if args.diff_limit < 0:
+                raise SystemExit("--diff-limit must be >= 0")
+            _print_state_history(steps, latest_state, diff_limit=args.diff_limit, full=args.full)
         return 0
 
     if args.command == "resume":
@@ -2396,6 +2402,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == "state-diff":
+        if args.diff_limit < 0:
+            raise SystemExit("--diff-limit must be >= 0")
         storage = SQLiteStorage(cfg.db_path)
         try:
             run = storage.load_run(args.run_id)
@@ -2418,7 +2426,11 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             if not changes:
                 print("(no state changes)")
                 continue
-            for change in changes:
+            shown_changes, omitted = _limit_changes(changes, diff_limit=args.diff_limit, full=args.full)
+            if not shown_changes:
+                print("(no state changes shown; use --full or increase --diff-limit)")
+                continue
+            for change in shown_changes:
                 op = change["op"]
                 path = change["path"]
                 if op == "+":
@@ -2427,6 +2439,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                     print(f"- {path} (was {_redact(change['before'])})")
                 else:
                     print(f"~ {path}: {_redact(change['before'])} -> {_redact(change['after'])}")
+            if omitted:
+                print(f"... (+{omitted} more changes; use --full or increase --diff-limit)")
         return 0
 
     if args.command == "visualize":
@@ -2535,7 +2549,19 @@ if __name__ == "__main__":
     main()
 
 
-def _diff_state(before: dict, after: dict) -> dict:
+def _limit_changes(changes: list[dict], *, diff_limit: int, full: bool) -> tuple[list[dict], int]:
+    """Return visible changes and omitted count for CLI output."""
+    if full:
+        return list(changes), 0
+    limit = max(0, int(diff_limit))
+    if limit == 0:
+        return [], len(changes)
+    if len(changes) <= limit:
+        return list(changes), 0
+    return list(changes[:limit]), len(changes) - limit
+
+
+def _diff_state(before: dict, after: dict, *, diff_limit: int = 20, full: bool = False) -> dict:
     """Return state diff summary for CLI output.
 
     Uses nested path-level diffs when available, with truncation to keep
@@ -2544,7 +2570,6 @@ def _diff_state(before: dict, after: dict) -> dict:
     # TODO(eng): list-diff - RuntimeState.diff_paths currently treats lists as
     #   atomic values, so large list mutations show as one changed path rather
     #   than item-level edits.
-    # TODO(ux): Add --diff-limit / --full flags so users can control truncation.
     # TODO(ux): Add CLI graph visualization for branching workflows.
     changes = RuntimeState.diff_paths(before, after)
     if not changes:
@@ -2554,9 +2579,13 @@ def _diff_state(before: dict, after: dict) -> dict:
     removed: list[str] = [c["path"] for c in changes if c.get("op") == "-"]
     changed: list[str] = [c["path"] for c in changes if c.get("op") == "~"]
 
-    max_items = 20
+    max_items = max(0, int(diff_limit))
 
     def _truncate(items: list[str]) -> list[str]:
+        if full:
+            return items
+        if max_items == 0:
+            return [f"... (+{len(items)} more)"] if items else []
         if len(items) <= max_items:
             return items
         remaining = len(items) - max_items
@@ -2578,7 +2607,7 @@ def _format_redacted_for_cli(value: Any, *, max_chars: int = 6000) -> str:
     return f"{text[:max_chars]}\n... [truncated {omitted} chars]"
 
 
-def _print_state_history(steps, latest_state) -> None:
+def _print_state_history(steps, latest_state, *, diff_limit: int = 20, full: bool = False) -> None:
     """Print per-step state mutation summary for inspect command."""
     # TODO(eng): Support snapshot compression for large states.
     # TODO(ux): Add interactive pager mode for long histories (--pager).
@@ -2596,7 +2625,7 @@ def _print_state_history(steps, latest_state) -> None:
             print(f"Attempts: {step.attempt_count}")
         before = step.state_before or {}
         after = step.state_after or {}
-        diff = _diff_state(before, after)
+        diff = _diff_state(before, after, diff_limit=diff_limit, full=full)
         print("State changes:")
         if diff["added"]:
             print(f"+ {', '.join(diff['added'])}")

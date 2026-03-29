@@ -13,6 +13,7 @@ import pytest
 from agent_runtime.cli import (
     _coerce_value,
     _build_input_state,
+    _diff_state,
     _parse_env_line,
     _redact,
     _init_project,
@@ -231,6 +232,61 @@ class TestRunCLIMetrics:
             assert "runs" in payload
             assert "steps" in payload
             assert "errors" in payload
+        finally:
+            storage.close()
+
+
+class TestDiffState:
+    def test_diff_state_default_truncates(self) -> None:
+        before = {}
+        after = {f"k{i}": i for i in range(25)}
+        diff = _diff_state(before, after)
+        assert len(diff["added"]) == 21
+        assert diff["added"][-1] == "... (+5 more)"
+
+    def test_diff_state_full_shows_all(self) -> None:
+        before = {}
+        after = {f"k{i}": i for i in range(25)}
+        diff = _diff_state(before, after, full=True)
+        assert len(diff["added"]) == 25
+        assert not any(item.startswith("...") for item in diff["added"])
+
+    def test_diff_state_respects_custom_limit(self) -> None:
+        before = {}
+        after = {f"k{i}": i for i in range(10)}
+        diff = _diff_state(before, after, diff_limit=3)
+        assert len(diff["added"]) == 4
+        assert diff["added"][-1] == "... (+7 more)"
+
+    def test_diff_state_zero_limit_hides_paths(self) -> None:
+        before = {}
+        after = {f"k{i}": i for i in range(4)}
+        diff = _diff_state(before, after, diff_limit=0)
+        assert diff["added"] == ["... (+4 more)"]
+
+
+class TestRunCLIDiffArgs:
+    def test_state_diff_accepts_new_flags(self) -> None:
+        storage = make_storage()
+        try:
+            code = run_cli(["state-diff", "missing", "--db-path", storage.db_path, "--diff-limit", "5", "--full"])
+            assert code == 1
+        finally:
+            storage.close()
+
+    def test_state_diff_negative_limit_exits(self) -> None:
+        storage = make_storage()
+        try:
+            with pytest.raises(SystemExit, match="--diff-limit must be >= 0"):
+                run_cli(["state-diff", "missing", "--db-path", storage.db_path, "--diff-limit", "-1"])
+        finally:
+            storage.close()
+
+    def test_inspect_accepts_diff_flags(self) -> None:
+        storage = make_storage()
+        try:
+            code = run_cli(["inspect", "missing", "--db-path", storage.db_path, "--state-history", "--diff-limit", "5", "--full"])
+            assert code == 1
         finally:
             storage.close()
 
