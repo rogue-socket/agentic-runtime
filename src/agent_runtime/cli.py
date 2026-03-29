@@ -1696,6 +1696,20 @@ def _run_quickstart(project_root: str, *, sample: str = "starter") -> int:
 
     _load_dotenv(os.path.join(project_root, ".env"))
 
+    # Zero-config first success path: if no credentials are configured,
+    # avoid interactive setup prompts and run a deterministic sample.
+    pre_cfg = load_config(runtime_path)
+    pre_creds = pre_cfg.llm_registry.check_credentials()
+    if not any(pre_creds.values()):
+        print("\n[!] No LLM API keys found in .env or environment.")
+        print("No credentials configured; skipping setup and running no-key sample automatically (branching triage).")
+        return _run_quickstart_sample(
+            project_root,
+            "branching_triage.yaml",
+            "branching triage",
+            needs_llm=False,
+        )
+
     _run_setup_flow(
         project_root,
         provider=None,

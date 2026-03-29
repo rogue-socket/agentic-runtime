@@ -28,6 +28,22 @@ def _mock_anthropic_response(text: str = "Hello!", usage: Optional[Dict] = None)
     return json.dumps(body).encode("utf-8")
 
 
+def _mock_anthropic_tool_use_response() -> bytes:
+    body = {
+        "content": [
+            {
+                "type": "tool_use",
+                "id": "toolu_123",
+                "name": "tools.lookup",
+                "input": {"query": "status"},
+            }
+        ],
+        "model": "claude-3-opus",
+        "usage": {"input_tokens": 10, "output_tokens": 5},
+    }
+    return json.dumps(body).encode("utf-8")
+
+
 def test_anthropic_adapter_call_success() -> None:
     adapter = AnthropicAdapter()
     mock_resp = MagicMock()
@@ -134,6 +150,70 @@ def test_anthropic_adapter_empty_content_raises() -> None:
                 base_url=None,
                 context=None,
             )
+
+
+def test_anthropic_adapter_native_tool_use_request_and_parse() -> None:
+    adapter = AnthropicAdapter()
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = _mock_anthropic_tool_use_response()
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        result = adapter.call(
+            api_key="sk-ant-test",
+            model="claude-3-opus",
+            prompt="Check status",
+            system="You are helpful.",
+            params={},
+            base_url=None,
+            history=[
+                {
+                    "role": "assistant",
+                    "content": "Calling lookup",
+                    "_native_tool_calls": [
+                        {"id": "toolu_prev", "name": "tools.lookup", "input": {"query": "health"}}
+                    ],
+                },
+                {
+                    "role": "tool_results",
+                    "_native_results": [
+                        {"id": "toolu_prev", "name": "tools.lookup", "content": '{"ok": true}'}
+                    ],
+                },
+            ],
+            tools=[
+                {
+                    "name": "tools.lookup",
+                    "description": "Lookup status",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                }
+            ],
+            context=None,
+        )
+
+    req = mock_urlopen.call_args[0][0]
+    body = json.loads(req.data.decode("utf-8"))
+    assert body["tools"][0]["name"] == "tools.lookup"
+    assert body["tools"][0]["input_schema"]["required"] == ["query"]
+    # Native history should include assistant tool_use and user tool_result blocks.
+    assert any(
+        msg.get("role") == "assistant" and any(block.get("type") == "tool_use" for block in msg.get("content", []))
+        for msg in body["messages"]
+    )
+    assert any(
+        msg.get("role") == "user" and any(block.get("type") == "tool_result" for block in msg.get("content", []))
+        for msg in body["messages"]
+    )
+
+    assert result.tool_calls
+    assert result.tool_calls[0].id == "toolu_123"
+    assert result.tool_calls[0].tool_name == "tools.lookup"
+    assert result.tool_calls[0].tool_input == {"query": "status"}
 
 
 # ---------------------------------------------------------------------------

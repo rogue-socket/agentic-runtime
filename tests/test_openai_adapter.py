@@ -32,6 +32,32 @@ def _mock_openai_response(text: str = "Hello!", usage: Optional[Dict] = None) ->
     return json.dumps(body).encode("utf-8")
 
 
+def _mock_openai_tool_call_response() -> bytes:
+    body: Dict[str, Any] = {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "tools.lookup",
+                                "arguments": '{"query": "status"}',
+                            },
+                        }
+                    ],
+                }
+            }
+        ],
+        "model": "gpt-4o",
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    }
+    return json.dumps(body).encode("utf-8")
+
+
 def _urlopen_mock(response_bytes: bytes) -> MagicMock:
     mock_resp = MagicMock()
     mock_resp.read.return_value = response_bytes
@@ -220,6 +246,61 @@ def test_openai_adapter_no_system_only_user_message() -> None:
     body = json.loads(req.data.decode("utf-8"))
     assert len(body["messages"]) == 1
     assert body["messages"][0]["role"] == "user"
+
+
+def test_openai_adapter_native_tool_call_request_and_parse() -> None:
+    adapter = OpenAIAdapter()
+    mock_resp = _urlopen_mock(_mock_openai_tool_call_response())
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        result = adapter.call(
+            api_key="sk-test",
+            model="gpt-4o",
+            prompt="Check status",
+            system="You are helpful.",
+            params={},
+            base_url=None,
+            history=[
+                {
+                    "role": "assistant",
+                    "content": "Calling lookup",
+                    "_native_tool_calls": [
+                        {"id": "prev_call", "name": "tools.lookup", "input": {"query": "health"}}
+                    ],
+                },
+                {
+                    "role": "tool_results",
+                    "_native_results": [
+                        {"id": "prev_call", "name": "tools.lookup", "content": '{"ok": true}'}
+                    ],
+                },
+            ],
+            tools=[
+                {
+                    "name": "tools.lookup",
+                    "description": "Lookup status",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                }
+            ],
+            context=None,
+        )
+
+    req = mock_urlopen.call_args[0][0]
+    body = json.loads(req.data.decode("utf-8"))
+    assert body["tool_choice"] == "auto"
+    assert body["tools"][0]["function"]["name"] == "tools.lookup"
+    # Native history should include both assistant tool_calls and tool result replay.
+    assert any(m.get("role") == "assistant" and m.get("tool_calls") for m in body["messages"])
+    assert any(m.get("role") == "tool" and m.get("tool_call_id") == "prev_call" for m in body["messages"])
+
+    assert result.tool_calls
+    assert result.tool_calls[0].id == "call_1"
+    assert result.tool_calls[0].tool_name == "tools.lookup"
+    assert result.tool_calls[0].tool_input == {"query": "status"}
 
 
 # --- _urlopen_with_retry tests ---

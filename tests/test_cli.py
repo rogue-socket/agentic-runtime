@@ -351,10 +351,11 @@ class TestRunCLIDiffArgs:
 class TestRunCLIQuickstart:
     def test_quickstart_starter_without_keys_auto_falls_back(self, capsys) -> None:
         with tempfile.TemporaryDirectory() as d:
-            with patch("agent_runtime.cli._run_setup_flow", return_value={"provider": "openai"}):
+            with patch("agent_runtime.cli._run_setup_flow") as mock_setup:
                 code = run_cli(["quickstart", "--path", d])
 
             assert code == 0
+            mock_setup.assert_not_called()
             db_path = os.path.join(d, "runtime.db")
             assert os.path.isfile(db_path)
 
