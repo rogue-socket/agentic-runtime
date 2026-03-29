@@ -86,6 +86,64 @@ def test_function_step_missing_issue() -> None:
     assert run.error is not None
 
 
+def test_run_applies_workflow_input_defaults_when_provided() -> None:
+    storage = make_storage()
+    tool_registry = ToolRegistry()
+
+    def read_priority(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return {"priority": inputs["priority"]}
+
+    steps = [
+        StepDefinition(
+            step_id="read_priority",
+            step_type="function",
+            function_callable=read_priority,
+            input_spec={"priority": "inputs.priority"},
+        )
+    ]
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
+
+    run = executor.run(
+        "wf",
+        {"issue": "x"},
+        workflow_inputs={
+            "priority": {"required": False, "default": "low"},
+        },
+    )
+    assert run.status == StepStatus.COMPLETED
+    assert run.state.data["inputs"]["priority"] == "low"
+    assert run.state.data["steps"]["read_priority"]["priority"] == "low"
+
+
+def test_run_default_does_not_override_explicit_input() -> None:
+    storage = make_storage()
+    tool_registry = ToolRegistry()
+
+    def read_priority(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return {"priority": inputs["priority"]}
+
+    steps = [
+        StepDefinition(
+            step_id="read_priority",
+            step_type="function",
+            function_callable=read_priority,
+            input_spec={"priority": "inputs.priority"},
+        )
+    ]
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
+
+    run = executor.run(
+        "wf",
+        {"priority": "high"},
+        workflow_inputs={
+            "priority": {"required": False, "default": "low"},
+        },
+    )
+    assert run.status == StepStatus.COMPLETED
+    assert run.state.data["inputs"]["priority"] == "high"
+    assert run.state.data["steps"]["read_priority"]["priority"] == "high"
+
+
 def test_tool_step_success() -> None:
     storage = make_storage()
     tool_registry = ToolRegistry()

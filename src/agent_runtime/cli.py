@@ -1830,6 +1830,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     )
     metrics_parser.add_argument("--db-path", default=None, help="SQLite DB path (overrides runtime.yaml)")
     metrics_parser.add_argument("--top-steps", type=int, default=10, help="Top failing steps/errors to show")
+    metrics_parser.add_argument("--window-days", type=int, default=7, help="Window size (days) for trend and health calculations")
+    metrics_parser.add_argument("--latency-target-ms", type=int, default=5000, help="Target p95 latency for successful runs")
     metrics_parser.add_argument("--json", action="store_true", help="Print full report as JSON")
 
     args = parser.parse_args(argv)
@@ -1972,7 +1974,11 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "metrics":
         storage = SQLiteStorage(cfg.db_path)
-        report = storage.build_observability_report(top_steps=args.top_steps)
+        report = storage.build_observability_report(
+            top_steps=args.top_steps,
+            window_days=args.window_days,
+            latency_target_ms=args.latency_target_ms,
+        )
 
         if args.json:
             print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
@@ -1982,6 +1988,9 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         steps_section = report.get("steps", {})
         llm_section = report.get("llm", {})
         errors_section = report.get("errors", {})
+        outcomes_section = report.get("outcomes", {})
+        diagnostics_section = report.get("diagnostics", {})
+        health_section = report.get("health", {})
 
         print("Observability Metrics")
         print(f"  Runs: total={runs_section.get('total', 0)} failed={runs_section.get('failed', 0)} "
@@ -1991,6 +2000,29 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         print(f"  Steps: total={steps_section.get('total', 0)} failed={steps_section.get('failed', 0)} "
               f"failure_rate={steps_section.get('failure_rate', 0.0):.2%}")
         print(f"  LLM total tokens: {llm_section.get('total_tokens', 0)}")
+
+        current_outcomes = outcomes_section.get("current", {})
+        previous_outcomes = outcomes_section.get("previous", {})
+        print("\nOutcome Layer (Current vs Previous)")
+        print(
+            "  "
+            f"ADS={current_outcomes.get('ads_rate', 0.0):.2%} "
+            f"(prev {previous_outcomes.get('ads_rate', 0.0):.2%})  "
+            f"PORR={current_outcomes.get('post_outcome_reversal_rate', 0.0):.2%} "
+            f"(prev {previous_outcomes.get('post_outcome_reversal_rate', 0.0):.2%})"
+        )
+        print(
+            "  "
+            f"HTR={current_outcomes.get('human_touch_rate', 0.0):.2%} "
+            f"(prev {previous_outcomes.get('human_touch_rate', 0.0):.2%})  "
+            f"RE={current_outcomes.get('recovery_efficiency', 0.0):.2%} "
+            f"[{current_outcomes.get('recovery_efficiency_source', 'unknown')}]"
+        )
+        print(
+            "  "
+            f"OPR={current_outcomes.get('oracle_pass_rate', 0.0):.2%} "
+            f"OMR={current_outcomes.get('oracle_match_rate', 0.0):.2%}"
+        )
 
         top_failing = steps_section.get("top_failing", [])
         print("\nTop Failing Steps:")
@@ -2014,6 +2046,84 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                 print(f"  - {item.get('error_class')}: {item.get('count')}")
         else:
             print("  (no error data)")
+
+        success_latency = diagnostics_section.get("success_latency", {})
+        current_latency = success_latency.get("current", {})
+        previous_latency = success_latency.get("previous", {})
+        print("\nSuccess Latency (ADS Runs)")
+        print(
+            "  "
+            f"median={current_latency.get('successful_run_duration_median_ms')}ms "
+            f"p95={current_latency.get('successful_run_duration_p95_ms')}ms "
+            f"target={current_latency.get('latency_target_ms')}ms "
+            f"score={current_latency.get('latency_score')}"
+        )
+        print(
+            "  "
+            f"prev median={previous_latency.get('successful_run_duration_median_ms')}ms "
+            f"prev p95={previous_latency.get('successful_run_duration_p95_ms')}ms"
+        )
+
+        step_attribution = diagnostics_section.get("step_attribution", {})
+        current_attr = step_attribution.get("current", {})
+        print("\nStep Attribution (First-Break Step Rate)")
+        for item in current_attr.get("first_break_step_rate", [])[: max(1, int(args.top_steps))]:
+            print(
+                "  - "
+                f"{item.get('step_id')} idx={item.get('step_index')} type={item.get('step_type')} "
+                f"agent={item.get('agent_id')} tool={item.get('tool_name')} "
+                f"fbsr={item.get('fbsr', 0.0):.2%} count={item.get('count', 0)}"
+            )
+        if not current_attr.get("first_break_step_rate"):
+            print("  (no non-ADS runs in current window)")
+        print(
+            "  "
+            f"top_step_concentration={current_attr.get('top_step_concentration')} "
+            f"delta={step_attribution.get('top_step_concentration_delta')}"
+        )
+
+        input_coverage = diagnostics_section.get("input_coverage", {})
+        print("\nInput Coverage / Drift")
+        print(
+            "  "
+            f"NIS(current)={input_coverage.get('current_novel_input_share')} "
+            f"NIS(previous)={input_coverage.get('previous_novel_input_share')}"
+        )
+        novel_classes = input_coverage.get("current_novel_classes", [])
+        if novel_classes:
+            print("  novel classes:")
+            for item in novel_classes[: max(1, int(args.top_steps))]:
+                print(f"    - {item.get('input_class')}: {item.get('count')}")
+
+        calibration = diagnostics_section.get("calibration", {})
+        cal_current = calibration.get("current", {})
+        cal_previous = calibration.get("previous", {})
+        print("\nConfidence Calibration")
+        print(
+            "  "
+            f"ECE={cal_current.get('ece')} (prev {cal_previous.get('ece')})  "
+            f"OFR={cal_current.get('overconfident_failure_rate')} "
+            f"samples={cal_current.get('samples', 0)}"
+        )
+
+        print("\nHealth Score")
+        print(
+            "  "
+            f"status={health_section.get('status')} "
+            f"current={health_section.get('current', {}).get('score')} "
+            f"previous={health_section.get('previous', {}).get('score')} "
+            f"delta={health_section.get('delta')}"
+        )
+        print(
+            "  "
+            f"distributed_improvement={health_section.get('distributed_improvement')}"
+        )
+        breakers = health_section.get("circuit_breakers", [])
+        if breakers:
+            print("  circuit breakers:")
+            for item in breakers:
+                mark = "TRIPPED" if item.get("tripped") else "ok"
+                print(f"    - {item.get('name')}: {mark}")
         return 0
 
     if args.command == "run":
@@ -2096,6 +2206,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         try:
             run = executor.run(
                 workflow_id=workflow["workflow_id"],
+                workflow_inputs=workflow.get("inputs", {}),
                 workflow_version=workflow.get("workflow_version"),
                 initial_state=input_state,
                 on_error=workflow.get("on_error", "fail_fast"),

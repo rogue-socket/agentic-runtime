@@ -94,4 +94,6 @@ def test_html_visualization_writes_file() -> None:
     content = Path(written).read_text(encoding="utf-8")
     assert "Run Visualization" in content
     assert "Execution Graph" in content
+    assert "class=\"mermaid\"" in content
+    assert "mermaid.min.js" in content
     assert "State Timeline" in content

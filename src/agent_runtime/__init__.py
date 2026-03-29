@@ -196,6 +196,7 @@ async def run_workflow_async(
         return await executor.run_async(
             workflow_id=workflow["workflow_id"],
             initial_state=input_state,
+            workflow_inputs=workflow.get("inputs", {}),
             workflow_version=workflow.get("workflow_version"),
             on_error=on_error,
             workflow_hash=workflow.get("workflow_hash"),

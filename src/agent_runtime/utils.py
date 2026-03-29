@@ -233,7 +233,14 @@ class _SafeExprValidator(ast.NodeVisitor):
     evaluation remains deterministic and lower risk than raw `eval`.
     """
 
-    allowed_names = {"state", "len"}
+    allowed_names = {"state", "len", "min", "max", "abs"}
+    allowed_string_methods = {
+        "startswith": (1, 2),
+        "endswith": (1, 2),
+        "lower": (0, 0),
+        "upper": (0, 0),
+        "strip": (0, 1),
+    }
 
     def visit(self, node: ast.AST) -> None:
         """Allow only approved AST node types.
@@ -246,14 +253,57 @@ class _SafeExprValidator(ast.NodeVisitor):
         """
         if isinstance(node, (ast.Expression, ast.BoolOp, ast.Compare, ast.Name, ast.Load, ast.Attribute,
                              ast.Constant, ast.UnaryOp, ast.BinOp, ast.And, ast.Or, ast.Eq, ast.NotEq,
-                             ast.Gt, ast.GtE, ast.Lt, ast.LtE,
+                             ast.Gt, ast.GtE, ast.Lt, ast.LtE, ast.In, ast.NotIn,
+                             ast.List, ast.Tuple, ast.Set,
                              ast.Not, ast.USub, ast.UAdd, ast.Invert,
                              ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod)):
             return super().visit(node)
         if isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Name) and node.func.id == "len" and len(node.args) == 1:
+            if isinstance(node.func, ast.Name) and node.func.id == "len" and len(node.args) == 1 and not node.keywords:
                 return super().visit(node)
+            if isinstance(node.func, ast.Name) and node.func.id in {"min", "max"} and len(node.args) >= 1 and not node.keywords:
+                return super().visit(node)
+            if isinstance(node.func, ast.Name) and node.func.id == "abs" and len(node.args) == 1 and not node.keywords:
+                return super().visit(node)
+            if isinstance(node.func, ast.Attribute) and not node.keywords:
+                method_name = node.func.attr
+                bounds = self.allowed_string_methods.get(method_name)
+                if bounds is not None:
+                    min_args, max_args = bounds
+                    if min_args <= len(node.args) <= max_args:
+                        return super().visit(node)
+            raise ValueError("Unsupported expression")
+        if isinstance(node, ast.keyword):
+            # Keep expression surface predictable and compact.
+            raise ValueError("Unsupported expression")
+        if isinstance(node, (ast.Subscript, ast.Slice)):
+            # Bracket indexing and slicing add complexity and are not required
+            # for supported branch-condition patterns.
+            raise ValueError("Unsupported expression")
+        if isinstance(node, (ast.Dict, ast.DictComp, ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+            raise ValueError("Unsupported expression")
         raise ValueError("Unsupported expression")
+
+    def visit_Call(self, node: ast.Call) -> None:
+        """Validate function and method calls in expressions.
+
+        Only a bounded allowlist is supported, enforced in :meth:`visit`.
+        This visitor adds semantic checks for method-call receivers.
+        """
+        if isinstance(node.func, ast.Attribute):
+            method_name = node.func.attr
+            if method_name in self.allowed_string_methods:
+                receiver = node.func.value
+                if isinstance(receiver, ast.Attribute):
+                    return self.generic_visit(node)
+                if isinstance(receiver, ast.Call):
+                    if isinstance(receiver.func, ast.Attribute) and receiver.func.attr in self.allowed_string_methods:
+                        return self.generic_visit(node)
+                if isinstance(receiver, ast.Constant) and isinstance(receiver.value, str):
+                    return self.generic_visit(node)
+                raise ValueError("Unsupported expression")
+                return super().visit(node)
+        return self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         """Block access to dunder attributes for safety.
@@ -303,7 +353,7 @@ def safe_eval(expr: str, state: Dict[str, Any]) -> bool:
     #   language surface is explicit rather than an implicit subset of Python.
     tree = ast.parse(expr, mode="eval")
     _SafeExprValidator().visit(tree)
-    context = {"state": _DotDict(state), "len": len}
+    context = {"state": _DotDict(state), "len": len, "min": min, "max": max, "abs": abs}
     return bool(eval(compile(tree, "<expr>", "eval"), {"__builtins__": {}}, context))
 
 

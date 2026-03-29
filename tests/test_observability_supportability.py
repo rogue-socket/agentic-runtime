@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+import json
 from typing import Any, Dict
 
 from agent_runtime.core import Executor, StepDefinition, StepStatus
@@ -138,3 +140,130 @@ def test_storage_observability_report_aggregates_run_and_step_stats() -> None:
     assert report["runs"]["failed"] >= 1
     assert report["steps"]["total"] >= 2
     assert report["errors"]["top_classes"]
+
+
+def test_storage_observability_report_includes_health_and_diagnostics_layers() -> None:
+    storage = make_storage()
+    tools = ToolRegistry()
+
+    workflow_yaml = """
+schema_version: v1
+workflow:
+  id: wf_diag
+  version: v1
+steps:
+  - id: classify
+    type: function
+  - id: act
+    type: function
+"""
+
+    def classify(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return {"confidence": 0.92}
+
+    def act(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        mode = (inputs.get("inputs") or {}).get("mode")
+        if mode == "fail":
+            raise ValueError("ActionError: simulated")
+        return {"ok": True, "confidence": 0.61}
+
+    executor = Executor(
+        [
+            StepDefinition(step_id="classify", step_type="function", function_callable=classify),
+            StepDefinition(step_id="act", step_type="function", function_callable=act),
+        ],
+        storage,
+        None,
+        make_memory_manager(),
+        tools,
+    )
+
+    run_prev = executor.run("wf_diag", {"mode": "ok"}, workflow_yaml=workflow_yaml)
+    run_fail = executor.run("wf_diag", {"mode": "fail"}, workflow_yaml=workflow_yaml)
+    run_curr = executor.run("wf_diag", {"mode": "ok"}, workflow_yaml=workflow_yaml)
+
+    assert run_prev.status == StepStatus.COMPLETED
+    assert run_fail.status == StepStatus.FAILED
+    assert run_curr.status == StepStatus.COMPLETED
+
+    now = datetime.now(timezone.utc)
+
+    storage._conn_execute(
+        "UPDATE runs SET created_at = ?, started_at = ?, completed_at = ?, metadata_json = ? WHERE id = ?",
+        (
+            (now - timedelta(days=9)).isoformat(),
+            (now - timedelta(days=9, minutes=1)).isoformat(),
+            (now - timedelta(days=9, minutes=1)).isoformat(),
+            json.dumps(
+                {
+                    "outcome_achieved": True,
+                    "oracle_passed": True,
+                    "oracle_scenario_id": "oracle-prev",
+                    "input_class": "legacy",
+                    "confidence": 0.88,
+                }
+            ),
+            run_prev.run_id,
+        ),
+    )
+    storage._conn_execute(
+        "UPDATE runs SET created_at = ?, started_at = ?, completed_at = ?, metadata_json = ? WHERE id = ?",
+        (
+            (now - timedelta(days=1)).isoformat(),
+            (now - timedelta(days=1, minutes=1)).isoformat(),
+            (now - timedelta(days=1, minutes=1)).isoformat(),
+            json.dumps(
+                {
+                    "human_touched": True,
+                    "input_class": "novel",
+                    "confidence": 0.95,
+                }
+            ),
+            run_fail.run_id,
+        ),
+    )
+    storage._conn_execute(
+        "UPDATE runs SET created_at = ?, started_at = ?, completed_at = ?, metadata_json = ? WHERE id = ?",
+        (
+            now.isoformat(),
+            (now - timedelta(seconds=4)).isoformat(),
+            now.isoformat(),
+            json.dumps(
+                {
+                    "outcome_achieved": True,
+                    "oracle_passed": False,
+                    "oracle_scenario_id": "oracle-curr",
+                    "input_class": "legacy",
+                    "confidence": 0.60,
+                }
+            ),
+            run_curr.run_id,
+        ),
+    )
+
+    report = storage.build_observability_report(top_steps=5, window_days=7, latency_target_ms=2000)
+
+    assert "health" in report
+    assert "diagnostics" in report
+    assert "outcomes" in report
+
+    current_outcomes = report["outcomes"]["current"]
+    assert current_outcomes["ads_rate"] is not None
+    assert current_outcomes["human_touch_rate"] is not None
+    assert current_outcomes["recovery_efficiency"] is not None
+
+    current_attribution = report["diagnostics"]["step_attribution"]["current"]
+    assert current_attribution["first_break_step_rate"]
+    assert current_attribution["first_break_step_rate"][0]["step_id"] == "act"
+
+    input_coverage = report["diagnostics"]["input_coverage"]
+    assert input_coverage["current_novel_input_share"] is not None
+    assert input_coverage["current_novel_input_share"] > 0
+
+    calibration = report["diagnostics"]["calibration"]["current"]
+    assert calibration["samples"] >= 1
+    assert calibration["ece"] is not None
+
+    health = report["health"]
+    assert health["current"]["score"] is not None
+    assert health["status"] in {"improving", "mixed", "regressing", "insufficient_baseline"}

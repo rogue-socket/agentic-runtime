@@ -361,6 +361,7 @@ class Executor:
         self,
         workflow_id: str,
         initial_state: StateDict,
+        workflow_inputs: Optional[Dict[str, Any]] = None,
         workflow_version: Optional[str] = None,
         on_error: str = "fail_fast",
         workflow_hash: Optional[str] = None,
@@ -375,6 +376,7 @@ class Executor:
             self.run_async(
                 workflow_id=workflow_id,
                 initial_state=initial_state,
+                workflow_inputs=workflow_inputs,
                 workflow_version=workflow_version,
                 on_error=on_error,
                 workflow_hash=workflow_hash,
@@ -388,6 +390,7 @@ class Executor:
         self,
         workflow_id: str,
         initial_state: StateDict,
+        workflow_inputs: Optional[Dict[str, Any]] = None,
         workflow_version: Optional[str] = None,
         on_error: str = "fail_fast",
         workflow_hash: Optional[str] = None,
@@ -405,6 +408,16 @@ class Executor:
         if on_event is not None:
             self.on_event = on_event
 
+        resolved_inputs = copy.deepcopy(initial_state)
+        if workflow_inputs:
+            for name, spec in workflow_inputs.items():
+                if name in resolved_inputs:
+                    continue
+                if not isinstance(spec, dict):
+                    continue
+                if "default" in spec:
+                    resolved_inputs[name] = copy.deepcopy(spec["default"])
+
         run = Run(
             run_id=str(uuid.uuid4()),
             workflow_id=workflow_id,
@@ -418,7 +431,7 @@ class Executor:
             started_at=utc_now().isoformat(),
             state=RunState(
                 _data={
-                    "inputs": copy.deepcopy(initial_state),
+                    "inputs": copy.deepcopy(resolved_inputs),
                     "steps": {},
                     "runtime": {
                         "workflow_id": workflow_id,

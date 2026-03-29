@@ -72,6 +72,47 @@ class TestSafeEvalValid:
     def test_constant_false(self) -> None:
         assert safe_eval("1 == 2", {}) is False
 
+    def test_membership_in_list(self) -> None:
+        assert safe_eval(
+            "state.inputs.level in ['high', 'critical']",
+            {"inputs": {"level": "critical"}},
+        ) is True
+
+    def test_membership_not_in(self) -> None:
+        assert safe_eval(
+            "state.inputs.level not in ['low', 'medium']",
+            {"inputs": {"level": "critical"}},
+        ) is True
+
+    def test_string_startswith(self) -> None:
+        assert safe_eval(
+            "state.inputs.issue.startswith('Login')",
+            {"inputs": {"issue": "Login API fails"}},
+        ) is True
+
+    def test_string_endswith(self) -> None:
+        assert safe_eval(
+            "state.inputs.issue.endswith('fails')",
+            {"inputs": {"issue": "Login fails"}},
+        ) is True
+
+    def test_string_lower_chain(self) -> None:
+        assert safe_eval(
+            "state.inputs.level.lower() == 'critical'",
+            {"inputs": {"level": "CRITICAL"}},
+        ) is True
+
+    def test_string_strip(self) -> None:
+        assert safe_eval(
+            "state.inputs.issue.strip() == 'bug'",
+            {"inputs": {"issue": "  bug  "}},
+        ) is True
+
+    def test_math_helpers_min_max_abs(self) -> None:
+        assert safe_eval("max(state.inputs.a, state.inputs.b) == 9", {"inputs": {"a": 4, "b": 9}}) is True
+        assert safe_eval("min(state.inputs.a, state.inputs.b) == 4", {"inputs": {"a": 4, "b": 9}}) is True
+        assert safe_eval("abs(state.inputs.delta) < 5", {"inputs": {"delta": -3}}) is True
+
 
 # ---------------------------------------------------------------------------
 # Adversarial / malicious expressions that MUST be rejected
@@ -114,6 +155,18 @@ class TestSafeEvalRejected:
     def test_call_non_len_function_blocked(self) -> None:
         with pytest.raises(ValueError, match="Unsupported"):
             safe_eval("str(state.inputs)", {"inputs": {}})
+
+    def test_unsupported_string_method_blocked(self) -> None:
+        with pytest.raises(ValueError, match="Unsupported"):
+            safe_eval("state.inputs.issue.replace('a', 'b') == 'x'", {"inputs": {"issue": "a"}})
+
+    def test_string_method_on_non_state_receiver_blocked(self) -> None:
+        with pytest.raises(AttributeError):
+            safe_eval("state.inputs.num.startswith('1')", {"inputs": {"num": 123}})
+
+    def test_keyword_arguments_blocked(self) -> None:
+        with pytest.raises(ValueError, match="Unsupported"):
+            safe_eval("state.inputs.issue.startswith(prefix='x')", {"inputs": {"issue": "xyz"}})
 
     def test_exec_blocked(self) -> None:
         with pytest.raises(ValueError, match="Unsupported"):

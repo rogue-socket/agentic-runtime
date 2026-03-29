@@ -122,7 +122,7 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
             "</div>"
         )
 
-    # TODO(ux): Replace text edge list with interactive graph rendering (e.g., Mermaid) without external network dependencies.
+    mermaid_graph = _build_mermaid_flow(graph)
     edge_lines = [f"{edge.source} -> {edge.target} [{edge.kind}]" for edge in graph.edges]
 
     run_duration = timeline.run_duration_ms if timeline.run_duration_ms is not None else "n/a"
@@ -169,7 +169,11 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
   <section>
     <h2>Execution Graph</h2>
     <div class=\"card\">
-      <pre>{html.escape(chr(10).join(edge_lines) if edge_lines else '(no edges)')}</pre>
+      {f'<div class="mermaid">{html.escape(mermaid_graph)}</div>' if mermaid_graph else '<p class="small">(no edges)</p>'}
+      <details>
+        <summary>Raw edge list</summary>
+        <pre>{html.escape(chr(10).join(edge_lines) if edge_lines else '(no edges)')}</pre>
+      </details>
     </div>
     <table>
       <thead><tr><th>Step</th><th>Type</th><th>Status</th><th>Attempts</th><th>Duration (ms)</th></tr></thead>
@@ -191,6 +195,12 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
       <thead><tr><th>Step</th><th>Type</th><th>Status</th><th>Attempts</th><th>Duration (ms)</th><th>Call Duration (ms)</th><th>Started</th><th>Finished</th><th>Tool</th></tr></thead>
       <tbody>{''.join(timeline_rows)}</tbody>
     </table>
+  <script src="../../docs/mermaid.min.js"></script>
+  <script>
+    if (window.mermaid) {{
+      window.mermaid.initialize({{ startOnLoad: true, securityLevel: "strict", theme: "default" }});
+    }}
+  </script>
   </section>
 
   <section>
@@ -218,3 +228,36 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
 def _pretty_json(data: Any) -> str:
     """Render JSON-like object with stable formatting for HTML blocks."""
     return json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) if data is not None else "null"
+
+
+def _mermaid_id(step_id: str) -> str:
+  """Return a Mermaid-safe node id for arbitrary step ids."""
+  out = []
+  for ch in step_id:
+    if ch.isalnum() or ch == "_":
+      out.append(ch)
+    else:
+      out.append("_")
+  value = "".join(out).strip("_")
+  return value or "step"
+
+
+def _build_mermaid_flow(graph: GraphView) -> str:
+  """Build Mermaid flowchart markup for interactive HTML graph rendering."""
+  if not graph.edges and not graph.nodes:
+    return ""
+
+  lines = ["flowchart TD"]
+
+  for node in graph.nodes:
+    node_id = _mermaid_id(node.step_id)
+    label = f"{node.step_id}\\n[{node.step_type}]\\n{node.status}"
+    lines.append(f"  {node_id}[{json.dumps(label)}]")
+
+  for edge in graph.edges:
+    source = _mermaid_id(edge.source)
+    target = _mermaid_id(edge.target)
+    kind = edge.kind or "next"
+    lines.append(f"  {source} -->|{json.dumps(kind)}| {target}")
+
+  return "\n".join(lines)
