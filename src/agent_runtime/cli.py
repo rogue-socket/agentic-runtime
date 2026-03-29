@@ -2567,9 +2567,6 @@ def _diff_state(before: dict, after: dict, *, diff_limit: int = 20, full: bool =
     Uses nested path-level diffs when available, with truncation to keep
     inspect output readable in terminals.
     """
-    # TODO(eng): list-diff - RuntimeState.diff_paths currently treats lists as
-    #   atomic values, so large list mutations show as one changed path rather
-    #   than item-level edits.
     # TODO(ux): Add CLI graph visualization for branching workflows.
     changes = RuntimeState.diff_paths(before, after)
     if not changes:

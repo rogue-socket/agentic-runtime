@@ -242,7 +242,7 @@ class RuntimeState:
     #   exactly which step wrote what — making silent dependency violations visible.
     @staticmethod
     def diff_paths(before: Dict[str, Any], after: Dict[str, Any]) -> list[Dict[str, Any]]:
-        """Compute recursive path-level diffs for nested dictionaries.
+        """Compute recursive path-level diffs for nested dictionaries/lists.
 
         Returns operation entries using `+` (added), `-` (removed), and
         `~` (changed) for visualization and detailed state inspection.
@@ -254,7 +254,7 @@ class RuntimeState:
         changes: list[Dict[str, Any]] = []
 
         def walk(b: Any, a: Any, prefix: str) -> None:
-            """Recursively walk two nested dicts and record differences."""
+            """Recursively walk nested dict/list structures and record differences."""
             if isinstance(b, dict) and isinstance(a, dict):
                 b_keys = set(b.keys())
                 a_keys = set(a.keys())
@@ -267,6 +267,20 @@ class RuntimeState:
                 for key in sorted(a_keys & b_keys):
                     path = f"{prefix}.{key}" if prefix else key
                     walk(b[key], a[key], path)
+                return
+            if isinstance(b, (list, tuple)) and isinstance(a, (list, tuple)):
+                b_len = len(b)
+                a_len = len(a)
+                max_len = max(b_len, a_len)
+                for idx in range(max_len):
+                    path = f"{prefix}[{idx}]" if prefix else f"[{idx}]"
+                    if idx >= b_len:
+                        changes.append({"op": "+", "path": path, "before": None, "after": a[idx]})
+                        continue
+                    if idx >= a_len:
+                        changes.append({"op": "-", "path": path, "before": b[idx], "after": None})
+                        continue
+                    walk(b[idx], a[idx], path)
                 return
             if b != a:
                 changes.append({"op": "~", "path": prefix, "before": b, "after": a})
