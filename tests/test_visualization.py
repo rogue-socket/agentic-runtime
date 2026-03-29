@@ -97,3 +97,4 @@ def test_html_visualization_writes_file() -> None:
     assert "class=\"mermaid\"" in content
     assert "mermaid.min.js" in content
     assert "State Timeline" in content
+    assert "${" not in content

@@ -12,8 +12,10 @@ tool calls, and state timeline, then writes report to disk.
 
 from pathlib import Path
 from typing import Any
+from functools import lru_cache
 import html
 import json
+from string import Template
 
 from .graph_builder import GraphView
 from .timeline_builder import TimelineView
@@ -31,15 +33,6 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
     Returns:
         Absolute/relative path written to disk.
     """
-    # TODO(eng): html-template - This renderer builds the entire HTML page
-    #   via f-string concatenation.  This is fragile and hard to maintain
-    #   as the report grows.  Consider:
-    #   1. Move the HTML/CSS skeleton to a separate .html template file
-    #      loaded at runtime with simple {{placeholder}} substitution.
-    #   2. Or use Python's string.Template / jinja2 (lightweight) for
-    #      structured templating with loops and conditionals.
-    #   3. Keep the html.escape() calls for any user-supplied values to
-    #      prevent XSS in the generated report.
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -129,97 +122,30 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
     run_started = html.escape(timeline.run_started_at or "n/a")
     run_completed = html.escape(timeline.run_completed_at or "n/a")
 
-    html_doc = f"""<!doctype html>
-<html>
-<head>
-  <meta charset=\"utf-8\" />
-  <title>Run Visualization - {html.escape(run_id)}</title>
-  <style>
-    :root {{
-      --bg: #f6f8fb;
-      --fg: #1f2937;
-      --card: #ffffff;
-      --line: #d1d5db;
-      --accent: #0f766e;
-      --fail: #b91c1c;
-    }}
-    body {{ font-family: "IBM Plex Sans", "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 24px; }}
-    h1, h2 {{ margin: 0 0 12px 0; }}
-    section {{ margin: 18px 0; }}
-    .card {{ background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px; }}
-    table {{ width: 100%; border-collapse: collapse; background: var(--card); border-radius: 10px; overflow: hidden; }}
-    th, td {{ border: 1px solid var(--line); padding: 8px; text-align: left; font-size: 13px; }}
-    th {{ background: #e5eef5; }}
-    pre {{ background: #0b1020; color: #e5f3ff; padding: 10px; border-radius: 8px; overflow-x: auto; }}
-    .small {{ font-size: 13px; }}
-  </style>
-</head>
-<body>
-  <h1>Run Visualization</h1>
-  <p class=\"small\"><strong>Run:</strong> {html.escape(run_id)}</p>
-  <section>
-    <div class=\"card\">
-      <h2>Run Summary</h2>
-      <p><strong>Started:</strong> {run_started}</p>
-      <p><strong>Completed:</strong> {run_completed}</p>
-      <p><strong>Total Duration (ms):</strong> {run_duration}</p>
-    </div>
-  </section>
+    mermaid_block = (
+        f'<div class="mermaid">{html.escape(mermaid_graph)}</div>'
+        if mermaid_graph
+        else '<p class="small">(no edges)</p>'
+    )
+    edge_list = html.escape("\n".join(edge_lines) if edge_lines else "(no edges)")
+    branch_rows_html = "".join(branch_rows) if branch_rows else '<tr><td colspan="5">No branch rules evaluated.</td></tr>'
+    tool_rows_html = "".join(tool_rows) if tool_rows else '<tr><td colspan="5">No tool steps executed.</td></tr>'
 
-  <section>
-    <h2>Execution Graph</h2>
-    <div class=\"card\">
-      {f'<div class="mermaid">{html.escape(mermaid_graph)}</div>' if mermaid_graph else '<p class="small">(no edges)</p>'}
-      <details>
-        <summary>Raw edge list</summary>
-        <pre>{html.escape(chr(10).join(edge_lines) if edge_lines else '(no edges)')}</pre>
-      </details>
-    </div>
-    <table>
-      <thead><tr><th>Step</th><th>Type</th><th>Status</th><th>Attempts</th><th>Duration (ms)</th></tr></thead>
-      <tbody>{''.join(graph_rows)}</tbody>
-    </table>
-  </section>
-
-  <section>
-    <h2>Branch Decisions</h2>
-    <table>
-      <thead><tr><th>Step</th><th>Condition</th><th>Result</th><th>Goto</th><th>Selected</th></tr></thead>
-      <tbody>{''.join(branch_rows) if branch_rows else '<tr><td colspan="5">No branch rules evaluated.</td></tr>'}</tbody>
-    </table>
-  </section>
-
-  <section>
-    <h2>Step Timeline</h2>
-    <table>
-      <thead><tr><th>Step</th><th>Type</th><th>Status</th><th>Attempts</th><th>Duration (ms)</th><th>Call Duration (ms)</th><th>Started</th><th>Finished</th><th>Tool</th></tr></thead>
-      <tbody>{''.join(timeline_rows)}</tbody>
-    </table>
-  <script src="../../docs/mermaid.min.js"></script>
-  <script>
-    if (window.mermaid) {{
-      window.mermaid.initialize({{ startOnLoad: true, securityLevel: "strict", theme: "default" }});
-    }}
-  </script>
-  </section>
-
-  <section>
-    <h2>Tool Calls</h2>
-    <table>
-      <thead><tr><th>Step</th><th>Tool</th><th>Arguments</th><th>Result</th><th>Latency (ms)</th></tr></thead>
-      <tbody>{''.join(tool_rows) if tool_rows else '<tr><td colspan="5">No tool steps executed.</td></tr>'}</tbody>
-    </table>
-  </section>
-
-  <section>
-    <h2>State Timeline</h2>
-    <div class=\"card\"><h3>Initial State</h3><pre>{html.escape(_pretty_json(timeline.initial_state))}</pre></div>
-    {''.join(state_blocks)}
-    <div class=\"card\"><h3>Latest State</h3><pre>{html.escape(_pretty_json(timeline.latest_state))}</pre></div>
-  </section>
-</body>
-</html>
-"""
+    html_doc = _load_html_template().safe_substitute(
+        run_id=html.escape(run_id),
+        run_started=run_started,
+        run_completed=run_completed,
+        run_duration=str(run_duration),
+        mermaid_block=mermaid_block,
+        edge_list=edge_list,
+        graph_rows="".join(graph_rows),
+        branch_rows=branch_rows_html,
+        timeline_rows="".join(timeline_rows),
+        tool_rows=tool_rows_html,
+        initial_state=html.escape(_pretty_json(timeline.initial_state)),
+        state_blocks="".join(state_blocks),
+        latest_state=html.escape(_pretty_json(timeline.latest_state)),
+    )
 
     path.write_text(html_doc, encoding="utf-8")
     return str(path)
@@ -228,6 +154,17 @@ def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_pa
 def _pretty_json(data: Any) -> str:
     """Render JSON-like object with stable formatting for HTML blocks."""
     return json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True) if data is not None else "null"
+
+
+@lru_cache(maxsize=1)
+def _load_html_template() -> Template:
+    """Load the HTML shell from disk and cache it for repeated renders."""
+    template_path = Path(__file__).with_name("templates") / "run_visualization.html"
+    try:
+      template_text = template_path.read_text(encoding="utf-8")
+    except OSError as exc:
+      raise RuntimeError(f"Visualization template not found: {template_path}") from exc
+    return Template(template_text)
 
 
 def _mermaid_id(step_id: str) -> str:

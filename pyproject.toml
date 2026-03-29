@@ -47,6 +47,9 @@ Issues = "https://github.com/agentic-runtime/agentic-runtime/issues"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"agent_runtime.visualization" = ["templates/*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

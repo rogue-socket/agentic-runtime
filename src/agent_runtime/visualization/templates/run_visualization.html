@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Run Visualization - ${run_id}</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --fg: #1f2937;
+      --card: #ffffff;
+      --line: #d1d5db;
+      --accent: #0f766e;
+      --fail: #b91c1c;
+    }
+    body { font-family: "IBM Plex Sans", "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 24px; }
+    h1, h2 { margin: 0 0 12px 0; }
+    section { margin: 18px 0; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 10px; overflow: hidden; }
+    th, td { border: 1px solid var(--line); padding: 8px; text-align: left; font-size: 13px; }
+    th { background: #e5eef5; }
+    pre { background: #0b1020; color: #e5f3ff; padding: 10px; border-radius: 8px; overflow-x: auto; }
+    .small { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>Run Visualization</h1>
+  <p class="small"><strong>Run:</strong> ${run_id}</p>
+  <section>
+    <div class="card">
+      <h2>Run Summary</h2>
+      <p><strong>Started:</strong> ${run_started}</p>
+      <p><strong>Completed:</strong> ${run_completed}</p>
+      <p><strong>Total Duration (ms):</strong> ${run_duration}</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Execution Graph</h2>
+    <div class="card">
+      ${mermaid_block}
+      <details>
+        <summary>Raw edge list</summary>
+        <pre>${edge_list}</pre>
+      </details>
+    </div>
+    <table>
+      <thead><tr><th>Step</th><th>Type</th><th>Status</th><th>Attempts</th><th>Duration (ms)</th></tr></thead>
+      <tbody>${graph_rows}</tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Branch Decisions</h2>
+    <table>
+      <thead><tr><th>Step</th><th>Condition</th><th>Result</th><th>Goto</th><th>Selected</th></tr></thead>
+      <tbody>${branch_rows}</tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Step Timeline</h2>
+    <table>
+      <thead><tr><th>Step</th><th>Type</th><th>Status</th><th>Attempts</th><th>Duration (ms)</th><th>Call Duration (ms)</th><th>Started</th><th>Finished</th><th>Tool</th></tr></thead>
+      <tbody>${timeline_rows}</tbody>
+    </table>
+  <script src="../../docs/mermaid.min.js"></script>
+  <script>
+    if (window.mermaid) {
+      window.mermaid.initialize({ startOnLoad: true, securityLevel: "strict", theme: "default" });
+    }
+  </script>
+  </section>
+
+  <section>
+    <h2>Tool Calls</h2>
+    <table>
+      <thead><tr><th>Step</th><th>Tool</th><th>Arguments</th><th>Result</th><th>Latency (ms)</th></tr></thead>
+      <tbody>${tool_rows}</tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>State Timeline</h2>
+    <div class="card"><h3>Initial State</h3><pre>${initial_state}</pre></div>
+    ${state_blocks}
+    <div class="card"><h3>Latest State</h3><pre>${latest_state}</pre></div>
+  </section>
+</body>
+</html>
