@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Callable, Dict, List, Optional, Protocol
 
 from ..llm.client import LLMClient
 from ..llm.types import LLMResponse
@@ -77,6 +77,26 @@ class AgentContext:
     step_id: str
     state: Dict[str, Any]
     logger: Any = None
+    on_event: Optional[Callable[[str, Dict[str, Any]], None]] = None
+    execution_index: Optional[int] = None
+    attempt: Optional[int] = None
+
+
+def _emit_agent_event(context: AgentContext, event: str, payload: Dict[str, Any]) -> None:
+    """Emit nested agent execution events through the runtime callback."""
+    if context.on_event is None:
+        return
+
+    enriched: Dict[str, Any] = {
+        "run_id": context.run_id,
+        "step_id": context.step_id,
+    }
+    if context.execution_index is not None:
+        enriched["execution_index"] = context.execution_index
+    if context.attempt is not None:
+        enriched["attempt"] = context.attempt
+    enriched.update(payload)
+    context.on_event(event, enriched)
 
 
 # -- strategy protocol -----------------------------------------------------
@@ -403,6 +423,16 @@ async def _run_pipeline(
             prompt = _render_pipeline_prompt(step.prompt, pipeline_state)
             history = pipeline_state.get("_history")
 
+            _emit_agent_event(
+                context,
+                "AGENT_MODEL_START",
+                {
+                    "agent_iteration": iteration,
+                    "agent_pipeline_step": step.id,
+                    "model": model_name,
+                },
+            )
+
             response = llm_client.call(
                 model=model_name,
                 prompt=prompt,
@@ -412,6 +442,19 @@ async def _run_pipeline(
                 context={"run_id": context.run_id, "step_id": context.step_id},
                 tools=tools,
             )
+
+            _emit_agent_event(
+                context,
+                "AGENT_MODEL_COMPLETE",
+                {
+                    "agent_iteration": iteration,
+                    "agent_pipeline_step": step.id,
+                    "model": model_name,
+                    "has_tool_calls": bool(response.tool_calls),
+                    "usage": response.usage or {},
+                },
+            )
+
             turn = AgentTurn(
                 iteration=iteration,
                 llm_request={"prompt": prompt, "system": system, "step_id": step.id},
@@ -434,21 +477,65 @@ async def _run_pipeline(
                 # Native function-calling path.
                 last_had_native_calls = True
                 for tc in response.tool_calls:
+                    _emit_agent_event(
+                        context,
+                        "AGENT_TOOL_START",
+                        {
+                            "agent_iteration": iteration,
+                            "agent_pipeline_step": step.id,
+                            "tool_name": tc.tool_name,
+                            "tool_input": tc.tool_input,
+                        },
+                    )
                     record = await _execute_tool(
                         tool_registry, tc.tool_name, tc.tool_input, context,
                     )
                     turn.tool_calls.append(record)
                     observations.append(_format_observation(record))
+                    _emit_agent_event(
+                        context,
+                        "AGENT_TOOL_COMPLETE",
+                        {
+                            "agent_iteration": iteration,
+                            "agent_pipeline_step": step.id,
+                            "tool_name": tc.tool_name,
+                            "success": bool(record.result and record.result.success),
+                            "duration_ms": record.duration_ms,
+                            "error": (record.result.error if record.result else None),
+                        },
+                    )
             else:
                 # Text-based fallback path.
                 last_had_native_calls = False
                 inline_tool_calls = _parse_tool_calls(response.text)
                 for tc in inline_tool_calls:
+                    _emit_agent_event(
+                        context,
+                        "AGENT_TOOL_START",
+                        {
+                            "agent_iteration": iteration,
+                            "agent_pipeline_step": step.id,
+                            "tool_name": tc["tool"],
+                            "tool_input": tc.get("input", {}),
+                        },
+                    )
                     record = await _execute_tool(
                         tool_registry, tc["tool"], tc.get("input", {}), context,
                     )
                     turn.tool_calls.append(record)
                     observations.append(_format_observation(record))
+                    _emit_agent_event(
+                        context,
+                        "AGENT_TOOL_COMPLETE",
+                        {
+                            "agent_iteration": iteration,
+                            "agent_pipeline_step": step.id,
+                            "tool_name": tc["tool"],
+                            "success": bool(record.result and record.result.success),
+                            "duration_ms": record.duration_ms,
+                            "error": (record.result.error if record.result else None),
+                        },
+                    )
 
             if observations:
                 turn.observation = "\n".join(observations)
@@ -463,6 +550,16 @@ async def _run_pipeline(
 
         elif step.type == "tool":
             tool_input = _resolve_pipeline_tool_inputs(step.inputs, pipeline_state)
+            _emit_agent_event(
+                context,
+                "AGENT_PIPELINE_TOOL_START",
+                {
+                    "agent_iteration": iteration,
+                    "agent_pipeline_step": step.id,
+                    "tool_name": step.tool,
+                    "tool_input": tool_input,
+                },
+            )
             record = await _execute_tool(
                 tool_registry, step.tool, tool_input, context,
             )
@@ -470,6 +567,18 @@ async def _run_pipeline(
                 iteration=iteration,
                 llm_request={"step_id": step.id, "tool": step.tool},
                 tool_calls=[record],
+            )
+            _emit_agent_event(
+                context,
+                "AGENT_PIPELINE_TOOL_COMPLETE",
+                {
+                    "agent_iteration": iteration,
+                    "agent_pipeline_step": step.id,
+                    "tool_name": step.tool,
+                    "success": bool(record.result and record.result.success),
+                    "duration_ms": record.duration_ms,
+                    "error": (record.result.error if record.result else None),
+                },
             )
             # Store tool output in pipeline state.
             if record.result and record.result.success:
@@ -552,6 +661,13 @@ class ReActStrategy:
         for i in range(1, max_iter + 1):
             # Expose iteration number in state for prompt templates.
             pipeline_state["_iteration"] = i
+            _emit_agent_event(
+                context,
+                "AGENT_ITERATION_START",
+                {
+                    "agent_iteration": i,
+                },
+            )
 
             # ---------------------------------------------------------------------------
             # Build message history from previous turns.
@@ -612,6 +728,14 @@ class ReActStrategy:
                 pipeline_state, iteration=i, tools=tools,
             )
             all_turns.extend(turns)
+            _emit_agent_event(
+                context,
+                "AGENT_ITERATION_COMPLETE",
+                {
+                    "agent_iteration": i,
+                    "turn_count": len(turns),
+                },
+            )
 
             # -- Stop condition 1: native path, model requested no more tools ------------
             # When native function calling is active, the model signals completion by

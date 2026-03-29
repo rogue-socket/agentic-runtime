@@ -649,6 +649,9 @@ class Executor:
                                 step_id=step_def.step_id,
                                 state=snapshot,
                                 logger=self.logger,
+                                on_event=self._emit,
+                                execution_index=execution_index,
+                                attempt=attempt,
                             )
                             agent_input = step_input if step_def.input_spec is not None else snapshot
                             call_start = time.monotonic()

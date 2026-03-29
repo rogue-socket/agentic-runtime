@@ -67,6 +67,7 @@ from .errors import (
     get_user_message,
 )
 from .observability import normalize_agent_trace
+from .debugger import LiveDebugger, load_debug_profile
 from .workflow import load_workflow, load_workflow_from_text
 from .workflow_registry import WorkflowRegistry, parse_workflow_reference
 from .visualization import GraphBuilder, RunLoader, TimelineBuilder, render_ascii, render_html
@@ -1954,6 +1955,28 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     run_parser.add_argument("-i", "--input", action="append", default=[],
                             metavar="KEY=VALUE",
                             help="Workflow input (repeatable, e.g. -i issue=\"bug report\")")
+    run_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable live interactive debugger for workflow/agent/tool execution",
+    )
+    run_parser.add_argument(
+        "--breakpoint",
+        action="append",
+        default=[],
+        metavar="SPEC",
+        help="Initial debugger breakpoint (step:<id>, event:<name>, tool:<name>, agent_step:<id>, expr:<condition>)",
+    )
+    run_parser.add_argument(
+        "--debug-profile",
+        default=None,
+        help="Path to JSON debug profile (start_paused + breakpoints)",
+    )
+    run_parser.add_argument(
+        "--debug-log-dir",
+        default=".runs",
+        help="Directory for persisted debug event logs (set empty string to disable)",
+    )
     _add_llm_control_args(run_parser)
 
     # [Pain Point Solved] #4 Debugging is Blind: inspect, state-diff, replay, and
@@ -2373,8 +2396,33 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             shell_denylist=cfg.shell_denylist or None,
         )
         agent_registry = _default_agent_registry(cfg.agents_dir)
+        debugger: Optional[LiveDebugger] = None
+        debug_enabled = bool(getattr(args, "debug", False) or getattr(args, "debug_profile", None))
+        if debug_enabled:
+            profile_start_paused = True
+            profile_breakpoints: List[str] = []
+            if getattr(args, "debug_profile", None):
+                try:
+                    profile_start_paused, profile_breakpoints = load_debug_profile(args.debug_profile)
+                except Exception as exc:  # noqa: BLE001
+                    _print_cli_exception(exc)
+                    return 1
+
+            merged_breakpoints = list(profile_breakpoints)
+            merged_breakpoints.extend(getattr(args, "breakpoint", []))
+            debugger = LiveDebugger(
+                load_latest_state=storage.load_latest_state,
+                breakpoints=merged_breakpoints,
+                start_paused=profile_start_paused,
+                event_log_dir=(getattr(args, "debug_log_dir", ".runs") or None),
+            )
+            print("Debug mode enabled. Type 'h' at the (debug) prompt for commands.")
 
         def _progress_callback(event: str, payload: Dict[str, Any]) -> None:
+            if debugger is not None and debugger.enabled:
+                debugger.handle_event(event, payload)
+                return
+
             step_id = payload.get("step_id", "")
             step_type = payload.get("step_type", "")
             if event == "STEP_START":
