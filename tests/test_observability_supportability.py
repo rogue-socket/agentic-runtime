@@ -96,6 +96,34 @@ def test_normalize_agent_trace_handles_legacy_shape() -> None:
     assert normalized[1]["tool"] == "tools.echo"
 
 
+def test_serialize_agent_trace_redacts_sensitive_patterns() -> None:
+    turns = [
+        _FakeTurn(
+            iteration=1,
+            llm_request={
+                "prompt": "email me at user@example.com and use sk-1234567890ABCDEFGHIJ",
+                "authorization": "Bearer abcdefghijklmnop",
+            },
+            llm_response=_FakeResponse(
+                text="token=supersecret123",
+                model="openai/gpt-4o",
+                usage={"total_tokens": 10},
+            ),
+            tool_calls=[],
+        )
+    ]
+
+    events = serialize_agent_trace(turns)
+    assert events[0]["type"] == "model"
+    prompt = events[0]["llm_request"]["prompt"]
+    assert "user@example.com" not in prompt
+    assert "sk-1234567890ABCDEFGHIJ" not in prompt
+    assert "[REDACTED_EMAIL]" in prompt
+    assert "[REDACTED_API_KEY]" in prompt
+    assert "[REDACTED]" in events[0]["llm_request"]["authorization"]
+    assert "supersecret123" not in events[0]["response_text"]
+
+
 def test_error_taxonomy_helpers_return_stable_code_and_message() -> None:
     exc = StepExecutionError("step failed")
     assert get_error_code(exc) == "AR-STEP-EXECUTION"

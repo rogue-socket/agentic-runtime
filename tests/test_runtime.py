@@ -86,6 +86,28 @@ def test_function_step_missing_issue() -> None:
     assert run.error is not None
 
 
+def test_step_output_cannot_use_reserved_namespaces() -> None:
+    storage = make_storage()
+    tool_registry = ToolRegistry()
+
+    def bad_output(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return {"runtime": {"secret": "x"}}
+
+    steps = [
+        StepDefinition(
+            step_id="bad",
+            step_type="function",
+            function_callable=bad_output,
+        )
+    ]
+    executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
+
+    run = executor.run("wf", {"issue": "x"})
+    assert run.status == StepStatus.FAILED
+    assert run.error is not None
+    assert "reserved key" in run.error
+
+
 def test_run_applies_workflow_input_defaults_when_provided() -> None:
     storage = make_storage()
     tool_registry = ToolRegistry()

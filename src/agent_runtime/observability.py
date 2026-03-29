@@ -3,6 +3,45 @@ from __future__ import annotations
 """Observability helpers shared across runtime, CLI, and replay paths."""
 
 from typing import Any, Dict, Iterable, List, Optional, Sequence
+import re
+
+
+_TEXT_REDACTION_PATTERNS = [
+    # Common provider token prefixes.
+    (re.compile(r"\bsk-[A-Za-z0-9_-]{16,}\b"), "[REDACTED_API_KEY]"),
+    # Generic bearer tokens.
+    (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~-]{8,}"), "Bearer [REDACTED]"),
+    # Credential assignment forms (password=..., token: ..., api_key=...).
+    (
+        re.compile(r"(?i)\b(api[_-]?key|token|password|secret)\b\s*[:=]\s*([\"']?)[^\s,;\"']+\2"),
+        lambda m: f"{m.group(1)}=[REDACTED]",
+    ),
+    # Basic email patterns.
+    (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"), "[REDACTED_EMAIL]"),
+    # Long digit sequences that may include credit card / account values.
+    (re.compile(r"\b\d{13,19}\b"), "[REDACTED_NUMBER]"),
+]
+
+
+def _redact_sensitive_text(text: str) -> str:
+    """Redact common credential and PII patterns in free text."""
+    redacted = text
+    for pattern, replacement in _TEXT_REDACTION_PATTERNS:
+        redacted = pattern.sub(replacement, redacted)
+    return redacted
+
+
+def _sanitize_trace_value(value: Any) -> Any:
+    """Recursively sanitize trace payload values before persistence."""
+    if isinstance(value, str):
+        return _redact_sensitive_text(value)
+    if isinstance(value, dict):
+        return {k: _sanitize_trace_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_trace_value(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_trace_value(v) for v in value)
+    return value
 
 
 def percentile(values: Sequence[float], pct: float) -> Optional[float]:
@@ -52,11 +91,11 @@ def serialize_agent_trace(turns: Iterable[Any]) -> List[Dict[str, Any]]:
                 "type": "model",
                 "iteration": iteration,
                 "model": model,
-                "response_text": response_text,
-                "llm_request": llm_request,
+                "response_text": _sanitize_trace_value(response_text),
+                "llm_request": _sanitize_trace_value(llm_request),
             }
             if usage is not None:
-                model_event["usage"] = usage
+                model_event["usage"] = _sanitize_trace_value(usage)
             events.append(model_event)
 
         for tool_call in getattr(turn, "tool_calls", []) or []:
@@ -65,11 +104,11 @@ def serialize_agent_trace(turns: Iterable[Any]) -> List[Dict[str, Any]]:
                 "type": "tool",
                 "iteration": iteration,
                 "tool": getattr(tool_call, "tool_name", ""),
-                "input": getattr(tool_call, "tool_input", None),
+                "input": _sanitize_trace_value(getattr(tool_call, "tool_input", None)),
                 "duration_ms": getattr(tool_call, "duration_ms", None),
                 "success": getattr(result, "success", None) if result is not None else None,
-                "error": getattr(result, "error", None) if result is not None else None,
-                "output": getattr(result, "output", None) if result is not None else None,
+                "error": _sanitize_trace_value(getattr(result, "error", None)) if result is not None else None,
+                "output": _sanitize_trace_value(getattr(result, "output", None)) if result is not None else None,
             }
             events.append(tool_event)
 

@@ -122,6 +122,21 @@ def resolve_path(path: str, state: Dict[str, Any]) -> Any:
 _PATH_TEMPLATE_RE = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
 
 
+def _sanitize_interpolated_value(value: Any) -> str:
+    """Normalize interpolated template values to safer prompt text.
+
+    - Strings: strip NUL bytes and non-printable control chars.
+    - Dict/list: serialize to stable JSON instead of Python repr.
+    - Everything else: ``str(value)``.
+    """
+    if isinstance(value, str):
+        value = value.replace("\x00", "")
+        return "".join(ch for ch in value if ch in "\n\r\t" or ord(ch) >= 0x20)
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value)
+
+
 def render_path_template(text: str, state: Dict[str, Any]) -> str:
     """Render ``{{ path }}`` placeholders using dot-path lookups.
 
@@ -129,14 +144,9 @@ def render_path_template(text: str, state: Dict[str, Any]) -> str:
         >>> render_path_template("Issue: {{ inputs.issue }}", {"inputs": {"issue": "x"}})
         'Issue: x'
     """
-    # TODO(pain-point): Template Injection - User-supplied state values are
-    #   interpolated directly into LLM prompts here without sanitization. This is
-    #   a prompt injection vector — adversarial input like "Ignore previous
-    #   instructions..." flows straight into the system prompt. Add input
-    #   sanitization, escaping, or content boundary markers before interpolation.
     def replace(match: re.Match[str]) -> str:
         path = match.group(1).strip()
-        return str(resolve_path(path, state))
+        return _sanitize_interpolated_value(resolve_path(path, state))
 
     return _PATH_TEMPLATE_RE.sub(replace, text)
 
@@ -306,11 +316,7 @@ class _SafeExprValidator(ast.NodeVisitor):
         return self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        """Block access to dunder attributes for safety.
-
-        # TODO(security): P2 — Without this check, expressions like
-        # state.__init__.__globals__ leak the utils module's namespace.
-        """
+        """Block access to private/dunder attributes for safety."""
         if node.attr.startswith("_"):
             raise ValueError(f"Access to private attribute '{node.attr}' is not allowed")
         return self.generic_visit(node)

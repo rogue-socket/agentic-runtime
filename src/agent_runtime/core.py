@@ -701,14 +701,8 @@ class Executor:
                             )
                             output = agent_result.outputs
                             execution.token_usage = agent_result.token_usage
-                            # store agent trace for observability
-                            # TODO(pain-point): Secrets in Agent Traces -
-                            #   The trace below captures the full llm_request, which
-                            #   contains interpolated prompts with user PII, internal
-                            #   system details, and business logic. If storage is
-                            #   shared or inspect output is logged, you're leaking
-                            #   sensitive data. Add a trace sanitizer that redacts
-                            #   PII patterns and user content before persistence.
+                            # Store a sanitized trace for observability.
+                            # serialize_agent_trace() redacts common secrets/PII.
                             # TODO(pain-point): Hallucination Guardrails -
                             #   The agent output is stored as-is. For extraction tasks,
                             #   add an optional `grounding_validator` hook that cross-
@@ -842,14 +836,24 @@ class Executor:
                             f"Output contract violation for step {step_def.step_id}: undeclared keys {sorted(extra)}"
                         )
 
-                # TODO(security): Enforce immutability rules:
-                # - Prevent modification of "inputs"
-                # - Prevent overwriting existing step outputs unless explicitly allowed
-                # - Add collision validation policy
-                if "inputs" in output:
-                    raise StepExecutionError("Step output cannot include reserved key: inputs")
-                if step_def.step_id in run.state.data.get("steps", {}):
-                    raise StepExecutionError(f"Step output overwrite not allowed: {step_def.step_id}")
+                # Keep core state namespaces immutable from step output payloads.
+                reserved_keys = {"inputs", "runtime", "steps"}
+                reserved = sorted(key for key in output.keys() if key in reserved_keys)
+                if reserved:
+                    raise StepExecutionError(
+                        f"Step output cannot include reserved key(s): {', '.join(reserved)}"
+                    )
+
+                # Inputs are immutable during execution; step handlers operate on snapshots.
+                if run.state.data.get("inputs") != snapshot.get("inputs"):
+                    raise StepExecutionError("Input state is immutable and cannot be modified by steps.")
+
+                # Explicitly allow output overwrite only when policy is set to allow.
+                if step_def.step_id in run.state.data.get("steps", {}) and self.overwrite_policy != "allow":
+                    raise StepExecutionError(
+                        f"Step output overwrite not allowed for '{step_def.step_id}' "
+                        f"(set overwrite_policy=allow to permit)"
+                    )
                 run.state.set_step_output(step_def.step_id, output)
                 self.memory_manager.persist_state(run.state.data)
                 execution.state_after = copy.deepcopy(run.state.data)

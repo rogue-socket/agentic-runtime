@@ -208,6 +208,16 @@ class TestPipelinePromptRendering:
         with pytest.raises(KeyError, match="not found"):
             _render_pipeline_prompt("{{ missing.key }}", {"inputs": {}})
 
+    def test_render_structured_value_as_json(self):
+        state = {"inputs": {"payload": {"b": 2, "a": 1}}}
+        result = _render_pipeline_prompt("Payload: {{ inputs.payload }}", state)
+        assert result == 'Payload: {"a": 1, "b": 2}'
+
+    def test_render_strips_nul_control_characters(self):
+        state = {"inputs": {"issue": "bad\x00text"}}
+        result = _render_pipeline_prompt("Issue: {{ inputs.issue }}", state)
+        assert result == "Issue: badtext"
+
 
 # ── Pipeline Tool Input Resolution ──────────────────────────────────────
 
