@@ -1716,19 +1716,13 @@ def _run_quickstart(project_root: str, *, sample: str = "starter") -> int:
 
     if not has_creds:
         print("\n[!] No LLM API keys found in .env or environment.")
-        use_no_key_sample = _prompt_yes_no(
-            "Run a no-key sample now (branching triage)?",
-            default=True,
+        print("No credentials configured; running no-key sample automatically (branching triage).")
+        return _run_quickstart_sample(
+            project_root,
+            "branching_triage.yaml",
+            "branching triage",
+            needs_llm=False,
         )
-        if use_no_key_sample:
-            return _run_quickstart_sample(
-                project_root,
-                "branching_triage.yaml",
-                "branching triage",
-                needs_llm=False,
-            )
-        print("\nPlease set an API key (for example OPENAI_API_KEY) in .env and run ai quickstart again.")
-        return 1
     else:
         # We have creds, but let's ensure the default provider is set if not already
         if not cfg.llm_registry.default_provider:

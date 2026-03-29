@@ -349,6 +349,23 @@ class TestRunCLIDiffArgs:
 
 
 class TestRunCLIQuickstart:
+    def test_quickstart_starter_without_keys_auto_falls_back(self, capsys) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            with patch("agent_runtime.cli._run_setup_flow", return_value={"provider": "openai"}):
+                code = run_cli(["quickstart", "--path", d])
+
+            assert code == 0
+            db_path = os.path.join(d, "runtime.db")
+            assert os.path.isfile(db_path)
+
+            out = capsys.readouterr().out
+            assert "running no-key sample automatically" in out.lower()
+
+            with sqlite3.connect(db_path) as conn:
+                statuses = [row[0] for row in conn.execute("SELECT status FROM runs").fetchall()]
+
+            assert "COMPLETED" in statuses
+
     def test_quickstart_branching_sample_first_success(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             code = run_cli(["quickstart", "--path", d, "--sample", "branching"])
