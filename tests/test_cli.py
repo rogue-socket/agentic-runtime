@@ -221,6 +221,63 @@ class TestRunCLIList:
             assert "No agents found" in capsys.readouterr().out
 
 
+class TestRunCLIDocs:
+    def test_docs_builds_index_and_workflow_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            docs_guide = os.path.join(d, "docs", "guide")
+            workflows_dir = os.path.join(d, "workflows")
+            os.makedirs(docs_guide, exist_ok=True)
+            os.makedirs(workflows_dir, exist_ok=True)
+
+            with open(os.path.join(docs_guide, "intro.md"), "w", encoding="utf-8") as f:
+                f.write("# Intro\n")
+
+            workflow_yaml = """schema_version: v1
+workflow:
+  id: docs_sample
+  version: v1
+inputs:
+  issue:
+    description: Issue text
+    required: true
+steps:
+  - id: summarize
+    type: function
+    function: stubs.generate_summary
+"""
+            with open(os.path.join(workflows_dir, "sample.yaml"), "w", encoding="utf-8") as f:
+                f.write(workflow_yaml)
+
+            code = run_cli(["docs", "--path", d])
+            assert code == 0
+
+            content_js = os.path.join(d, "docs", "content.js")
+            generated_md = os.path.join(d, "docs", "guide", "workflow-reference-generated.md")
+            assert os.path.isfile(content_js)
+            assert os.path.isfile(generated_md)
+
+            with open(content_js, "r", encoding="utf-8") as f:
+                content_text = f.read()
+            assert "guide/intro.md" in content_text
+
+            with open(generated_md, "r", encoding="utf-8") as f:
+                generated_text = f.read()
+            assert "docs_sample@v1" in generated_text
+            assert "summarize" in generated_text
+
+    def test_docs_builds_site_index_when_present(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            docs_site = os.path.join(d, "docs", "site")
+            os.makedirs(docs_site, exist_ok=True)
+
+            with open(os.path.join(docs_site, "readme.md"), "w", encoding="utf-8") as f:
+                f.write("# Site\n")
+
+            code = run_cli(["docs", "--path", d, "--no-workflow-reference"])
+            assert code == 0
+            assert os.path.isfile(os.path.join(d, "docs", "site", "content.js"))
+
+
 class TestRunCLIMetrics:
     def test_metrics_json_output(self, capsys) -> None:
         storage = make_storage()

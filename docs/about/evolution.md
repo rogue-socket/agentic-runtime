@@ -287,7 +287,7 @@ The following are documented roadmap items, not current capabilities:
 - **Procedural memory**: the stub exists with a documented extraction design; awaiting episodic+semantic maturity.
 - **Async embedding**: `asyncio.run()` in sync wrappers fails inside existing event loops (FastAPI, Jupyter).
 
-Each of these has a code-level TODO or a gap document entry pointing to the specific files involved.
+Each of these has a code-level follow-up marker or a gap document entry pointing to the specific files involved.
 
 ---
 

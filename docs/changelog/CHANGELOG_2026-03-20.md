@@ -91,7 +91,7 @@
 
 ### Housekeeping (P5)
 
-- **Removed 4 stale TODOs**: Deleted resolved TODO comments in `resume.py`
+- **Removed 4 stale backlog markers**: Deleted resolved follow-up comments in `resume.py`
   (circular branching — already implemented), `llm/adapters.py`
   (`test_openai_adapter.py` — already exists), `llm/handler.py`
   (`test_llm_handler.py` and `05_llm_call.yaml` — both exist).
@@ -122,11 +122,11 @@
   Added `[tool.ruff]` and `[tool.ruff.lint]` sections: target Python 3.10,
   120-char line length, enabled E/F/W/I/UP/B/SIM rule sets.
 
-### Feature gap TODOs (P7)
+### Feature gap follow-ups (P7)
 
-- **Gap 1** (LLM quickstart): Added TODO in `cli.py` `_init_project()` to
+- **Gap 1** (LLM quickstart): Added a follow-up marker in `cli.py` `_init_project()` to
   scaffold a working LLM workflow by default.
-- **Gap 7** (Richer expressions): Added TODO in `utils.py` `safe_eval()` to
+- **Gap 7** (Richer expressions): Added a follow-up marker in `utils.py` `safe_eval()` to
   expand branch condition language with string methods, math helpers, and
   membership tests.
 

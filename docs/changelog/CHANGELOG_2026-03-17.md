@@ -32,15 +32,15 @@
 - **`_SafeExprValidator` blocks dunder attribute access** (`utils.py`):
   Added `visit_Attribute` method that rejects attribute names starting with `_`. Prevents expressions like `state.__init__.__globals__` from leaking the module's namespace through branch conditions.
 
-## Security TODOs Added
+## Security Follow-ups Added
 
 - **FileTool `_safe_path` prefix bypass** (`tools/file.py`):
-  `startswith(self.root)` is defeated by sibling directories sharing a prefix (e.g., `/project` vs `/projectx`). TODO documents the fix: `resolved == self.root or resolved.startswith(self.root + os.sep)`.
+  `startswith(self.root)` is defeated by sibling directories sharing a prefix (e.g., `/project` vs `/projectx`). Follow-up note documents the fix: `resolved == self.root or resolved.startswith(self.root + os.sep)`.
 
 - **`import_agent` symlink + manifest path traversal** (`agent/packaging.py`):
-  Two vulnerabilities: (1) tar symlink members bypass path validation, (2) manifest paths (`workflow`, `handlers`, `tools`) are joined to project_root without traversal checks. TODO documents both fixes.
+  Two vulnerabilities: (1) tar symlink members bypass path validation, (2) manifest paths (`workflow`, `handlers`, `tools`) are joined to project_root without traversal checks. Follow-up note documents both fixes.
 
-## Product TODOs Added
+## Product Backlog Items Added
 
 Across 14 source files, tagged with categories:
 
