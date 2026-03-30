@@ -1,5 +1,19 @@
 # Changelog — 2026-03-31
 
+## Sample Contract Fixes (v0.1.2)
+
+- **Agent+function sample input alignment**:
+  Updated `workflows/samples/07_agent_and_function.yaml` so the `summarize`
+  step maps `issue: inputs.text` to match `agents/summarizer.yaml` prompt
+  expectations (`{{ inputs.issue }}`).
+
+- **Regression guard for sample drift**:
+  Added a focused test in `tests/test_workflow_file_coverage.py` to assert the
+  sample's summarize step preserves this mapping contract.
+
+- **Versioning**:
+  Bumped package version from `0.1.1` to `0.1.2` in `pyproject.toml`.
+
 ## Runtime Bug Fixes
 
 - **Mock adapter tool-call contract alignment**:
