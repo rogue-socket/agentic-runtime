@@ -26,7 +26,6 @@ Side Effects:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set
 import copy
 import uuid
@@ -43,6 +42,11 @@ from .tools.base import RuntimeContext, ToolResult
 from .tools.registry import ToolRegistry
 from .tools.validation import validate_input
 from .utils import StateDict, build_step_input, format_template, safe_eval, utc_now
+
+import re as _re
+
+from .agent.executor import AgentExecutor
+from .agent.strategies import AgentContext
 
 # Lifecycle event callback signature.
 # Receives an event name (e.g. "STEP_START") and a payload dict.
@@ -170,14 +174,6 @@ class RetryPolicy:
 class StepExecution:
     """Persisted execution record for one step attempt lifecycle."""
 
-    # TODO(pain-point): Latency Budgets - duration_ms tracks how long
-    #   each step took, but there's no way to declare "this workflow must complete
-    #   in under 5s" and fail-fast when a step exceeds its budget. Add an optional
-    #   `timeout_ms` on StepDefinition and a `latency_budget_ms` on the workflow
-    #   so slow steps are caught in real-time, not discovered in post-mortem.
-    # [Pain Point Solved] Per-step timeout_ms is enforced via asyncio.wait_for.
-    # [Pain Point Solved] Workflow-level latency_budget_ms is checked at the
-    #   start of each step loop iteration in __execute_steps_loop.
     step_id: str
     step_type: str
     status: str = StepStatus.PENDING
@@ -307,8 +303,183 @@ class Executor:
                     },
                 )
 
+
+    # -- Step dispatch helpers ------------------------------------------------
+    # Each dispatch method returns (output_dict, handler_duration_ms, tool_duration_ms)
+    # and may mutate `execution` to set metadata (token_usage, model_name, trace).
+
+    async def _run_with_timeout_and_heartbeat(
+        self,
+        coro: Any,
+        *,
+        step_def: StepDefinition,
+        run_id: str,
+        execution_index: int,
+        attempt: int,
+    ) -> tuple[Any, int]:
+        """Wrap an async coroutine with heartbeat emission and optional timeout.
+
+        Returns (result, elapsed_ms).
+        """
+        call_start = time.monotonic()
+        self._emit_step_progress(
+            run_id=run_id,
+            step_id=step_def.step_id,
+            step_type=step_def.step_type,
+            execution_index=execution_index,
+            attempt=attempt,
+            phase="dispatch",
+            elapsed_ms=0,
+        )
+
+        wrapped = self._await_with_heartbeat(
+            coro,
+            run_id=run_id,
+            step_id=step_def.step_id,
+            step_type=step_def.step_type,
+            execution_index=execution_index,
+            attempt=attempt,
+        )
+
+        if step_def.timeout_ms:
+            t_sec = float(step_def.timeout_ms) / 1000.0
+            try:
+                result = await asyncio.wait_for(wrapped, timeout=t_sec)
+            except asyncio.TimeoutError:
+                elapsed = int((time.monotonic() - call_start) * 1000)
+                self._emit_step_progress(
+                    run_id=run_id,
+                    step_id=step_def.step_id,
+                    step_type=step_def.step_type,
+                    execution_index=execution_index,
+                    attempt=attempt,
+                    phase="timeout",
+                    elapsed_ms=elapsed,
+                    error=f"{step_def.step_type.title()} step timed out after {step_def.timeout_ms}ms",
+                )
+                raise StepExecutionError(
+                    f"{step_def.step_type.title()} step timed out after {step_def.timeout_ms}ms"
+                )
+        else:
+            result = await wrapped
+
+        elapsed = int((time.monotonic() - call_start) * 1000)
+        self._emit_step_progress(
+            run_id=run_id,
+            step_id=step_def.step_id,
+            step_type=step_def.step_type,
+            execution_index=execution_index,
+            attempt=attempt,
+            phase="complete",
+            elapsed_ms=elapsed,
+        )
+        return result, elapsed
+
+    async def _dispatch_agent(
+        self,
+        step_def: StepDefinition,
+        step_input: Any,
+        snapshot: StateDict,
+        run: Run,
+        execution_index: int,
+        attempt: int,
+        execution: StepExecution,
+    ) -> tuple[Dict[str, Any], Optional[int], None]:
+        """Dispatch an agent step — returns (output, handler_duration_ms, None)."""
+        if not step_def.agent_id:
+            raise StepExecutionError("Agent step missing agent_id.")
+        if not self.agent_registry:
+            raise StepExecutionError("AgentRegistry not configured.")
+        if not self.llm_client:
+            raise StepExecutionError("LLMClient not configured.")
+
+        agent_def = self.agent_registry.get(step_def.agent_id, step_def.agent_version)
+        if not agent_def.model and self.default_model:
+            agent_def = copy.copy(agent_def)
+            agent_def.model = self.default_model
+
+        agent_executor = AgentExecutor(self.llm_client, self.tool_registry, self.logger)
+        agent_ctx = AgentContext(
+            run_id=run.run_id,
+            step_id=step_def.step_id,
+            state=snapshot,
+            logger=self.logger,
+            on_event=self._emit,
+            execution_index=execution_index,
+            attempt=attempt,
+        )
+        agent_input = step_input if step_def.input_spec is not None else snapshot
+
+        agent_result, handler_duration_ms = await self._run_with_timeout_and_heartbeat(
+            agent_executor.execute(agent_def, agent_input, agent_ctx),
+            step_def=step_def,
+            run_id=run.run_id,
+            execution_index=execution_index,
+            attempt=attempt,
+        )
+
+        execution.token_usage = agent_result.token_usage
+        if agent_result.trace:
+            for _turn in reversed(agent_result.trace):
+                if _turn.llm_response and _turn.llm_response.model:
+                    execution.model_name = _turn.llm_response.model
+                    break
+        # TODO(pain-point): Hallucination Guardrails -
+        #   The agent output is stored as-is. For extraction tasks,
+        #   add an optional `grounding_validator` hook that cross-
+        #   checks agent output against source input — catching
+        #   invented data before it flows into your database.
+        execution.agent_trace = serialize_agent_trace(agent_result.trace)
+        return agent_result.outputs, handler_duration_ms, None
+
+    def _dispatch_function(
+        self,
+        step_def: StepDefinition,
+        step_input: Any,
+        snapshot: StateDict,
+    ) -> tuple[Dict[str, Any], Optional[int], None]:
+        """Dispatch a function step — returns (output, handler_duration_ms, None)."""
+        if step_def.function_callable is None:
+            raise StepExecutionError("Function step missing resolved callable.")
+        func_input = step_input if step_def.input_spec is not None else snapshot
+        if isinstance(func_input, RuntimeState):
+            func_input = func_input.to_dict()
+        call_start = time.monotonic()
+        output = step_def.function_callable(func_input)
+        handler_duration_ms = int((time.monotonic() - call_start) * 1000)
+        return output, handler_duration_ms, None
+
+    async def _dispatch_tool(
+        self,
+        step_def: StepDefinition,
+        step_input: Any,
+        snapshot: StateDict,
+        run: Run,
+        execution_index: int,
+        attempt: int,
+    ) -> tuple[Dict[str, Any], None, Optional[int]]:
+        """Dispatch a tool step — returns (output, None, tool_duration_ms)."""
+        if not step_def.tool_name:
+            raise StepExecutionError("Missing tool name.")
+        tool = self.tool_registry.get(step_def.tool_name)
+        tool_input = (
+            step_input
+            if step_def.input_spec is not None
+            else format_template(step_def.raw_input or {}, snapshot)
+        )
+
+        (output, inner_tool_ms), elapsed_ms = await self._run_with_timeout_and_heartbeat(
+            self._execute_tool_async(tool, tool_input, run.run_id, step_def.step_id, snapshot),
+            step_def=step_def,
+            run_id=run.run_id,
+            execution_index=execution_index,
+            attempt=attempt,
+        )
+        return output, None, inner_tool_ms if inner_tool_ms is not None else elapsed_ms
+
+    # -- End dispatch helpers -------------------------------------------------
+
     def _mark_run_failed_best_effort(self, run: Run, error: str) -> Optional[Exception]:
-        """Set run to FAILED and persist status without masking original failures."""
         if run.status != StepStatus.FAILED:
             run.set_status(StepStatus.FAILED, error=error, completed_at=utc_now().isoformat())
         else:
@@ -599,6 +770,8 @@ class Executor:
                 "execution_index": execution_index,
             })
 
+            step_start_mono = time.monotonic()
+
             try:
                 max_attempts = step_def.retry.attempts if step_def.retry else 1
                 backoff = step_def.retry.backoff if step_def.retry else "fixed"
@@ -642,158 +815,18 @@ class Executor:
                         # tool (external I/O) — so a formatting function doesn't
                         # need an LLM wrapper.
                         if step_def.step_type == "agent":
-                            if not step_def.agent_id:
-                                raise StepExecutionError("Agent step missing agent_id.")
-                            if not self.agent_registry:
-                                raise StepExecutionError("AgentRegistry not configured.")
-                            if not self.llm_client:
-                                raise StepExecutionError("LLMClient not configured.")
-                            from .agent.executor import AgentExecutor
-                            from .agent.strategies import AgentContext
-                            agent_def = self.agent_registry.get(
-                                step_def.agent_id, step_def.agent_version
+                            output, handler_duration_ms, _ = await self._dispatch_agent(
+                                step_def, step_input, snapshot, run,
+                                execution_index, attempt, execution,
                             )
-                            # Inject default model from runtime config when the
-                            # agent definition doesn't specify one.
-                            if not agent_def.model and self.default_model:
-                                agent_def = copy.copy(agent_def)
-                                agent_def.model = self.default_model
-                            agent_executor = AgentExecutor(
-                                self.llm_client, self.tool_registry, self.logger
-                            )
-                            agent_ctx = AgentContext(
-                                run_id=run.run_id,
-                                step_id=step_def.step_id,
-                                state=snapshot,
-                                logger=self.logger,
-                                on_event=self._emit,
-                                execution_index=execution_index,
-                                attempt=attempt,
-                            )
-                            agent_input = step_input if step_def.input_spec is not None else snapshot
-                            call_start = time.monotonic()
-                            self._emit_step_progress(
-                                run_id=run.run_id,
-                                step_id=step_def.step_id,
-                                step_type=step_def.step_type,
-                                execution_index=execution_index,
-                                attempt=attempt,
-                                phase="dispatch",
-                                elapsed_ms=0,
-                            )
-
-                            coro = self._await_with_heartbeat(
-                                agent_executor.execute(agent_def, agent_input, agent_ctx),
-                                run_id=run.run_id,
-                                step_id=step_def.step_id,
-                                step_type=step_def.step_type,
-                                execution_index=execution_index,
-                                attempt=attempt,
-                            )
-                            if step_def.timeout_ms:
-                                t_sec = float(step_def.timeout_ms) / 1000.0
-                                try:
-                                    agent_result = await asyncio.wait_for(coro, timeout=t_sec)
-                                except asyncio.TimeoutError:
-                                    self._emit_step_progress(
-                                        run_id=run.run_id,
-                                        step_id=step_def.step_id,
-                                        step_type=step_def.step_type,
-                                        execution_index=execution_index,
-                                        attempt=attempt,
-                                        phase="timeout",
-                                        elapsed_ms=int((time.monotonic() - call_start) * 1000),
-                                        error=f"Agent step timed out after {step_def.timeout_ms}ms",
-                                    )
-                                    raise StepExecutionError(f"Agent step timed out after {step_def.timeout_ms}ms")
-                            else:
-                                agent_result = await coro
-
-                            handler_duration_ms = int((time.monotonic() - call_start) * 1000)
-                            self._emit_step_progress(
-                                run_id=run.run_id,
-                                step_id=step_def.step_id,
-                                step_type=step_def.step_type,
-                                execution_index=execution_index,
-                                attempt=attempt,
-                                phase="complete",
-                                elapsed_ms=handler_duration_ms,
-                            )
-                            output = agent_result.outputs
-                            execution.token_usage = agent_result.token_usage
-                            # Capture the model name for regression detection.
-                            if agent_result.trace:
-                                for _turn in reversed(agent_result.trace):
-                                    if _turn.llm_response and _turn.llm_response.model:
-                                        execution.model_name = _turn.llm_response.model
-                                        break
-                            # Store a sanitized trace for observability.
-                            # serialize_agent_trace() redacts common secrets/PII.
-                            # TODO(pain-point): Hallucination Guardrails -
-                            #   The agent output is stored as-is. For extraction tasks,
-                            #   add an optional `grounding_validator` hook that cross-
-                            #   checks agent output against source input — catching
-                            #   invented data before it flows into your database.
-                            execution.agent_trace = serialize_agent_trace(agent_result.trace)
                         elif step_def.step_type == "function":
-                            if step_def.function_callable is None:
-                                raise StepExecutionError("Function step missing resolved callable.")
-                            func_input = step_input if step_def.input_spec is not None else snapshot
-                            if isinstance(func_input, RuntimeState):
-                                func_input = func_input.to_dict()
-                            call_start = time.monotonic()
-                            output = step_def.function_callable(func_input)
-                            handler_duration_ms = int((time.monotonic() - call_start) * 1000)
+                            output, handler_duration_ms, _ = self._dispatch_function(
+                                step_def, step_input, snapshot,
+                            )
                         elif step_def.step_type == "tool":
-                            if not step_def.tool_name:
-                                raise StepExecutionError("Missing tool name.")
-                            tool = self.tool_registry.get(step_def.tool_name)
-                            tool_input = step_input if step_def.input_spec is not None else format_template(step_def.raw_input or {}, snapshot)
-                            call_start = time.monotonic()
-                            self._emit_step_progress(
-                                run_id=run.run_id,
-                                step_id=step_def.step_id,
-                                step_type=step_def.step_type,
-                                execution_index=execution_index,
-                                attempt=attempt,
-                                phase="dispatch",
-                                elapsed_ms=0,
-                            )
-                            
-                            coro = self._await_with_heartbeat(
-                                self._execute_tool_async(tool, tool_input, run.run_id, step_def.step_id, snapshot),
-                                run_id=run.run_id,
-                                step_id=step_def.step_id,
-                                step_type=step_def.step_type,
-                                execution_index=execution_index,
-                                attempt=attempt,
-                            )
-                            if step_def.timeout_ms:
-                                t_sec = float(step_def.timeout_ms) / 1000.0
-                                try:
-                                    output, tool_duration_ms = await asyncio.wait_for(coro, timeout=t_sec)
-                                except asyncio.TimeoutError:
-                                    self._emit_step_progress(
-                                        run_id=run.run_id,
-                                        step_id=step_def.step_id,
-                                        step_type=step_def.step_type,
-                                        execution_index=execution_index,
-                                        attempt=attempt,
-                                        phase="timeout",
-                                        elapsed_ms=int((time.monotonic() - call_start) * 1000),
-                                        error=f"Tool step timed out after {step_def.timeout_ms}ms",
-                                    )
-                                    raise StepExecutionError(f"Tool step timed out after {step_def.timeout_ms}ms")
-                            else:
-                                output, tool_duration_ms = await coro
-                            self._emit_step_progress(
-                                run_id=run.run_id,
-                                step_id=step_def.step_id,
-                                step_type=step_def.step_type,
-                                execution_index=execution_index,
-                                attempt=attempt,
-                                phase="complete",
-                                elapsed_ms=tool_duration_ms if tool_duration_ms is not None else int((time.monotonic() - call_start) * 1000),
+                            output, _, tool_duration_ms = await self._dispatch_tool(
+                                step_def, step_input, snapshot, run,
+                                execution_index, attempt,
                             )
                         else:
                             raise StepExecutionError(f"Unknown step type: {step_def.step_type}")
@@ -876,14 +909,16 @@ class Executor:
                         f"Step output overwrite not allowed for '{step_def.step_id}' "
                         f"(set overwrite_policy=allow to permit)"
                     )
-                run.state.set_step_output(step_def.step_id, output)
-                self.memory_manager.persist_state(run.state.data)
-                execution.state_after = copy.deepcopy(run.state.data)
-
-                # Extract side-effect declarations from tool output.
+                # Extract side-effect declarations from tool output BEFORE
+                # persisting to state — prevents __side_effects__ metadata
+                # from leaking into the state tree.
                 _side_effects = output.pop("__side_effects__", None)
                 if isinstance(_side_effects, list):
                     execution.side_effects = _side_effects
+
+                run.state.set_step_output(step_def.step_id, output)
+                self.memory_manager.persist_state(run.state.data)
+                execution.state_after = copy.deepcopy(run.state.data)
 
                 execution.output = output
                 execution.status = StepStatus.COMPLETED
@@ -909,10 +944,9 @@ class Executor:
             finally:
                 if execution.finished_at is None:
                     execution.finished_at = utc_now().isoformat()
-                if execution.started_at and execution.finished_at:
-                    start = datetime.fromisoformat(execution.started_at)
-                    end = datetime.fromisoformat(execution.finished_at)
-                    execution.duration_ms = int((end - start).total_seconds() * 1000)
+                # Use monotonic clock for accurate duration — avoids ISO string
+                # round-trip precision loss and timezone edge cases.
+                execution.duration_ms = int((time.monotonic() - step_start_mono) * 1000)
 
             if execution.status == StepStatus.COMPLETED:
                 self._emit("STEP_COMPLETE", {
@@ -987,8 +1021,17 @@ class Executor:
             run.state.runtime().set("runtime.status", run.status)
             run.state.runtime().set("runtime.error", run.error or "")
             self.memory_manager.persist_state(run.state.snapshot())
-        except Exception:
-            pass  # best-effort; don't fail the run for memory persistence
+        except Exception as mem_exc:  # noqa: BLE001
+            # Best-effort: don't fail the run for memory persistence, but log
+            # the error so it's diagnosable rather than silently swallowed.
+            if self.logger:
+                self.logger.error(
+                    "MEMORY_PERSIST_ERROR",
+                    {
+                        "run_id": run.run_id,
+                        "error": f"{type(mem_exc).__name__}: {mem_exc}",
+                    },
+                )
         finally:
             run.freeze()
 
@@ -1166,8 +1209,6 @@ def _compute_backoff_delay(attempt: int, backoff: str, initial_delay: float) -> 
     raise StepExecutionError(f"Unsupported backoff strategy: {backoff}")
 
 
-import re as _re
-
 _OUTPUT_TYPE_MAP = {
     "str": str,
     "string": str,
@@ -1208,7 +1249,12 @@ def _validate_output_schema(
         expected_type_name = rules.get("type")
         if expected_type_name:
             expected_type = _OUTPUT_TYPE_MAP.get(expected_type_name.lower())
-            if expected_type and not isinstance(value, expected_type):
+            if expected_type is None:
+                errors.append(
+                    f"key '{key}': unknown type '{expected_type_name}' in output_schema "
+                    f"(valid: {', '.join(sorted(_OUTPUT_TYPE_MAP.keys()))})"
+                )
+            elif not isinstance(value, expected_type):
                 errors.append(
                     f"key '{key}': expected type {expected_type_name}, got {type(value).__name__}"
                 )

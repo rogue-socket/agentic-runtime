@@ -43,6 +43,17 @@ from ..utils import json_dumps, json_loads
 if TYPE_CHECKING:
     from ..core import Run, StepExecution
 
+_HEALTH_WEIGHTS: Dict[str, float] = {
+    "ads": 0.28,
+    "opr": 0.16,
+    "one_minus_porr": 0.14,
+    "one_minus_htr": 0.12,
+    "recovery": 0.10,
+    "one_minus_ece": 0.08,
+    "one_minus_nis": 0.06,
+    "latency": 0.06,
+}
+
 
 class SQLiteStorage(Storage):
     """SQLite-backed implementation of the runtime storage contract.
@@ -95,6 +106,7 @@ class SQLiteStorage(Storage):
         Inside a transaction block the statement participates in the outer
         transaction (the lock is already held by ``transaction()``).
         """
+        self._check_open()
         auto = not self._in_transaction
         if auto:
             self._lock.acquire()
@@ -145,6 +157,11 @@ class SQLiteStorage(Storage):
                 raise
             finally:
                 self._in_transaction = False
+
+    def _check_open(self) -> None:
+        """Raise if the storage connection has been closed."""
+        if self._conn is None:
+            raise RuntimeError("SQLiteStorage is closed")
 
     def close(self) -> None:
         """Close the persistent connection.
@@ -230,6 +247,13 @@ class SQLiteStorage(Storage):
         self._ensure_runs_columns(self._conn)
         self._ensure_steps_columns(self._conn)
         self._ensure_storage_schema_version(self._conn)
+        # Indexes on foreign key columns — SQLite does not auto-create these.
+        self._conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_steps_run_id ON steps(run_id);
+            CREATE INDEX IF NOT EXISTS idx_state_versions_run_id ON state_versions(run_id);
+            """
+        )
 
     def _ensure_storage_schema_version(self, conn: sqlite3.Connection) -> None:
         """Initialize and verify storage schema version contract."""
@@ -399,7 +423,6 @@ class SQLiteStorage(Storage):
             row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
         if row is None:
             raise ValueError(f"Run not found: {run_id}")
-
         from ..core import Run
         run = Run(
             run_id=row["id"],
@@ -425,12 +448,12 @@ class SQLiteStorage(Storage):
                 "SELECT * FROM steps WHERE run_id = ? ORDER BY execution_index ASC, id ASC",
                 (run_id,),
             ).fetchall()
+        from ..core import StepExecution
         steps: list[StepExecution] = []
         for row in rows:
-            from ..core import StepExecution
-            agent_trace_raw = row["agent_trace_json"] if "agent_trace_json" in row.keys() else None
-            token_usage_raw = row["token_usage_json"] if "token_usage_json" in row.keys() else None
             rkeys = row.keys()
+            agent_trace_raw = row["agent_trace_json"] if "agent_trace_json" in rkeys else None
+            token_usage_raw = row["token_usage_json"] if "token_usage_json" in rkeys else None
             side_effects_raw = row["side_effects_json"] if "side_effects_json" in rkeys else None
             steps.append(
                 StepExecution(
@@ -510,9 +533,9 @@ class SQLiteStorage(Storage):
                 "SELECT * FROM runs ORDER BY created_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
+        from ..core import Run
         runs = []
         for row in rows:
-            from ..core import Run
             runs.append(Run(
                 run_id=row["id"],
                 workflow_id=row["workflow_id"],
@@ -851,9 +874,15 @@ class SQLiteStorage(Storage):
                 "execution_index": row["execution_index"],
             })
 
+        # Cache parsed workflow metadata by workflow_id to avoid re-parsing
+        # the same YAML for every run that shares a workflow.
+        _step_meta_cache: Dict[str, Dict[str, Dict[str, Any]]] = {}
         step_meta_by_run: Dict[str, Dict[str, Dict[str, Any]]] = {}
         for run_id, record in run_records.items():
-            step_meta_by_run[run_id] = self._extract_step_meta(record.get("workflow_yaml"))
+            wf_id = record.get("workflow_id", "")
+            if wf_id not in _step_meta_cache:
+                _step_meta_cache[wf_id] = self._extract_step_meta(record.get("workflow_yaml"))
+            step_meta_by_run[run_id] = _step_meta_cache[wf_id]
 
         # Failure recovery proxy: failed run is considered recovered when a later
         # completed run exists for the same workflow + input hash.
@@ -1190,49 +1219,42 @@ class SQLiteStorage(Storage):
             nis_val, nis_missing = _metric_or_neutral(nis_value, invert=True)
             lat_val, lat_missing = _metric_or_neutral(latency.get("latency_score"))
 
-            weights = {
-                "ads": 0.28,
-                "opr": 0.16,
-                "one_minus_porr": 0.14,
-                "one_minus_htr": 0.12,
-                "recovery": 0.10,
-                "one_minus_ece": 0.08,
-                "one_minus_nis": 0.06,
-                "latency": 0.06,
-            }
             score = 100.0 * (
-                weights["ads"] * ads_val
-                + weights["opr"] * opr_val
-                + weights["one_minus_porr"] * porr_val
-                + weights["one_minus_htr"] * htr_val
-                + weights["recovery"] * re_val
-                + weights["one_minus_ece"] * ece_val
-                + weights["one_minus_nis"] * nis_val
-                + weights["latency"] * lat_val
+                _HEALTH_WEIGHTS["ads"] * ads_val
+                + _HEALTH_WEIGHTS["opr"] * opr_val
+                + _HEALTH_WEIGHTS["one_minus_porr"] * porr_val
+                + _HEALTH_WEIGHTS["one_minus_htr"] * htr_val
+                + _HEALTH_WEIGHTS["recovery"] * re_val
+                + _HEALTH_WEIGHTS["one_minus_ece"] * ece_val
+                + _HEALTH_WEIGHTS["one_minus_nis"] * nis_val
+                + _HEALTH_WEIGHTS["latency"] * lat_val
             )
 
+            components = {
+                "ads": ads_val,
+                "opr": opr_val,
+                "one_minus_porr": porr_val,
+                "one_minus_htr": htr_val,
+                "recovery": re_val,
+                "one_minus_ece": ece_val,
+                "one_minus_nis": nis_val,
+                "latency": lat_val,
+            }
+            defaults = {
+                "ads": ads_missing,
+                "opr": opr_missing,
+                "one_minus_porr": porr_missing,
+                "one_minus_htr": htr_missing,
+                "recovery": re_missing,
+                "one_minus_ece": ece_missing,
+                "one_minus_nis": nis_missing,
+                "latency": lat_missing,
+            }
             return {
                 "score": score,
-                "components": {
-                    "ads": ads_val,
-                    "opr": opr_val,
-                    "one_minus_porr": porr_val,
-                    "one_minus_htr": htr_val,
-                    "recovery": re_val,
-                    "one_minus_ece": ece_val,
-                    "one_minus_nis": nis_val,
-                    "latency": lat_val,
-                },
-                "defaults_applied": {
-                    "ads": ads_missing,
-                    "opr": opr_missing,
-                    "one_minus_porr": porr_missing,
-                    "one_minus_htr": htr_missing,
-                    "recovery": re_missing,
-                    "one_minus_ece": ece_missing,
-                    "one_minus_nis": nis_missing,
-                    "latency": lat_missing,
-                },
+                "weights": dict(_HEALTH_WEIGHTS),
+                "components": components,
+                "defaults_applied": defaults,
             }
 
         health_current = _compute_health(current_metrics, current_nis)
@@ -1431,16 +1453,7 @@ class SQLiteStorage(Storage):
                 },
             },
             "health": {
-                "weights": {
-                    "ads": 0.28,
-                    "opr": 0.16,
-                    "one_minus_porr": 0.14,
-                    "one_minus_htr": 0.12,
-                    "recovery": 0.10,
-                    "one_minus_ece": 0.08,
-                    "one_minus_nis": 0.06,
-                    "latency": 0.06,
-                },
+                "weights": dict(_HEALTH_WEIGHTS),
                 "current": health_current,
                 "previous": health_previous,
                 "delta": score_delta,
