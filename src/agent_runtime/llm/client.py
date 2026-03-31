@@ -22,12 +22,10 @@ class LLMClient:
     #   (token bucket or semaphore) at this client level so concurrent
     #   Executor instances share a throttled request queue instead of each
     #   independently hammering the API and triggering 429s.
-    # TODO(pain-point): Model Regression Detection - When you swap
-    #   from gpt-4o-2024-05-13 to gpt-4o-2024-08-06, nothing breaks but
-    #   output quality subtly shifts. Add a `compare_models()` utility that
-    #   runs the same inputs through two model versions and diffs outputs
-    #   (semantic similarity, key presence, format adherence) to catch
-    #   regressions before they reach production.
+    # [Pain Point Solved] Model Regression Detection — ``model_name`` is now
+    #   persisted on every agent step execution record. ``RunReplayer.compare_runs()``
+    #   pairs steps by step_id and diffs model names, statuses, and outputs
+    #   to catch regressions when swapping model versions.
     def __init__(
         self,
         registry: LLMRegistry,

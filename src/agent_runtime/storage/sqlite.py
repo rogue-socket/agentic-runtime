@@ -207,6 +207,9 @@ class SQLiteStorage(Storage):
                 attempts INTEGER,
                 agent_trace_json TEXT,
                 token_usage_json TEXT,
+                model_name TEXT,
+                next_step_resolved TEXT,
+                side_effects_json TEXT,
                 FOREIGN KEY(run_id) REFERENCES runs(id)
             );
             CREATE TABLE IF NOT EXISTS state_versions (
@@ -269,6 +272,12 @@ class SQLiteStorage(Storage):
             conn.execute("ALTER TABLE steps ADD COLUMN agent_trace_json TEXT")
         if "token_usage_json" not in columns:
             conn.execute("ALTER TABLE steps ADD COLUMN token_usage_json TEXT")
+        if "model_name" not in columns:
+            conn.execute("ALTER TABLE steps ADD COLUMN model_name TEXT")
+        if "next_step_resolved" not in columns:
+            conn.execute("ALTER TABLE steps ADD COLUMN next_step_resolved TEXT")
+        if "side_effects_json" not in columns:
+            conn.execute("ALTER TABLE steps ADD COLUMN side_effects_json TEXT")
 
     def _ensure_runs_columns(self, conn: sqlite3.Connection) -> None:
         """Add missing `runs` table columns for backward compatibility."""
@@ -336,9 +345,9 @@ class SQLiteStorage(Storage):
                 run_id, step_id, type, status, input_json, output_json, error, last_error,
                 state_before_json, state_after_json, execution_index, started_at, finished_at,
                 duration_ms, handler_duration_ms, tool_duration_ms, attempts, agent_trace_json,
-                token_usage_json
+                token_usage_json, model_name, next_step_resolved, side_effects_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -360,6 +369,9 @@ class SQLiteStorage(Storage):
                 step.attempt_count,
                 json_dumps(step.agent_trace) if step.agent_trace is not None else None,
                 json_dumps(step.token_usage) if step.token_usage is not None else None,
+                step.model_name,
+                step.next_step_resolved,
+                json_dumps(step.side_effects) if step.side_effects is not None else None,
             ),
         )
 
@@ -418,6 +430,8 @@ class SQLiteStorage(Storage):
             from ..core import StepExecution
             agent_trace_raw = row["agent_trace_json"] if "agent_trace_json" in row.keys() else None
             token_usage_raw = row["token_usage_json"] if "token_usage_json" in row.keys() else None
+            rkeys = row.keys()
+            side_effects_raw = row["side_effects_json"] if "side_effects_json" in rkeys else None
             steps.append(
                 StepExecution(
                     step_id=row["step_id"],
@@ -438,6 +452,9 @@ class SQLiteStorage(Storage):
                     execution_index=row["execution_index"],
                     agent_trace=json_loads(agent_trace_raw) if agent_trace_raw else None,
                     token_usage=json_loads(token_usage_raw) if token_usage_raw else None,
+                    model_name=row["model_name"] if "model_name" in rkeys else None,
+                    next_step_resolved=row["next_step_resolved"] if "next_step_resolved" in rkeys else None,
+                    side_effects=json_loads(side_effects_raw) if side_effects_raw else None,
                 )
             )
         return steps

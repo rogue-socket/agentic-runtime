@@ -44,12 +44,10 @@ class GoldenFixture:
 #   state from stored snapshots without re-executing handlers. verify_state=True
 #   detects drift between stored and reconstructed state — so "it worked yesterday"
 #   becomes a verifiable assertion, not a vibe.
-# [Pain Point Partial] #N9 Cold-Path Amnesia: Replay can re-verify individual runs
-#   including branched paths, but there is no branch-coverage tracking to warn that
-#   a rarely-executed path hasn't been exercised in months.
-# TODO(pain-point): Cold-Path Amnesia - Add branch-coverage tracking across
-#   replays. Track which workflow branches have been exercised and warn when a
-#   path hasn't been tested since the workflow YAML was last modified.
+# [Pain Point Solved] #N9 Cold-Path Amnesia: ``branch_coverage()`` analyses
+#   persisted ``next_step_resolved`` across runs to identify untested workflow
+#   branches.  Coverage percentage + untested path list let teams discover
+#   rarely-exercised routing before it breaks in production.
 # [Pain Point Solved] Snapshot Testing for LLM Outputs - capture_golden()
 #   records a run as a JSON fixture, replay_golden() re-verifies against it.
 class RunReplayer:
@@ -243,3 +241,156 @@ class RunReplayer:
             final_state=state,
             steps_replayed=replayed,
         )
+
+    # -- Model regression detection -------------------------------------------
+
+    def compare_runs(self, run_id_a: str, run_id_b: str) -> "RunComparison":
+        """Compare two runs step-by-step to detect model/output drift.
+
+        Pairs steps by ``step_id`` and compares model names, outputs,
+        and status.  Useful for catching regressions when swapping
+        model versions.
+        """
+        steps_a = self.storage.load_steps(run_id_a)
+        steps_b = self.storage.load_steps(run_id_b)
+        map_a = {s.step_id: s for s in steps_a}
+        map_b = {s.step_id: s for s in steps_b}
+        all_ids = list(dict.fromkeys(
+            [s.step_id for s in steps_a] + [s.step_id for s in steps_b]
+        ))
+
+        diffs: List[StepDiff] = []
+        for sid in all_ids:
+            sa = map_a.get(sid)
+            sb = map_b.get(sid)
+            if sa is None or sb is None:
+                diffs.append(StepDiff(
+                    step_id=sid,
+                    field="presence",
+                    value_a="present" if sa else "missing",
+                    value_b="present" if sb else "missing",
+                ))
+                continue
+            if sa.model_name != sb.model_name:
+                diffs.append(StepDiff(
+                    step_id=sid,
+                    field="model_name",
+                    value_a=sa.model_name,
+                    value_b=sb.model_name,
+                ))
+            if sa.status != sb.status:
+                diffs.append(StepDiff(
+                    step_id=sid,
+                    field="status",
+                    value_a=sa.status,
+                    value_b=sb.status,
+                ))
+            if sa.output != sb.output:
+                diffs.append(StepDiff(
+                    step_id=sid,
+                    field="output",
+                    value_a=sa.output,
+                    value_b=sb.output,
+                ))
+        return RunComparison(
+            run_id_a=run_id_a,
+            run_id_b=run_id_b,
+            steps_compared=len(all_ids),
+            diffs=diffs,
+        )
+
+    # -- Branch coverage tracking ---------------------------------------------
+
+    def branch_coverage(
+        self,
+        workflow_steps: List[Dict[str, Any]],
+        run_ids: List[str],
+    ) -> "BranchCoverageReport":
+        """Analyse which branch targets have been exercised across runs.
+
+        Args:
+            workflow_steps: Step defs with ``step_id`` and ``next``
+                rules (list of dicts from parsed workflow YAML).
+            run_ids: Run identifiers to scan for coverage data.
+
+        Returns:
+            ``BranchCoverageReport`` with declared vs exercised branch
+            targets and a list of untested paths.
+        """
+        # Build declared branches: {step_id: set(goto targets)}
+        declared: Dict[str, set] = {}
+        for sdef in workflow_steps:
+            sid = sdef.get("step_id") or sdef.get("id", "")
+            rules = sdef.get("next") or sdef.get("next_rules") or []
+            if not rules:
+                continue
+            targets: set = set()
+            for rule in rules:
+                goto = rule.get("goto") or rule.get("step", "")
+                if goto:
+                    targets.add(goto)
+            if targets:
+                declared[sid] = targets
+
+        # Collect exercised branches from persisted step records.
+        exercised: Dict[str, set] = {}
+        for rid in run_ids:
+            try:
+                steps = self.storage.load_steps(rid)
+            except (ValueError, Exception):
+                continue
+            for step in steps:
+                if step.next_step_resolved and step.step_id in declared:
+                    exercised.setdefault(step.step_id, set()).add(step.next_step_resolved)
+
+        untested: List[Dict[str, str]] = []
+        for sid, targets in declared.items():
+            covered = exercised.get(sid, set())
+            for t in sorted(targets - covered):
+                untested.append({"step_id": sid, "target": t})
+
+        total_branches = sum(len(t) for t in declared.values())
+        covered_count = sum(len(exercised.get(s, set()) & t) for s, t in declared.items())
+
+        return BranchCoverageReport(
+            total_branches=total_branches,
+            covered_branches=covered_count,
+            coverage_pct=round(covered_count / total_branches * 100, 1) if total_branches else 100.0,
+            untested=untested,
+        )
+
+
+# -- comparison / coverage data types ----------------------------------------
+
+@dataclass
+class StepDiff:
+    """One difference between two runs at a specific step."""
+
+    step_id: str
+    field: str  # "model_name", "status", "output", "presence"
+    value_a: Any
+    value_b: Any
+
+
+@dataclass
+class RunComparison:
+    """Result of comparing two runs."""
+
+    run_id_a: str
+    run_id_b: str
+    steps_compared: int
+    diffs: List[StepDiff]
+
+    @property
+    def has_diffs(self) -> bool:
+        return len(self.diffs) > 0
+
+
+@dataclass
+class BranchCoverageReport:
+    """Branch coverage analysis result."""
+
+    total_branches: int
+    covered_branches: int
+    coverage_pct: float
+    untested: List[Dict[str, str]]

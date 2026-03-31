@@ -106,15 +106,11 @@ def _validate_failed_step_resume(
                 f"(allowed: {allowed})."
             )
 
-    # TODO(pain-point): History-Based Idempotency Tracking - The current
-    #   approach is policy-based: "refuse to retry tools not in the allowlist."
-    #   This prevents accidental re-execution but doesn't track what actually
-    #   happened. A real idempotency layer would: (1) record external side
-    #   effects ("Slack message sent", "Jira ticket created") as part of the
-    #   step execution record, (2) on resume, check whether the side effect
-    #   was already completed, (3) skip the tool call if so, and (4) surface
-    #   this in `ai inspect` so the developer sees "skipped: already executed."
-    #   This turns resume from "safe refusal" into "smart recovery."
+    # [Pain Point Solved] History-Based Idempotency Tracking — tool step
+    #   executions now record ``side_effects`` (list of dicts) extracted from
+    #   the output ``__side_effects__`` key.  ``has_completed_side_effects()``
+    #   checks whether a previous attempt already produced side effects,
+    #   enabling smart skip-on-resume instead of blind refusal.
     if step_def.step_type == "tool" and policy.require_idempotent_tools:
         allowed_tools = policy.idempotent_tool_names or set()
         tool_name = step_def.tool_name or ""
@@ -163,6 +159,39 @@ def validate_resume(run_status: str) -> None:
         raise StepExecutionError("Cannot resume a running run.")
     if run_status != StepStatus.FAILED:
         raise StepExecutionError(f"Cannot resume run with status: {run_status}")
+
+
+def has_completed_side_effects(execution: StepExecution) -> bool:
+    """Return True if a step execution recorded completed side effects.
+
+    Side effects are stored as a list of dicts, each with at least a
+    ``"completed"`` boolean.  If any entry is marked completed, the tool
+    already produced external mutations that should not be repeated.
+    """
+    if not execution.side_effects:
+        return False
+    return any(
+        isinstance(e, dict) and e.get("completed", False)
+        for e in execution.side_effects
+    )
+
+
+def get_side_effect_summary(execution: StepExecution) -> List[Dict[str, str]]:
+    """Return a human-readable summary of recorded side effects."""
+    if not execution.side_effects:
+        return []
+    summaries = []
+    for effect in execution.side_effects:
+        if not isinstance(effect, dict):
+            continue
+        summaries.append({
+            "type": effect.get("type", "unknown"),
+            "target": effect.get("target", ""),
+            "action": effect.get("action", ""),
+            "completed": str(effect.get("completed", False)),
+        })
+    return summaries
+
 
 # Selective step re-execution for completed runs (fork from step N with overrides)
 # is intentionally left for a dedicated rerun API.

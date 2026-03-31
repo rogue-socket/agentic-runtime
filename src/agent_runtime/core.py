@@ -196,6 +196,9 @@ class StepExecution:
     state_after: Optional[StateDict] = None
     execution_index: Optional[int] = None
     token_usage: Optional[Dict[str, Any]] = None
+    model_name: Optional[str] = None  # LLM model used (agent steps only)
+    next_step_resolved: Optional[str] = None  # branch target after this step
+    side_effects: Optional[List[Dict[str, Any]]] = None  # external actions recorded by tool steps
 
 
 @dataclass
@@ -718,6 +721,12 @@ class Executor:
                             )
                             output = agent_result.outputs
                             execution.token_usage = agent_result.token_usage
+                            # Capture the model name for regression detection.
+                            if agent_result.trace:
+                                for _turn in reversed(agent_result.trace):
+                                    if _turn.llm_response and _turn.llm_response.model:
+                                        execution.model_name = _turn.llm_response.model
+                                        break
                             # Store a sanitized trace for observability.
                             # serialize_agent_trace() redacts common secrets/PII.
                             # TODO(pain-point): Hallucination Guardrails -
@@ -871,6 +880,11 @@ class Executor:
                 self.memory_manager.persist_state(run.state.data)
                 execution.state_after = copy.deepcopy(run.state.data)
 
+                # Extract side-effect declarations from tool output.
+                _side_effects = output.pop("__side_effects__", None)
+                if isinstance(_side_effects, list):
+                    execution.side_effects = _side_effects
+
                 execution.output = output
                 execution.status = StepStatus.COMPLETED
                 execution.handler_duration_ms = handler_duration_ms
@@ -924,6 +938,11 @@ class Executor:
                     "tool_duration_ms": execution.tool_duration_ms,
                 })
 
+            # Resolve next step before persisting so it's captured on the record.
+            if execution.status != StepStatus.FAILED or on_error != "fail_fast":
+                resolved_next = self._resolve_next_step(step_def, run.state.data)
+                execution.next_step_resolved = resolved_next
+
             # Persist the step record, state snapshot, and (on failure) status
             # update together.  If any write fails or the process crashes
             # mid-batch, SQLite rolls back the entire group — no orphaned
@@ -948,7 +967,7 @@ class Executor:
 
             execution_index += 1
 
-            current_step_id = self._resolve_next_step(step_def, run.state.data)
+            current_step_id = execution.next_step_resolved
 
         if run.status != StepStatus.FAILED:
             final_status = StepStatus.COMPLETED_WITH_ERRORS if had_errors else StepStatus.COMPLETED
