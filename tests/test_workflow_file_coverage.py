@@ -64,6 +64,15 @@ def test_all_workflow_files_parse_and_agent_refs_resolve(
         assert resolved.agent_id == step.agent_id
 
 
+def test_agent_function_sample_maps_text_into_summarizer_issue() -> None:
+    """Keep sample 07 input wiring aligned with summarizer prompt contract."""
+    workflow_path = ROOT / "workflows" / "samples" / "07_agent_and_function.yaml"
+    workflow = load_workflow(str(workflow_path), functions_dir=str(ROOT / "functions"))
+
+    summarize = next(step for step in workflow["steps"] if step.step_id == "summarize")
+    assert summarize.input_spec == {"issue": "inputs.text"}
+
+
 # Non-agent workflows can run deterministically without provider credentials.
 EXECUTABLE_NO_LLM_CASES = [
     ("workflows/branching_triage.yaml", StepStatus.COMPLETED),

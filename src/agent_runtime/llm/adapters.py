@@ -56,7 +56,12 @@ class MockAdapter:
         has_results = False
         if history:
             for msg in history:
-                if msg.get("role") == "tool" or (msg.get("role") == "user" and "tool_results" in msg.get("content", "")):
+                role = msg.get("role")
+                content = msg.get("content", "")
+                if role in {"tool_results", "tool"}:
+                    has_results = True
+                    break
+                if role == "user" and isinstance(content, str) and "Tool observation:" in content:
                     has_results = True
                     break
         
