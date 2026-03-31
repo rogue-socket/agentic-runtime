@@ -33,7 +33,7 @@ def validate_input(payload: Dict[str, Any], schema: Dict[str, Any]) -> None:
             continue
         if expected == "string" and not isinstance(value, str):
             raise ValueError(f"Field '{key}' must be string")
-        if expected == "number" and not isinstance(value, (int, float)):
+        if expected == "number" and (isinstance(value, bool) or not isinstance(value, (int, float))):
             raise ValueError(f"Field '{key}' must be number")
         if expected == "boolean" and not isinstance(value, bool):
             raise ValueError(f"Field '{key}' must be boolean")

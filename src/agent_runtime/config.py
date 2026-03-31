@@ -12,6 +12,7 @@ Precedence (highest wins):
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict
 
@@ -23,6 +24,35 @@ from .schema_versioning import (
     RUNTIME_CONFIG_SCHEMA_VERSION_CURRENT,
     parse_required_schema_version,
 )
+
+_ENV_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _interpolate_env_vars(value: Any) -> Any:
+    """Recursively substitute ``${VAR}`` placeholders with env-var values.
+
+    Unset variables are left as-is (safe-substitute semantics).
+    """
+    if isinstance(value, str):
+        def _replace(m: re.Match) -> str:
+            return os.environ.get(m.group(1), m.group(0))
+        return _ENV_VAR_RE.sub(_replace, value)
+    if isinstance(value, dict):
+        return {k: _interpolate_env_vars(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_interpolate_env_vars(v) for v in value]
+    return value
+
+
+def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge *overlay* into *base* recursively (overlay wins on conflicts)."""
+    merged = dict(base)
+    for key, value in overlay.items():
+        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
 
 
 @dataclass
@@ -70,12 +100,9 @@ class RuntimeConfig:
     llm_max_cost_usd_per_run: float = 0.0
     llm_pricing_usd_per_1k_tokens: Dict[str, Dict[str, float]] = field(default_factory=dict)
 
-    # TODO(pain-point): Config Drift Between Environments - Dev uses
-    #   gemini/flash with temp=0.2, prod needs openai/gpt-4o with temp=0.0
-    #   and a different db_path. Add environment-aware config layering:
-    #   runtime.yaml as base, runtime.prod.yaml as overlay, plus env-var
-    #   interpolation in config values (e.g. db_path: "${DB_PATH}") so you
-    #   don't maintain separate configs that silently drift.
+    # [Pain Point Solved] Config Drift Between Environments - Resolved via
+    #   _interpolate_env_vars() for ${VAR} substitution and overlay loading
+    #   (runtime.{RUNTIME_ENV}.yaml merged on top of runtime.yaml).
 
 
 # Keys in runtime.yaml that map to flat RuntimeConfig fields
@@ -87,7 +114,14 @@ _FLAT_KEYS = {
 
 
 def load_config(config_path: str = "runtime.yaml") -> RuntimeConfig:
-    """Load config from *config_path*, falling back to defaults for missing keys."""
+    """Load config from *config_path*, falling back to defaults for missing keys.
+
+    Supports environment overlay files and ``${VAR}`` interpolation:
+    - If ``RUNTIME_ENV`` is set (e.g. ``prod``), loads
+      ``runtime.prod.yaml`` and deep-merges it on top of the base.
+    - All string values undergo ``${ENV_VAR}`` substitution from
+      ``os.environ`` before being applied to the config object.
+    """
     cfg = RuntimeConfig()
 
     if not os.path.isfile(config_path):
@@ -98,6 +132,20 @@ def load_config(config_path: str = "runtime.yaml") -> RuntimeConfig:
 
     if not isinstance(raw, dict):
         return cfg
+
+    # --- Environment overlay ---
+    runtime_env = os.environ.get("RUNTIME_ENV")
+    if runtime_env:
+        base_name, ext = os.path.splitext(config_path)
+        overlay_path = f"{base_name}.{runtime_env}{ext}"
+        if os.path.isfile(overlay_path):
+            with open(overlay_path, "r", encoding="utf-8") as f:
+                overlay_raw = yaml.safe_load(f)
+            if isinstance(overlay_raw, dict):
+                raw = _deep_merge(raw, overlay_raw)
+
+    # --- Env-var interpolation ---
+    raw = _interpolate_env_vars(raw)
 
     try:
         cfg.schema_version = parse_required_schema_version(

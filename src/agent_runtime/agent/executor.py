@@ -98,4 +98,6 @@ class AgentExecutor:
             prompt_registry=agent.prompt_registry,
             definition_path=agent.definition_path,
             output_key=agent.output_key,
+            schema_version=agent.schema_version,
+            auto_tool_prompt=agent.auto_tool_prompt,
         )

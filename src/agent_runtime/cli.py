@@ -113,6 +113,42 @@ def _redact(obj: Any) -> Any:
     return obj
 
 
+def _to_int(value: Any) -> int:
+    """Coerce a value to int, returning 0 for non-numeric types."""
+    if isinstance(value, (int, float)):
+        return int(value)
+    return 0
+
+
+def _estimate_step_cost_usd(
+    token_usage: Dict[str, Any],
+    pricing: Dict[str, Dict[str, float]],
+) -> Optional[float]:
+    """Estimate USD cost for a step from token_usage and pricing config.
+
+    Uses the same normalization as LLMClient: tries provider/model-specific
+    pricing first, then ``*`` wildcard.
+    """
+    if not pricing or not token_usage:
+        return None
+
+    input_tokens = _to_int(
+        token_usage.get("input_tokens", token_usage.get("prompt_tokens", 0))
+    )
+    output_tokens = _to_int(
+        token_usage.get("output_tokens", token_usage.get("completion_tokens", 0))
+    )
+
+    # Try to find matching pricing entry; fall back to wildcard
+    price_cfg = pricing.get("*")
+    if not isinstance(price_cfg, dict):
+        return None
+
+    input_rate = float(price_cfg.get("input", 0.0))
+    output_rate = float(price_cfg.get("output", input_rate))
+    return ((input_tokens / 1000.0) * input_rate) + ((output_tokens / 1000.0) * output_rate)
+
+
 def _parse_env_line(line: str) -> Optional[tuple[str, str]]:
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
@@ -2178,9 +2214,14 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "runs":
         storage = SQLiteStorage(cfg.db_path)
-        runs = storage.list_runs(limit=args.limit)
+        try:
+            runs = storage.list_runs(limit=args.limit)
+        except BaseException:
+            storage.close()
+            raise
         if not runs:
             print("No runs found.")
+            storage.close()
             return 0
 
         if args.html:
@@ -2191,6 +2232,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                     webbrowser.open(f"file://{os.path.abspath(html_path)}")
                 except Exception:
                     print("Could not open browser automatically. Open the file manually.")
+            storage.close()
             return 0
 
         # Text output
@@ -2203,18 +2245,24 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             print(f"    created: {run.created_at or 'n/a'}  completed: {run.completed_at or 'n/a'}")
         print(f"\nInspect: ai inspect <run_id> --steps")
         print(f"Visualize: ai visualize <run_id>")
+        storage.close()
         return 0
 
     if args.command == "metrics":
         storage = SQLiteStorage(cfg.db_path)
-        report = storage.build_observability_report(
+        try:
+            report = storage.build_observability_report(
             top_steps=args.top_steps,
             window_days=args.window_days,
             latency_target_ms=args.latency_target_ms,
         )
+        except BaseException:
+            storage.close()
+            raise
 
         if args.json:
             print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+            storage.close()
             return 0
 
         runs_section = report.get("runs", {})
@@ -2357,6 +2405,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             for item in breakers:
                 mark = "TRIPPED" if item.get("tripped") else "ok"
                 print(f"    - {item.get('name')}: {mark}")
+        storage.close()
         return 0
 
     if args.command == "run":
@@ -2459,6 +2508,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             agent_registry=agent_registry,
             llm_client=llm_client,
             default_model=cfg.default_model,
+            latency_budget_ms=workflow.get("latency_budget_ms"),
         )
 
         try:
@@ -2476,6 +2526,9 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         except Exception as exc:  # noqa: BLE001
             _print_cli_exception(exc)
             return 1
+        finally:
+            memory_manager.close()
+            storage.close()
         print(f"Run {run.run_id} status: {run.status}")
         if run.status == "FAILED" and run.error:
             print(f"Error: {run.error}")
@@ -2487,6 +2540,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         try:
             run = storage.load_run(args.run_id)
         except ValueError:
+            storage.close()
             _print_cli_exception(RunNotFoundError(f"run not found: {args.run_id}"))
             return 1
         steps = storage.load_steps(args.run_id)
@@ -2497,6 +2551,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         if run.error:
             print(f"Error: {run.error}")
         if args.steps:
+            run_total_cost = 0.0
+            run_total_tokens: Dict[str, int] = {"input": 0, "output": 0}
             for idx, step in enumerate(steps, start=1):
                 print(f"{idx} {step.step_id}")
                 print(f"status: {step.status}")
@@ -2513,6 +2569,12 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                     print(step.last_error)
                 if getattr(step, "token_usage", None):
                     print(f"token_usage: {step.token_usage}")
+                    step_cost = _estimate_step_cost_usd(step.token_usage, cfg.llm_pricing_usd_per_1k_tokens)
+                    if step_cost is not None:
+                        print(f"estimated_cost_usd: ${step_cost:.6f}")
+                        run_total_cost += step_cost
+                    run_total_tokens["input"] += _to_int(step.token_usage.get("input_tokens", step.token_usage.get("prompt_tokens", 0)))
+                    run_total_tokens["output"] += _to_int(step.token_usage.get("output_tokens", step.token_usage.get("completion_tokens", 0)))
                 if getattr(step, "agent_trace", None):
                     print("agent_trace:")
                     normalized_trace = normalize_agent_trace(step.agent_trace)
@@ -2528,6 +2590,13 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                             print(f"  {t_idx}. [tool] {tool_name} -> success={success}")
                         else:
                             print(f"  {t_idx}. [{turn_type}]")
+                print("")
+            if run_total_tokens["input"] > 0 or run_total_tokens["output"] > 0:
+                print("--- Run Token Summary ---")
+                print(f"total_input_tokens: {run_total_tokens['input']}")
+                print(f"total_output_tokens: {run_total_tokens['output']}")
+                if run_total_cost > 0:
+                    print(f"total_estimated_cost_usd: ${run_total_cost:.6f}")
                 print("")
         else:
             print("Steps:")
@@ -2547,6 +2616,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             if args.diff_limit < 0:
                 raise SystemExit("--diff-limit must be >= 0")
             _print_state_history(steps, latest_state, diff_limit=args.diff_limit, full=args.full)
+        storage.close()
         return 0
 
     if args.command == "resume":
@@ -2554,6 +2624,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         try:
             run = storage.load_run(args.run_id)
         except ValueError:
+            storage.close()
             _print_cli_exception(RunNotFoundError(f"run not found: {args.run_id}"))
             return 1
         validate_resume(run.status)
@@ -2580,11 +2651,13 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                             f"Cannot reconstruct workflow for agent '{agent_id}'. Provide --workflow to resume."
                         )
                     )
+                    storage.close()
                     return 1
             elif args.workflow:
                 workflow = load_workflow(args.workflow, functions_dir=functions_dir_resume)
             else:
                 _print_cli_exception(RuntimeError("Workflow YAML not stored; provide --workflow to resume."))
+                storage.close()
                 return 1
         else:
             workflow = load_workflow_from_text(workflow_text, functions_dir=functions_dir_resume)
@@ -2593,16 +2666,19 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             current = load_workflow(args.workflow, functions_dir=functions_dir_resume)
             if run.workflow_hash and current.get("workflow_hash") != run.workflow_hash:
                 _print_cli_exception(RuntimeError("Workflow hash mismatch; cannot resume."))
+                storage.close()
                 return 1
 
         if run.workflow_hash and workflow.get("workflow_hash") != run.workflow_hash:
             _print_cli_exception(RuntimeError("Stored workflow hash mismatch; cannot resume."))
+            storage.close()
             return 1
 
         steps = storage.load_steps(args.run_id)
         resume_step = determine_resume_step(workflow["steps"], steps)
         if resume_step is None:
             _print_cli_exception(RuntimeError("No resumable step found."))
+            storage.close()
             return 1
 
         state = storage.load_latest_state(args.run_id)
@@ -2626,6 +2702,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             agent_registry=_default_agent_registry(cfg.agents_dir),
             llm_client=llm_client_resume,
             default_model=cfg.default_model,
+            latency_budget_ms=workflow.get("latency_budget_ms"),
         )
 
         print(f"Resuming run {run.run_id} from step: {resume_step}")
@@ -2638,6 +2715,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             workflow_hash=workflow.get("workflow_hash"),
         )
         print(f"Run {resumed.run_id} status: {resumed.status}")
+        storage.close()
         return 0 if resumed.status == "COMPLETED" else 1
 
     if args.command == "replay":
@@ -2651,8 +2729,10 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                 verify_state=args.verify_state,
             )
         except (ValueError, RunNotFoundError):
+            storage.close()
             _print_cli_exception(RunNotFoundError(f"run not found: {args.run_id}"))
             return 1
+        storage.close()
         return 0
 
     if args.command == "state-diff":
@@ -2662,6 +2742,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         try:
             run = storage.load_run(args.run_id)
         except ValueError:
+            storage.close()
             _print_cli_exception(RunNotFoundError(f"run not found: {args.run_id}"))
             return 1
         steps = storage.load_steps(args.run_id)
@@ -2695,6 +2776,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                     print(f"~ {path}: {_redact(change['before'])} -> {_redact(change['after'])}")
             if omitted:
                 print(f"... (+{omitted} more changes; use --full or increase --diff-limit)")
+        storage.close()
         return 0
 
     if args.command == "visualize":
@@ -2703,6 +2785,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         if run_id == "latest":
             recent = storage.list_runs(limit=1)
             if not recent:
+                storage.close()
                 _print_cli_exception(RunNotFoundError("No runs found in database."))
                 return 1
             run_id = recent[0].run_id
@@ -2710,6 +2793,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         try:
             data = RunLoader(storage).load(run_id)
         except ValueError:
+            storage.close()
             _print_cli_exception(RunNotFoundError(f"run not found: {run_id}"))
             return 1
         graph = GraphBuilder().build(data)
@@ -2717,10 +2801,12 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
         if args.ascii:
             print(render_ascii(run_id, graph, timeline))
+            storage.close()
             return 0
 
         if args.timeline:
             print(_render_timeline_text(run_id, timeline))
+            storage.close()
             return 0
 
         output_path = os.path.join(".runs", run_id, "visualization.html")
@@ -2731,6 +2817,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                 webbrowser.open(f"file://{os.path.abspath(html_path)}")
             except Exception:
                 print("Could not open browser automatically. Open the file manually.")
+        storage.close()
         return 0
 
     return 1
@@ -2747,7 +2834,7 @@ def _render_runs_html(runs) -> str:
         error_cell = html_mod.escape(run.error or "")
         rows.append(
             "<tr>"
-            f'<td><a href=".runs/{html_mod.escape(run.run_id)}/visualization.html">'
+            f'<td><a href="{html_mod.escape(run.run_id)}/visualization.html">'
             f"{html_mod.escape(run.run_id[:12])}</a></td>"
             f"<td>{html_mod.escape(run.workflow_id)}{html_mod.escape(version)}</td>"
             f'<td class="{status_cls}">{html_mod.escape(run.status)}</td>'

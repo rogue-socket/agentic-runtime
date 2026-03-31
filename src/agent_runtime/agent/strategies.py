@@ -477,6 +477,22 @@ async def _run_pipeline(
                 # Native function-calling path.
                 last_had_native_calls = True
                 for tc in response.tool_calls:
+                    # Enforce agent tool allowlist
+                    if agent.tools and tc.tool_name not in agent.tools:
+                        record = ToolCall(
+                            tool_name=tc.tool_name,
+                            tool_input=tc.tool_input,
+                            result=ToolResult(
+                                success=False,
+                                output=None,
+                                error=f"Tool '{tc.tool_name}' is not in the agent's allowed tools list",
+                                metadata=None,
+                            ),
+                            duration_ms=0,
+                        )
+                        turn.tool_calls.append(record)
+                        observations.append(_format_observation(record))
+                        continue
                     _emit_agent_event(
                         context,
                         "AGENT_TOOL_START",
@@ -509,6 +525,23 @@ async def _run_pipeline(
                 last_had_native_calls = False
                 inline_tool_calls = _parse_tool_calls(response.text)
                 for tc in inline_tool_calls:
+                    tool_name = tc["tool"]
+                    # Enforce agent tool allowlist
+                    if agent.tools and tool_name not in agent.tools:
+                        record = ToolCall(
+                            tool_name=tool_name,
+                            tool_input=tc.get("input", {}),
+                            result=ToolResult(
+                                success=False,
+                                output=None,
+                                error=f"Tool '{tool_name}' is not in the agent's allowed tools list",
+                                metadata=None,
+                            ),
+                            duration_ms=0,
+                        )
+                        turn.tool_calls.append(record)
+                        observations.append(_format_observation(record))
+                        continue
                     _emit_agent_event(
                         context,
                         "AGENT_TOOL_START",

@@ -86,11 +86,12 @@ class ShellTool:
     def _extract_programs(self, command: str) -> list[str]:
         """Extract all program names from a command string.
 
-        Handles pipes (``|``), logical operators (``&&``, ``||``), and
-        semicolons (``;``) to prevent denylist bypass via chaining.
+        Handles pipes (``|``), logical operators (``&&``, ``||``),
+        semicolons (``;``), newlines, and command substitution (``$(...)``
+        and backticks) to prevent denylist bypass via chaining.
         """
-        # Split on shell operators to get individual commands.
-        segments = re.split(r'\|{1,2}|&&|;', command)
+        # Split on shell operators and newlines to get individual commands.
+        segments = re.split(r'\|{1,2}|&&|;|\n', command)
         programs: list[str] = []
         for segment in segments:
             segment = segment.strip()
@@ -102,6 +103,16 @@ class ShellTool:
                 tokens = segment.split()
             if tokens:
                 programs.append(tokens[0])
+        # Detect command substitution patterns — extract program inside $()
+        for match in re.finditer(r'\$\(([^)]+)\)', command):
+            inner = match.group(1).strip()
+            inner_programs = self._extract_programs(inner)
+            programs.extend(inner_programs)
+        # Detect backtick command substitution
+        for match in re.finditer(r'`([^`]+)`', command):
+            inner = match.group(1).strip()
+            inner_programs = self._extract_programs(inner)
+            programs.extend(inner_programs)
         return programs
 
     def _check_command(self, command: str) -> Optional[str]:

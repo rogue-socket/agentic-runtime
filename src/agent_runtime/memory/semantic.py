@@ -120,6 +120,14 @@ class SemanticMemory:
         containing ``key``, ``value``, and optionally ``tags`` (list of
         strings) and ``metadata`` (dict).
         """
+        # TODO(pain-point): Semantic Memory Auto-Extraction - Facts are only
+        #   stored when a step explicitly populates `runtime.memory.semantic.store`.
+        #   Nothing is learned automatically. Add an optional post-step hook that
+        #   uses a lightweight LLM call (or regex heuristics) to extract key
+        #   facts from agent outputs — entity names, decisions made, numeric
+        #   thresholds — and auto-store them as semantic facts tagged with the
+        #   workflow_id and step_id. This turns semantic memory from "manual
+        #   knowledge base" into "automatic institutional knowledge."
         if self._db_path is None:
             self._fallback = dict(payload)
             return
@@ -168,41 +176,52 @@ class SemanticMemory:
 
         assert self._conn is not None
         existing = self._conn.execute(
-            "SELECT rowid FROM semantic_facts WHERE key = ?", (key,)
+            "SELECT rowid, value, tags FROM semantic_facts WHERE key = ?", (key,)
         ).fetchone()
 
         if existing:
             rowid = existing["rowid"]
-            self._conn.execute(
-                "INSERT INTO semantic_facts_fts(semantic_facts_fts, rowid, key, value, tags) "
-                "VALUES('delete', ?, ?, ?, ?)",
-                (rowid, key,
-                 self._conn.execute("SELECT value FROM semantic_facts WHERE key = ?", (key,)).fetchone()["value"],
-                 self._conn.execute("SELECT tags FROM semantic_facts WHERE key = ?", (key,)).fetchone()["tags"]),
-            )
-            self._conn.execute(
-                "UPDATE semantic_facts SET value = ?, tags = ?, metadata = ?, updated_at = ? "
-                "WHERE key = ?",
-                (value, tags_str, meta_str, now, key),
-            )
-            self._conn.execute(
-                "INSERT INTO semantic_facts_fts(rowid, key, value, tags) VALUES (?, ?, ?, ?)",
-                (rowid, key, value, tags_str),
-            )
+            old_value = existing["value"]
+            old_tags = existing["tags"]
+            self._conn.execute("BEGIN")
+            try:
+                self._conn.execute(
+                    "INSERT INTO semantic_facts_fts(semantic_facts_fts, rowid, key, value, tags) "
+                    "VALUES('delete', ?, ?, ?, ?)",
+                    (rowid, key, old_value, old_tags),
+                )
+                self._conn.execute(
+                    "UPDATE semantic_facts SET value = ?, tags = ?, metadata = ?, updated_at = ? "
+                    "WHERE key = ?",
+                    (value, tags_str, meta_str, now, key),
+                )
+                self._conn.execute(
+                    "INSERT INTO semantic_facts_fts(rowid, key, value, tags) VALUES (?, ?, ?, ?)",
+                    (rowid, key, value, tags_str),
+                )
+                self._conn.execute("COMMIT")
+            except BaseException:
+                self._conn.execute("ROLLBACK")
+                raise
         else:
-            self._conn.execute(
-                "INSERT INTO semantic_facts (key, value, tags, metadata, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (key, value, tags_str, meta_str, now, now),
-            )
-            rowid = self._conn.execute(
-                "SELECT rowid FROM semantic_facts WHERE key = ?", (key,)
-            ).fetchone()["rowid"]
-            self._conn.execute(
-                "INSERT INTO semantic_facts_fts(rowid, key, value, tags) VALUES (?, ?, ?, ?)",
-                (rowid, key, value, tags_str),
-            )
-        self._conn.commit()
+            self._conn.execute("BEGIN")
+            try:
+                self._conn.execute(
+                    "INSERT INTO semantic_facts (key, value, tags, metadata, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (key, value, tags_str, meta_str, now, now),
+                )
+                rowid = self._conn.execute(
+                    "SELECT rowid FROM semantic_facts WHERE key = ?", (key,)
+                ).fetchone()["rowid"]
+                self._conn.execute(
+                    "INSERT INTO semantic_facts_fts(rowid, key, value, tags) VALUES (?, ?, ?, ?)",
+                    (rowid, key, value, tags_str),
+                )
+                self._conn.execute("COMMIT")
+            except BaseException:
+                self._conn.execute("ROLLBACK")
+                raise
 
     def get(self, key: str) -> Optional[Dict[str, Any]]:
         """Retrieve a single fact by exact key."""
@@ -294,15 +313,17 @@ class SemanticMemory:
             where_parts = []
             params: list = []
             for tag in tags:
-                where_parts.append("(',' || tags || ',' LIKE ?)")
-                params.append(f"%,{tag},%")
+                escaped_tag = tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                where_parts.append("(',' || tags || ',' LIKE ? ESCAPE '\\')")
+                params.append(f"%,{escaped_tag},%")
             where_clause = " AND ".join(where_parts)
         else:
             where_parts = []
             params = []
             for tag in tags:
-                where_parts.append("(',' || tags || ',' LIKE ?)")
-                params.append(f"%,{tag},%")
+                escaped_tag = tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                where_parts.append("(',' || tags || ',' LIKE ? ESCAPE '\\')")
+                params.append(f"%,{escaped_tag},%")
             where_clause = " OR ".join(where_parts)
 
         params.append(limit)

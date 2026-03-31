@@ -224,6 +224,12 @@ def _parse_workflow(
     if on_error not in {"fail_fast", "continue"}:
         raise WorkflowValidationError("on_error must be fail_fast or continue.")
 
+    # --- Workflow-level latency budget ---
+    latency_budget_ms = raw.get("latency_budget_ms")
+    if latency_budget_ms is not None:
+        if not isinstance(latency_budget_ms, int) or latency_budget_ms < 0:
+            raise WorkflowValidationError("latency_budget_ms must be a non-negative integer.")
+
     # --- Parse workflow-level input declarations ---
     raw_inputs_block = raw.get("inputs")
     if raw_inputs_block is not None:
@@ -326,6 +332,17 @@ def _parse_workflow(
                         )
 
         output_contract = step.get("outputs")
+        output_schema = step.get("output_schema")
+        if output_schema is not None:
+            if not isinstance(output_schema, dict):
+                raise WorkflowValidationError(
+                    f"Step {step['id']} output_schema must be a mapping of key -> {{type, enum, regex}}"
+                )
+            for key, rules in output_schema.items():
+                if not isinstance(rules, dict):
+                    raise WorkflowValidationError(
+                        f"Step {step['id']} output_schema[{key}] must be a mapping"
+                    )
         if output_contract and optional and default_output is not None:
             expected = set(output_contract)
             actual = set(default_output.keys())
@@ -364,6 +381,7 @@ def _parse_workflow(
                     input_spec=input_spec if isinstance(input_spec, dict) else None,
                     input_contract=input_contract,
                     output_contract=output_contract,
+                    output_schema=output_schema,
                     next_rules=next_rules,
                     optional=optional,
                     default_output=default_output,
@@ -387,6 +405,7 @@ def _parse_workflow(
                     input_spec=input_spec if isinstance(input_spec, dict) else None,
                     input_contract=input_contract,
                     output_contract=output_contract,
+                    output_schema=output_schema,
                     next_rules=next_rules,
                     optional=optional,
                     default_output=default_output,
@@ -404,6 +423,7 @@ def _parse_workflow(
                     input_spec=input_spec if isinstance(input_spec, dict) else None,
                     input_contract=input_contract,
                     output_contract=output_contract,
+                    output_schema=output_schema,
                     next_rules=next_rules,
                     optional=optional,
                     default_output=default_output,
@@ -424,6 +444,7 @@ def _parse_workflow(
         "inputs": workflow_inputs,
         "steps": steps,
         "on_error": on_error,
+        "latency_budget_ms": latency_budget_ms,
         "workflow_hash": workflow_hash,
         "workflow_yaml": raw_text,
         "workflow_steps": [step.step_id for step in steps],

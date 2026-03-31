@@ -63,7 +63,11 @@ class SQLiteStorage(Storage):
         self._lock = threading.Lock()
         self._conn = self._open_connection()
         self._in_transaction = False
-        self._init_db()
+        try:
+            self._init_db()
+        except BaseException:
+            self._conn.close()
+            raise
 
     # -- connection management ------------------------------------------------
 
@@ -379,7 +383,8 @@ class SQLiteStorage(Storage):
 
     def load_run(self, run_id: str) -> Run:
         """Load run metadata row and convert to `Run` dataclass."""
-        row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
         if row is None:
             raise ValueError(f"Run not found: {run_id}")
 
@@ -403,10 +408,11 @@ class SQLiteStorage(Storage):
 
     def load_steps(self, run_id: str) -> list[StepExecution]:
         """Load ordered step execution rows for a run id."""
-        rows = self._conn.execute(
-            "SELECT * FROM steps WHERE run_id = ? ORDER BY execution_index ASC, id ASC",
-            (run_id,),
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM steps WHERE run_id = ? ORDER BY execution_index ASC, id ASC",
+                (run_id,),
+            ).fetchall()
         steps: list[StepExecution] = []
         for row in rows:
             from ..core import StepExecution
@@ -438,50 +444,55 @@ class SQLiteStorage(Storage):
 
     def load_latest_state(self, run_id: str) -> Dict[str, Any]:
         """Load most recent state snapshot by version."""
-        row = self._conn.execute(
-            "SELECT state_json FROM state_versions WHERE run_id = ? ORDER BY version DESC LIMIT 1",
-            (run_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT state_json FROM state_versions WHERE run_id = ? ORDER BY version DESC LIMIT 1",
+                (run_id,),
+            ).fetchone()
         if row is None:
             raise ValueError(f"No state found for run: {run_id}")
         return json_loads(row["state_json"])
 
     def load_initial_state(self, run_id: str) -> Dict[str, Any]:
         """Load first persisted state snapshot by version."""
-        row = self._conn.execute(
-            "SELECT state_json FROM state_versions WHERE run_id = ? ORDER BY version ASC LIMIT 1",
-            (run_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT state_json FROM state_versions WHERE run_id = ? ORDER BY version ASC LIMIT 1",
+                (run_id,),
+            ).fetchone()
         if row is None:
             raise ValueError(f"No state found for run: {run_id}")
         return json_loads(row["state_json"])
 
     def load_latest_state_version(self, run_id: str) -> int:
         """Return max state version number for a run."""
-        row = self._conn.execute(
-            "SELECT MAX(version) as max_version FROM state_versions WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT MAX(version) as max_version FROM state_versions WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
         if row is None or row["max_version"] is None:
             return 0
         return int(row["max_version"])
 
     def load_max_execution_index(self, run_id: str) -> int:
         """Return max persisted execution index for a run."""
-        row = self._conn.execute(
-            "SELECT MAX(execution_index) as max_execution_index FROM steps WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT MAX(execution_index) as max_execution_index FROM steps WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
         if row is None or row["max_execution_index"] is None:
             return 0
         return int(row["max_execution_index"])
 
     def list_runs(self, limit: int = 20) -> list:
         """Load most recent runs ordered by creation time descending."""
-        rows = self._conn.execute(
-            "SELECT * FROM runs ORDER BY created_at DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM runs ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
         runs = []
         for row in rows:
             from ..core import Run

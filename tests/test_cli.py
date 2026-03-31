@@ -362,8 +362,11 @@ class TestRunCLIQuickstart:
             out = capsys.readouterr().out
             assert "running no-key sample automatically" in out.lower()
 
-            with sqlite3.connect(db_path) as conn:
+            conn = sqlite3.connect(db_path)
+            try:
                 statuses = [row[0] for row in conn.execute("SELECT status FROM runs").fetchall()]
+            finally:
+                conn.close()
 
             assert "COMPLETED" in statuses
 
@@ -374,8 +377,11 @@ class TestRunCLIQuickstart:
             db_path = os.path.join(d, "runtime.db")
             assert os.path.isfile(db_path)
 
-            with sqlite3.connect(db_path) as conn:
+            conn = sqlite3.connect(db_path)
+            try:
                 statuses = [row[0] for row in conn.execute("SELECT status FROM runs").fetchall()]
+            finally:
+                conn.close()
 
             assert "COMPLETED" in statuses
 

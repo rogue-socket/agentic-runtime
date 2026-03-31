@@ -9,9 +9,24 @@ Each episode is a condensed snapshot of a completed run — not the full state
 tree, but enough to answer "what happened last time this workflow ran?"
 """
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+# Maximum byte length for truncated value summaries in episodes.
+_MAX_SUMMARY_BYTES = 512
+
+
+def _truncated_json(obj: Any, max_bytes: int = _MAX_SUMMARY_BYTES) -> str:
+    """Serialize *obj* to JSON, truncating to *max_bytes* if needed."""
+    try:
+        text = json.dumps(obj, default=str, ensure_ascii=False)
+    except (TypeError, ValueError):
+        text = str(obj)
+    if len(text) > max_bytes:
+        return text[: max_bytes - 3] + "..."
+    return text
 
 
 class EpisodicMemory:
@@ -84,7 +99,7 @@ class EpisodicMemory:
         episodes = self.recall(workflow_id, limit=self._max_recall)
         if not episodes:
             return {}
-        return {"runtime": {"episodes": episodes}}
+        return {"episodes": episodes}
 
     def write(self, payload: Dict[str, Any]) -> None:
         """Persist a condensed episode from the current run state."""
@@ -101,11 +116,15 @@ class EpisodicMemory:
         status = runtime.get("status", "")
         error = runtime.get("error")
 
-        # Build compact summaries from the payload
-        inputs_keys = list(payload.get("inputs", {}).keys())
-        steps_keys = list(payload.get("steps", {}).keys())
-        inputs_summary = ", ".join(inputs_keys) if inputs_keys else ""
-        outputs_summary = ", ".join(steps_keys) if steps_keys else ""
+        # Build compact summaries from the payload — include actual values
+        # (truncated) so episodes are useful for cross-run learning.
+        inputs_summary = _truncated_json(payload.get("inputs", {}))
+        steps_data = payload.get("steps", {})
+        # For outputs, capture the last step's output (most relevant) or
+        # a compact mapping of step_id -> truncated output.
+        outputs_summary = _truncated_json(
+            {k: v for k, v in steps_data.items()} if steps_data else {}
+        )
 
         self.record(
             workflow_id=workflow_id,

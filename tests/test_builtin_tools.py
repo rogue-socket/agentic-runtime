@@ -53,7 +53,8 @@ class TestHttpTool:
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("urllib.request.urlopen", return_value=mock_resp):
+        with patch("urllib.request.urlopen", return_value=mock_resp), \
+             patch("agent_runtime.tools.http._is_private_host", return_value=False):
             result = _run(tool.execute({"url": "https://api.example.com/data"}, _ctx()))
 
         assert result.success
@@ -69,7 +70,8 @@ class TestHttpTool:
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("urllib.request.urlopen", return_value=mock_resp) as mock_open:
+        with patch("urllib.request.urlopen", return_value=mock_resp) as mock_open, \
+             patch("agent_runtime.tools.http._is_private_host", return_value=False):
             result = _run(tool.execute({
                 "url": "https://api.example.com/items",
                 "method": "POST",
@@ -93,7 +95,8 @@ class TestHttpTool:
 
         with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError(
             "https://api.example.com", 404, "Not Found", {}, None
-        )):
+        )), \
+             patch("agent_runtime.tools.http._is_private_host", return_value=False):
             result = _run(tool.execute({"url": "https://api.example.com/missing"}, _ctx()))
 
         assert not result.success

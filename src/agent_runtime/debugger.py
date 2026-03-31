@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 from .utils import resolve_path, safe_eval
+from .observability import _sanitize_trace_value
 
 
 @dataclass
@@ -351,7 +352,7 @@ class LiveDebugger:
             return
 
         if not path:
-            self._output(str(state))
+            self._output(str(_sanitize_trace_value(state)))
             return
 
         try:
@@ -359,7 +360,7 @@ class LiveDebugger:
         except Exception as exc:  # noqa: BLE001
             self._output(f"Path lookup failed: {type(exc).__name__}: {exc}")
             return
-        self._output(str(value))
+        self._output(str(_sanitize_trace_value(value)))
 
     def _parse_breakpoint(self, spec: str) -> Optional[Breakpoint]:
         raw = spec.strip()
@@ -412,7 +413,7 @@ class LiveDebugger:
             log_path = run_dir / "debug_events.jsonl"
             entry = {
                 "event": event,
-                "payload": payload,
+                "payload": _sanitize_trace_value(payload),
             }
             with log_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=True, default=str) + "\n")

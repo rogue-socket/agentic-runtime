@@ -106,6 +106,15 @@ def _validate_failed_step_resume(
                 f"(allowed: {allowed})."
             )
 
+    # TODO(pain-point): History-Based Idempotency Tracking - The current
+    #   approach is policy-based: "refuse to retry tools not in the allowlist."
+    #   This prevents accidental re-execution but doesn't track what actually
+    #   happened. A real idempotency layer would: (1) record external side
+    #   effects ("Slack message sent", "Jira ticket created") as part of the
+    #   step execution record, (2) on resume, check whether the side effect
+    #   was already completed, (3) skip the tool call if so, and (4) surface
+    #   this in `ai inspect` so the developer sees "skipped: already executed."
+    #   This turns resume from "safe refusal" into "smart recovery."
     if step_def.step_type == "tool" and policy.require_idempotent_tools:
         allowed_tools = policy.idempotent_tool_names or set()
         tool_name = step_def.tool_name or ""

@@ -65,8 +65,8 @@ class MockAdapter:
             tool_calls = [
                 ToolCallRequest(
                     id=f"call_{int(time.monotonic())}",
-                    name=tool["name"],
-                    arguments={"query": "mock search", "input": "mock data"},
+                    tool_name=tool["name"],
+                    tool_input={"query": "mock search", "input": "mock data"},
                 )
             ]
             text = f"I will use the {tool['name']} tool to help answer the user's request."

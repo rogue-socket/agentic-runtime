@@ -132,9 +132,8 @@ class TestEpisodicMemorySQLite:
 
                 context = {"runtime": {"workflow_id": "wf1"}}
                 result = mem.read(context)
-                assert "runtime" in result
-                assert "episodes" in result["runtime"]
-                assert len(result["runtime"]["episodes"]) == 1
+                assert "episodes" in result
+                assert len(result["episodes"]) == 1
             finally:
                 mem.close()
 
@@ -173,6 +172,6 @@ class TestEpisodicMemorySQLite:
                 # read() respects max_recall
                 context = {"runtime": {"workflow_id": "wf1"}}
                 result = mem.read(context)
-                assert len(result["runtime"]["episodes"]) == 2
+                assert len(result["episodes"]) == 2
             finally:
                 mem.close()

@@ -178,4 +178,4 @@ class WorkingMemory:
         try:
             return len(json.dumps(data, default=str))
         except (TypeError, ValueError):
-            return 0
+            return 1  # non-zero so unserializable values still count against budget

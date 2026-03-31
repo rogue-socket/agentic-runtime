@@ -33,17 +33,39 @@ _BLOCKED_NETWORKS = [
     ipaddress.ip_network("::1/128"),
     ipaddress.ip_network("fc00::/7"),
     ipaddress.ip_network("fe80::/10"),
+    ipaddress.ip_network("::ffff:0:0/96"),  # IPv4-mapped IPv6
 ]
 
 
-def _is_private_host(hostname: str) -> bool:
-    """Resolve *hostname* and return True if any address is private/blocked."""
+def _resolve_host_addresses(hostname: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """Resolve hostname once and return the list of IP addresses.
+
+    Returns an empty list on DNS failure (treated as blocked by callers).
+    """
     try:
         infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
     except socket.gaierror:
-        return False  # DNS failure will surface later as URLError
+        return []
+    addrs = []
     for _family, _type, _proto, _canon, sockaddr in infos:
         addr = ipaddress.ip_address(sockaddr[0])
+        # Normalize IPv4-mapped IPv6 to their IPv4 equivalent for
+        # consistent matching against IPv4 blocked networks.
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+            addr = addr.ipv4_mapped
+        addrs.append(addr)
+    return addrs
+
+
+def _is_private_host(hostname: str) -> bool:
+    """Resolve *hostname* and return True if any address is private/blocked.
+
+    Fail-closed: returns True (blocked) when DNS resolution fails.
+    """
+    addrs = _resolve_host_addresses(hostname)
+    if not addrs:
+        return True  # DNS failure — fail closed
+    for addr in addrs:
         if any(addr in net for net in _BLOCKED_NETWORKS):
             return True
     return False

@@ -99,7 +99,16 @@ def _discover_tool_instances(tools_dir: str) -> List[tuple]:
         # TODO(eng): module-caching - Same sys.modules caching concern as
         #   function_resolver._import_from_path — stale modules after edits.
         sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            logger.warning(
+                "Failed to import tool module %s from %s",
+                module_name, filepath,
+                exc_info=True,
+            )
+            del sys.modules[module_name]
+            continue
 
         for attr_name in dir(module):
             if attr_name.startswith("_"):

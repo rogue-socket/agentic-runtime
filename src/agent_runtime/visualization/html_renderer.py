@@ -21,6 +21,15 @@ from .graph_builder import GraphView
 from .timeline_builder import TimelineView
 
 
+# TODO(pain-point): Interactive Timeline Visualization - The HTML report
+#   is a static table dump. Developers debugging multi-step agent pipelines
+#   need: (1) a clickable timeline where selecting a step reveals its
+#   input/output/state_before/state_after, (2) expandable agent_trace
+#   sections showing each LLM turn and tool call inline, (3) a state-diff
+#   overlay highlighting which keys changed between adjacent steps, and
+#   (4) token usage bar charts per step so cost hotspots are visual.
+#   Consider embedding a lightweight JS library (e.g. D3 timeline or
+#   Mermaid gantt) instead of raw HTML tables.
 def render_html(run_id: str, graph: GraphView, timeline: TimelineView, output_path: str) -> str:
     """Generate and write HTML visualization for a run.
 
@@ -168,14 +177,20 @@ def _load_html_template() -> Template:
 
 
 def _mermaid_id(step_id: str) -> str:
-  """Return a Mermaid-safe node id for arbitrary step ids."""
+  """Return a Mermaid-safe node id for arbitrary step ids.
+
+  Non-alphanumeric characters are encoded as _xHH_ (hex) to avoid
+  collisions between step IDs that differ only in punctuation.
+  """
   out = []
   for ch in step_id:
-    if ch.isalnum() or ch == "_":
+    if ch.isalnum():
       out.append(ch)
+    elif ch == "_":
+      out.append("__")  # escape literal underscores
     else:
-      out.append("_")
-  value = "".join(out).strip("_")
+      out.append(f"_x{ord(ch):02X}_")
+  value = "".join(out)
   return value or "step"
 
 
@@ -188,13 +203,13 @@ def _build_mermaid_flow(graph: GraphView) -> str:
 
   for node in graph.nodes:
     node_id = _mermaid_id(node.step_id)
-    label = f"{node.step_id}\\n[{node.step_type}]\\n{node.status}"
-    lines.append(f"  {node_id}[{json.dumps(label)}]")
+    label = f"{node.step_id}<br/>[{node.step_type}]<br/>{node.status}"
+    lines.append(f"  {node_id}[\"{label}\"]")
 
   for edge in graph.edges:
     source = _mermaid_id(edge.source)
     target = _mermaid_id(edge.target)
     kind = edge.kind or "next"
-    lines.append(f"  {source} -->|{json.dumps(kind)}| {target}")
+    lines.append(f"  {source} -->|{kind}| {target}")
 
   return "\n".join(lines)

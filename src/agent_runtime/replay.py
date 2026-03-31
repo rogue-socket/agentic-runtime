@@ -11,8 +11,9 @@ without invoking handlers/tools, enabling reproducible debugging.
 """
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 import copy
+import json
 
 from .core import StepStatus
 from .errors import ReplayDataMissingError, ReplayMismatchError, RunNotFoundError
@@ -29,6 +30,16 @@ class ReplayResult:
     steps_replayed: int
 
 
+@dataclass
+class GoldenFixture:
+    """Serialisable test fixture captured from a completed run."""
+
+    run_id: str
+    workflow_id: str
+    initial_state: Dict[str, Any]
+    steps: List[Dict[str, Any]]
+
+
 # [Pain Point Solved] #8 No Reproducibility: Deterministic replay reconstructs
 #   state from stored snapshots without re-executing handlers. verify_state=True
 #   detects drift between stored and reconstructed state — so "it worked yesterday"
@@ -39,11 +50,8 @@ class ReplayResult:
 # TODO(pain-point): Cold-Path Amnesia - Add branch-coverage tracking across
 #   replays. Track which workflow branches have been exercised and warn when a
 #   path hasn't been tested since the workflow YAML was last modified.
-# TODO(pain-point): Snapshot Testing for LLM Outputs - Replay works for
-#   full runs, but there's no test-fixture pattern for it. Add a `capture_golden`
-#   mode that records LLM responses as snapshots, and a `replay_golden` mode that
-#   replays from those snapshots in tests — so you can validate pipeline behavior
-#   against known-good LLM output without making live API calls or spending money.
+# [Pain Point Solved] Snapshot Testing for LLM Outputs - capture_golden()
+#   records a run as a JSON fixture, replay_golden() re-verifies against it.
 class RunReplayer:
     """Reconstruct run progression from persisted history."""
 
@@ -137,3 +145,101 @@ class RunReplayer:
 
         self.printer("Replay complete")
         return ReplayResult(run_id=run_id, final_state=state, steps_replayed=replayed)
+
+    # -- Golden snapshot testing -------------------------------------------------
+
+    def capture_golden(self, run_id: str) -> GoldenFixture:
+        """Capture a completed run's state transitions as a test fixture.
+
+        The fixture contains the initial state and each step's
+        ``state_before``, ``state_after``, and ``output`` — everything
+        needed to replay offline and assert determinism.
+        """
+        try:
+            run = self.storage.load_run(run_id)
+        except ValueError as exc:
+            raise RunNotFoundError(str(exc)) from exc
+
+        if run.status not in (StepStatus.COMPLETED, StepStatus.COMPLETED_WITH_ERRORS):
+            raise ReplayDataMissingError(
+                f"Can only capture golden from COMPLETED runs (status={run.status})"
+            )
+
+        steps = self.storage.load_steps(run_id)
+        if not steps:
+            raise ReplayDataMissingError("No step history found")
+
+        try:
+            initial_state = self.storage.load_initial_state(run_id)
+        except ValueError as exc:
+            raise ReplayDataMissingError(str(exc)) from exc
+
+        step_records: List[Dict[str, Any]] = []
+        for step in steps:
+            step_records.append({
+                "step_id": step.step_id,
+                "step_type": step.step_type,
+                "status": step.status,
+                "state_before": step.state_before,
+                "state_after": step.state_after,
+                "output": step.output,
+            })
+
+        return GoldenFixture(
+            run_id=run_id,
+            workflow_id=run.workflow_id,
+            initial_state=initial_state,
+            steps=step_records,
+        )
+
+    @staticmethod
+    def save_golden(fixture: GoldenFixture, path: str) -> None:
+        """Serialise a golden fixture to a JSON file."""
+        data = {
+            "run_id": fixture.run_id,
+            "workflow_id": fixture.workflow_id,
+            "initial_state": fixture.initial_state,
+            "steps": fixture.steps,
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, default=str)
+
+    @staticmethod
+    def load_golden(path: str) -> GoldenFixture:
+        """Load a golden fixture from a JSON file."""
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return GoldenFixture(
+            run_id=data["run_id"],
+            workflow_id=data["workflow_id"],
+            initial_state=data["initial_state"],
+            steps=data["steps"],
+        )
+
+    @staticmethod
+    def replay_golden(fixture: GoldenFixture) -> ReplayResult:
+        """Replay from a golden fixture, verifying state consistency.
+
+        Walks through the fixture's steps and checks that applying each
+        step's ``state_after`` in sequence produces consistent state.
+        Raises ``ReplayMismatchError`` on any divergence.
+        """
+        state = copy.deepcopy(fixture.initial_state)
+        replayed = 0
+
+        for idx, step_data in enumerate(fixture.steps, start=1):
+            expected_before = step_data.get("state_before")
+            if expected_before is not None and state != expected_before:
+                raise ReplayMismatchError(
+                    f"Golden state mismatch before step {step_data['step_id']} (index {idx})"
+                )
+            state_after = step_data.get("state_after")
+            if state_after is not None:
+                state = copy.deepcopy(state_after)
+            replayed += 1
+
+        return ReplayResult(
+            run_id=fixture.run_id,
+            final_state=state,
+            steps_replayed=replayed,
+        )

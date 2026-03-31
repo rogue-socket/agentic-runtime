@@ -48,11 +48,15 @@ class FileTool:
     retries: Optional[int] = None
 
     def __init__(self, root: Optional[str] = None) -> None:
-        self.root = os.path.abspath(root or _get_default_root())
+        self.root = os.path.realpath(root or _get_default_root())
 
     def _safe_path(self, relative: str) -> Optional[str]:
-        """Resolve path and verify it stays within root."""
-        resolved = os.path.normpath(os.path.join(self.root, relative))
+        """Resolve path and verify it stays within root.
+
+        Uses os.path.realpath() to resolve symlinks, preventing
+        symlink-based sandbox escapes.
+        """
+        resolved = os.path.realpath(os.path.join(self.root, relative))
         if resolved != self.root and not resolved.startswith(self.root + os.sep):
             return None
         return resolved

@@ -128,6 +128,7 @@ class StepDefinition:
     input_spec: Optional[Dict[str, Any]] = None
     input_contract: Optional[List[str]] = None
     output_contract: Optional[List[str]] = None
+    output_schema: Optional[Dict[str, Dict[str, Any]]] = None  # per-key type/enum/regex validation
     next_rules: Optional[List["NextRule"]] = None
     optional: bool = False
     default_output: Optional[Dict[str, Any]] = None
@@ -174,6 +175,9 @@ class StepExecution:
     #   in under 5s" and fail-fast when a step exceeds its budget. Add an optional
     #   `timeout_ms` on StepDefinition and a `latency_budget_ms` on the workflow
     #   so slow steps are caught in real-time, not discovered in post-mortem.
+    # [Pain Point Solved] Per-step timeout_ms is enforced via asyncio.wait_for.
+    # [Pain Point Solved] Workflow-level latency_budget_ms is checked at the
+    #   start of each step loop iteration in __execute_steps_loop.
     step_id: str
     step_type: str
     status: str = StepStatus.PENDING
@@ -266,6 +270,7 @@ class Executor:
         llm_client: Any = None,
         default_model: str = "",
         heartbeat_interval_s: float = 5.0,
+        latency_budget_ms: Optional[int] = None,
     ) -> None:
         """Initialize executor dependencies and step lookup tables."""
         self.steps = steps
@@ -281,6 +286,7 @@ class Executor:
         self.llm_client = llm_client
         self.default_model = default_model
         self.heartbeat_interval_s = max(0.05, float(heartbeat_interval_s))
+        self.latency_budget_ms = latency_budget_ms
 
     def _emit(self, event: str, payload: Dict[str, Any]) -> None:
         """Fire the on_event callback if registered."""
@@ -418,8 +424,9 @@ class Executor:
                 if "default" in spec:
                     resolved_inputs[name] = copy.deepcopy(spec["default"])
 
+        actual_run_id = str(uuid.uuid4())
         run = Run(
-            run_id=str(uuid.uuid4()),
+            run_id=actual_run_id,
             workflow_id=workflow_id,
             workflow_version=workflow_version,
             workflow_hash=workflow_hash,
@@ -435,15 +442,13 @@ class Executor:
                     "steps": {},
                     "runtime": {
                         "workflow_id": workflow_id,
-                        "run_id": str(uuid.uuid4()),  # will be overwritten below
+                        "run_id": actual_run_id,
                     },
                 },
                 _overwrite_policy=self.overwrite_policy,
                 _logger=self.logger,
             ),
         )
-        # Align the run_id in state.runtime with the actual run record.
-        run.state.data["runtime"]["run_id"] = run.run_id
 
         state_version = 0
 
@@ -555,7 +560,16 @@ class Executor:
         state_version: int, had_errors: bool, execution_index: int,
     ) -> Run:
         visited: Set[str] = set()
+        run_start_mono = time.monotonic()
         while current_step_id is not None:
+            # --- Workflow-level latency budget check ---
+            if self.latency_budget_ms is not None:
+                elapsed_ms = int((time.monotonic() - run_start_mono) * 1000)
+                if elapsed_ms > self.latency_budget_ms:
+                    raise StepExecutionError(
+                        f"Workflow latency budget exceeded: {elapsed_ms}ms > {self.latency_budget_ms}ms "
+                        f"(before starting step '{current_step_id}')"
+                    )
             if current_step_id not in self.step_map:
                 raise StepExecutionError(f"Unknown step id: {current_step_id}")
             if current_step_id in visited:
@@ -820,12 +834,6 @@ class Executor:
                 if output is None or not isinstance(output, dict):
                     raise StepExecutionError("Step handler must return a dict.")
                 if step_def.output_contract:
-                    # TODO(pain-point): Structured Output Parsing - Output
-                    #   contracts enforce key presence but not value shape. An LLM
-                    #   can return {"severity": "it's pretty bad"} when downstream
-                    #   expects "P0"|"P1"|"P2". Add optional value-level schema
-                    #   validation (type, enum, regex) per output key so malformed
-                    #   values are caught here, not six steps later.
                     expected = set(step_def.output_contract)
                     actual = set(output.keys())
                     missing = expected - actual
@@ -838,6 +846,8 @@ class Executor:
                         raise StepExecutionError(
                             f"Output contract violation for step {step_def.step_id}: undeclared keys {sorted(extra)}"
                         )
+                if step_def.output_schema:
+                    _validate_output_schema(step_def.step_id, output, step_def.output_schema)
 
                 # Keep core state namespaces immutable from step output payloads.
                 reserved_keys = {"inputs", "runtime", "steps"}
@@ -955,14 +965,13 @@ class Executor:
         # the completed episode (status, error) alongside step outputs.
         try:
             run.unfreeze()
-            run.state.data.setdefault("runtime", {}).update({
-                "status": run.status,
-                "error": run.error or "",
-            })
-            self.memory_manager.persist_state(run.state.data)
-            run.freeze()
+            run.state.runtime().set("runtime.status", run.status)
+            run.state.runtime().set("runtime.error", run.error or "")
+            self.memory_manager.persist_state(run.state.snapshot())
         except Exception:
             pass  # best-effort; don't fail the run for memory persistence
+        finally:
+            run.freeze()
 
         self._emit("RUN_COMPLETE", {
             "run_id": run.run_id,
@@ -1009,6 +1018,10 @@ class Executor:
                 )
         except asyncio.CancelledError:
             task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
             raise
 
     async def _execute_tool_async(
@@ -1132,3 +1145,70 @@ def _compute_backoff_delay(attempt: int, backoff: str, initial_delay: float) -> 
     if backoff == "exponential":
         return initial_delay * (2 ** (attempt - 2))
     raise StepExecutionError(f"Unsupported backoff strategy: {backoff}")
+
+
+import re as _re
+
+_OUTPUT_TYPE_MAP = {
+    "str": str,
+    "string": str,
+    "int": int,
+    "integer": int,
+    "float": float,
+    "number": (int, float),
+    "bool": bool,
+    "boolean": bool,
+    "list": list,
+    "dict": dict,
+}
+
+
+def _validate_output_schema(
+    step_id: str,
+    output: Dict[str, Any],
+    schema: Dict[str, Dict[str, Any]],
+) -> None:
+    """Validate output values against per-key type/enum/regex constraints.
+
+    ``schema`` maps output key names to validation rules::
+
+        {"severity": {"type": "str", "enum": ["P0", "P1", "P2"]},
+         "summary":  {"type": "str", "regex": ".{10,}"}}
+
+    Supported rule keys:
+    - ``type``: one of str/int/float/bool/list/dict (checked with isinstance)
+    - ``enum``: list of allowed values (checked with ``in``)
+    - ``regex``: pattern the string value must match (``re.fullmatch``)
+    """
+    errors: List[str] = []
+    for key, rules in schema.items():
+        if key not in output:
+            continue  # missing-key check is handled by output_contract
+        value = output[key]
+
+        expected_type_name = rules.get("type")
+        if expected_type_name:
+            expected_type = _OUTPUT_TYPE_MAP.get(expected_type_name.lower())
+            if expected_type and not isinstance(value, expected_type):
+                errors.append(
+                    f"key '{key}': expected type {expected_type_name}, got {type(value).__name__}"
+                )
+
+        allowed = rules.get("enum")
+        if allowed is not None:
+            if value not in allowed:
+                errors.append(
+                    f"key '{key}': value {value!r} not in allowed values {allowed}"
+                )
+
+        pattern = rules.get("regex")
+        if pattern is not None:
+            if not isinstance(value, str) or not _re.fullmatch(pattern, value):
+                errors.append(
+                    f"key '{key}': value {value!r} does not match regex {pattern!r}"
+                )
+
+    if errors:
+        raise StepExecutionError(
+            f"Output schema violation for step {step_id}: {'; '.join(errors)}"
+        )

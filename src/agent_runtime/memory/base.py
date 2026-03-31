@@ -93,6 +93,15 @@ class MemoryManager:
                 tier_ns = memory_ns.setdefault(name, {})
                 _deep_merge(tier_ns, tier_data)
 
+    # TODO(pain-point): Workflow-Level Degradation Strategy - The executor
+    #   supports `optional: true` per step with `default_output`, but there's
+    #   no workflow-level degradation policy. Add support for: (1) a circuit
+    #   breaker that tracks consecutive failures across steps and aborts early
+    #   with a partial-success result, (2) a `degradation_mode` workflow
+    #   setting ("best-effort" | "strict") controlling whether partial outputs
+    #   are acceptable, (3) a `quality_threshold` that checks cumulative
+    #   degraded-step count and fails the run if too many steps fell back to
+    #   defaults. This turns single-step resilience into pipeline resilience.
     def persist_state(self, state: Dict[str, Any]) -> None:
         """Persist current state into each memory tier."""
         for _name, tier in self._tiers():
@@ -104,3 +113,10 @@ class MemoryManager:
         yield "episodic", self.episodic
         yield "semantic", self.semantic
         yield "procedural", self.procedural
+
+    def close(self) -> None:
+        """Close all memory tiers that support it."""
+        for _name, tier in self._tiers():
+            close_fn = getattr(tier, "close", None)
+            if callable(close_fn):
+                close_fn()

@@ -312,7 +312,6 @@ class _SafeExprValidator(ast.NodeVisitor):
                 if isinstance(receiver, ast.Constant) and isinstance(receiver.value, str):
                     return self.generic_visit(node)
                 raise ValueError("Unsupported expression")
-                return super().visit(node)
         return self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:

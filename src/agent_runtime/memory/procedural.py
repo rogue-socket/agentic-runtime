@@ -104,5 +104,14 @@ class ProceduralMemory:
         self._conn.commit()
 
 
+# TODO(pain-point): Procedural Memory Auto-Learning - The procedural tier is
+#   an empty key/value store. The original vision: mine episodic history for
+#   reusable patterns ("when input contains Python, use the code_reviewer agent
+#   with strict mode") and auto-generate procedural rules. Implementation path:
+#   (1) After N episodes for a workflow, run an LLM summarization pass over
+#   episodic history to identify recurring patterns, (2) store extracted rules
+#   as procedural entries, (3) inject matching rules into agent context during
+#   hydration so the agent benefits from past experience without the developer
+#   writing explicit rules.
 # TODO(roadmap): Consider LLM-assisted rule extraction from episode narratives
 #   to auto-populate procedural memory from episodic history.
