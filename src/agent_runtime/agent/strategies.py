@@ -121,16 +121,19 @@ class AgentStrategyProtocol(Protocol):
 # ``auto_tool_prompt: false`` on the agent to disable this behaviour.
 
 
+import re as _re
+
+# Regex patterns for fenced code blocks — tolerant of whitespace variations
+# that LLMs commonly produce (e.g. ``` tool_call, ```tool_call\n, etc.)
+_TOOL_CALL_RE = _re.compile(r"```\s*tool_call\b[^\n]*\n(.*?)```", _re.DOTALL)
+_FINAL_ANSWER_RE = _re.compile(r"```\s*final_answer\b[^\n]*\n(.*?)```", _re.DOTALL)
+
+
 def _parse_tool_calls(text: str) -> List[Dict[str, Any]]:
     """Extract ``tool_call`` JSON blocks from LLM response text."""
     calls: List[Dict[str, Any]] = []
-    marker = "```tool_call"
-    parts = text.split(marker)
-    for part in parts[1:]:
-        end = part.find("```")
-        if end == -1:
-            continue
-        block = part[:end].strip()
+    for match in _TOOL_CALL_RE.finditer(text):
+        block = match.group(1).strip()
         try:
             parsed = json.loads(block)
             if "tool" in parsed:
@@ -142,15 +145,8 @@ def _parse_tool_calls(text: str) -> List[Dict[str, Any]]:
 
 def _parse_final_answer(text: str) -> Optional[Dict[str, Any]]:
     """Extract ``final_answer`` JSON block from LLM response text."""
-    marker = "```final_answer"
-    if marker not in text:
-        return None
-    parts = text.split(marker)
-    for part in parts[1:]:
-        end = part.find("```")
-        if end == -1:
-            continue
-        block = part[:end].strip()
+    for match in _FINAL_ANSWER_RE.finditer(text):
+        block = match.group(1).strip()
         try:
             return json.loads(block)
         except json.JSONDecodeError:
@@ -191,6 +187,61 @@ def _format_observation(record: ToolCall) -> str:
         error = record.result.error if record.result else "unknown"
         obs = f"Error: {error}"
     return f"Tool {record.tool_name} result: {json.dumps(obs, default=str)}"
+
+
+async def _dispatch_tool_call(
+    tool_name: str,
+    tool_input: Dict[str, Any],
+    agent: AgentDefinition,
+    tool_registry: ToolRegistry,
+    context: AgentContext,
+    iteration: int,
+    step_id: str,
+) -> ToolCall:
+    """Enforce allowlist, emit events, execute a single tool call.
+
+    Unified handler for both native function-calling and text-based
+    tool dispatch — eliminates the duplicated allowlist/event/execute
+    pattern that previously existed in both code paths.
+    """
+    # Enforce agent tool allowlist
+    if agent.tools and tool_name not in agent.tools:
+        return ToolCall(
+            tool_name=tool_name,
+            tool_input=tool_input,
+            result=ToolResult(
+                success=False,
+                output=None,
+                error=f"Tool '{tool_name}' is not in the agent's allowed tools list",
+                metadata=None,
+            ),
+            duration_ms=0,
+        )
+
+    _emit_agent_event(
+        context,
+        "AGENT_TOOL_START",
+        {
+            "agent_iteration": iteration,
+            "agent_pipeline_step": step_id,
+            "tool_name": tool_name,
+            "tool_input": tool_input,
+        },
+    )
+    record = await _execute_tool(tool_registry, tool_name, tool_input, context)
+    _emit_agent_event(
+        context,
+        "AGENT_TOOL_COMPLETE",
+        {
+            "agent_iteration": iteration,
+            "agent_pipeline_step": step_id,
+            "tool_name": tool_name,
+            "success": bool(record.result and record.result.success),
+            "duration_ms": record.duration_ms,
+            "error": (record.result.error if record.result else None),
+        },
+    )
+    return record
 
 
 def _aggregate_usage(turns: List[AgentTurn]) -> Dict[str, Any]:
@@ -346,7 +397,9 @@ def _resolve_pipeline_tool_inputs(
     """Resolve bare dot-path values in pipeline tool step inputs.
 
     Values that look like dot-paths (e.g. ``analyze.suggested_file``) are
-    resolved from the pipeline state.  Other values pass through as literals.
+    resolved from the pipeline state.  Only values whose first segment
+    matches a key in the pipeline state are treated as paths — this avoids
+    false resolution of dotted literals like ``com.example.package``.
     """
     if not raw_inputs:
         return {}
@@ -354,6 +407,10 @@ def _resolve_pipeline_tool_inputs(
     for key, value in raw_inputs.items():
         if isinstance(value, str) and "." in value:
             parts = value.split(".")
+            # Only treat as a path if the root segment exists in pipeline state
+            if parts[0] not in state:
+                resolved[key] = value
+                continue
             current: Any = state
             try:
                 for part in parts:
@@ -455,112 +512,30 @@ async def _run_pipeline(
 
             # ---------------------------------------------------------------------------
             # Tool dispatch: native path first, text-parsing fallback second.
-            #
-            # Native path  — ``response.tool_calls`` is populated by adapters when the
-            #   provider's function-calling API is in use.  These are structured
-            #   ``ToolCallRequest`` objects; no fragile text parsing required.
-            #
-            # Text fallback — ``_parse_tool_calls`` extracts ```tool_call``` code blocks
-            #   from free-form LLM output.  Used for models that do not support native
-            #   function calling or when ``tools`` was not passed to this pipeline.
+            # Both paths use _dispatch_tool_call for allowlist, events, execution.
             # ---------------------------------------------------------------------------
             observations: List[str] = []
             if response.tool_calls:
                 # Native function-calling path.
                 last_had_native_calls = True
                 for tc in response.tool_calls:
-                    # Enforce agent tool allowlist
-                    if agent.tools and tc.tool_name not in agent.tools:
-                        record = ToolCall(
-                            tool_name=tc.tool_name,
-                            tool_input=tc.tool_input,
-                            result=ToolResult(
-                                success=False,
-                                output=None,
-                                error=f"Tool '{tc.tool_name}' is not in the agent's allowed tools list",
-                                metadata=None,
-                            ),
-                            duration_ms=0,
-                        )
-                        turn.tool_calls.append(record)
-                        observations.append(_format_observation(record))
-                        continue
-                    _emit_agent_event(
-                        context,
-                        "AGENT_TOOL_START",
-                        {
-                            "agent_iteration": iteration,
-                            "agent_pipeline_step": step.id,
-                            "tool_name": tc.tool_name,
-                            "tool_input": tc.tool_input,
-                        },
-                    )
-                    record = await _execute_tool(
-                        tool_registry, tc.tool_name, tc.tool_input, context,
+                    record = await _dispatch_tool_call(
+                        tc.tool_name, tc.tool_input,
+                        agent, tool_registry, context, iteration, step.id,
                     )
                     turn.tool_calls.append(record)
                     observations.append(_format_observation(record))
-                    _emit_agent_event(
-                        context,
-                        "AGENT_TOOL_COMPLETE",
-                        {
-                            "agent_iteration": iteration,
-                            "agent_pipeline_step": step.id,
-                            "tool_name": tc.tool_name,
-                            "success": bool(record.result and record.result.success),
-                            "duration_ms": record.duration_ms,
-                            "error": (record.result.error if record.result else None),
-                        },
-                    )
             else:
                 # Text-based fallback path.
                 last_had_native_calls = False
                 inline_tool_calls = _parse_tool_calls(response.text)
                 for tc in inline_tool_calls:
-                    tool_name = tc["tool"]
-                    # Enforce agent tool allowlist
-                    if agent.tools and tool_name not in agent.tools:
-                        record = ToolCall(
-                            tool_name=tool_name,
-                            tool_input=tc.get("input", {}),
-                            result=ToolResult(
-                                success=False,
-                                output=None,
-                                error=f"Tool '{tool_name}' is not in the agent's allowed tools list",
-                                metadata=None,
-                            ),
-                            duration_ms=0,
-                        )
-                        turn.tool_calls.append(record)
-                        observations.append(_format_observation(record))
-                        continue
-                    _emit_agent_event(
-                        context,
-                        "AGENT_TOOL_START",
-                        {
-                            "agent_iteration": iteration,
-                            "agent_pipeline_step": step.id,
-                            "tool_name": tc["tool"],
-                            "tool_input": tc.get("input", {}),
-                        },
-                    )
-                    record = await _execute_tool(
-                        tool_registry, tc["tool"], tc.get("input", {}), context,
+                    record = await _dispatch_tool_call(
+                        tc["tool"], tc.get("input", {}),
+                        agent, tool_registry, context, iteration, step.id,
                     )
                     turn.tool_calls.append(record)
                     observations.append(_format_observation(record))
-                    _emit_agent_event(
-                        context,
-                        "AGENT_TOOL_COMPLETE",
-                        {
-                            "agent_iteration": iteration,
-                            "agent_pipeline_step": step.id,
-                            "tool_name": tc["tool"],
-                            "success": bool(record.result and record.result.success),
-                            "duration_ms": record.duration_ms,
-                            "error": (record.result.error if record.result else None),
-                        },
-                    )
 
             if observations:
                 turn.observation = "\n".join(observations)
@@ -815,8 +790,16 @@ class ReActStrategy:
                                 token_usage=_aggregate_usage(all_turns),
                                 final_text=last_text if last_text else "",
                             )
-                    except Exception:  # noqa: BLE001
-                        pass  # invalid condition — skip rather than crash the loop
+                    except Exception as stop_exc:  # noqa: BLE001
+                        _emit_agent_event(
+                            context,
+                            "AGENT_STOP_CONDITION_ERROR",
+                            {
+                                "agent_iteration": i,
+                                "condition": cond,
+                                "error": f"{type(stop_exc).__name__}: {stop_exc}",
+                            },
+                        )
 
             # No stop signal — continue to next iteration (or stop at max).
 

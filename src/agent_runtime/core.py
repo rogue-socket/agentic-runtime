@@ -1041,6 +1041,11 @@ class Executor:
             "error": run.error,
         })
 
+        # Release usage counters for this run to prevent unbounded memory growth
+        # in long-lived LLMClient instances (e.g. webhook-triggered services).
+        if self.llm_client is not None and hasattr(self.llm_client, "clear_run_usage"):
+            self.llm_client.clear_run_usage(run.run_id)
+
         return run
 
     async def _await_with_heartbeat(

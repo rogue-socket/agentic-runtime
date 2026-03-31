@@ -54,6 +54,12 @@ class LLMClient:
         self._lock = threading.Lock()
         self._request_timestamps: deque[float] = deque()
         self._run_usage: Dict[str, Dict[str, float]] = {}
+        self._max_tracked_runs = 500  # LRU eviction threshold
+
+    def clear_run_usage(self, run_id: str) -> None:
+        """Remove usage counters for a completed run to prevent memory leaks."""
+        with self._lock:
+            self._run_usage.pop(run_id, None)
 
     def call(
         self,
@@ -195,6 +201,10 @@ class LLMClient:
         usage = self._run_usage.get(run_id)
         if usage is not None:
             return usage
+        # Evict oldest entries if we've exceeded the tracking threshold
+        if len(self._run_usage) >= self._max_tracked_runs:
+            oldest_key = next(iter(self._run_usage))
+            del self._run_usage[oldest_key]
         usage = {
             "requests": 0.0,
             "input_tokens": 0.0,
