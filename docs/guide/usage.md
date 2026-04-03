@@ -490,6 +490,25 @@ If `runtime.yaml` does not exist, all built-in defaults apply.
 
 Troubleshooting is now in [Troubleshooting](troubleshooting.md).
 
+## 12a. Export / Import
+
+You can package a project (agents + prompts + workflows + functions + config)
+into a portable bundle that runs on another install of this runtime.
+
+Export:
+
+```bash
+ai export --path .
+```
+
+Import and run:
+
+```bash
+ai import ./my-project.agentic-export.tar.gz --path ./my-project --run workflows/example.yaml
+```
+
+Note: `.env` is intentionally excluded. Set API keys in the target environment.
+
 ## 13. State diff debugging
 
 Show state changes across all recorded steps:

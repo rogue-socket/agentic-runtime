@@ -121,6 +121,27 @@ Manage automated documentation.
 - **`--no-workflow-reference`**: Skip generating the auto-reference doc.
 - **`--no-site-index`**: Skip rebuilding the web UI search index.
 
+### `ai export`
+Export a portable project bundle that can run on another install of this runtime.
+
+- **`--path <path>`**: Project root (default: `.`).
+- **`-o, --output <path>`**: Output archive path (default: `<project>.agentic-export.tar.gz`).
+- **`--no-tools`**: Exclude the `tools/` directory from the bundle.
+
+The export includes `runtime.yaml`, `workflows/`, `agents/`, `functions/`, and `prompts/` (if present). `.env` is intentionally excluded.
+
+### `ai import`
+Import a portable bundle into a project directory and optionally run a workflow.
+
+- **`bundle`**: Path to the `.tar.gz` export bundle.
+- **`--path <path>`**: Target directory to extract into (default: `.`).
+- **`--run <workflow>`**: Workflow path to run after import (relative to target dir).
+
+Example:
+```bash
+ai import ./my-project.agentic-export.tar.gz --path ./my-project --run workflows/example.yaml
+```
+
 ---
 
 ## 6. Failure Recovery

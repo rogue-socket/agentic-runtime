@@ -112,7 +112,6 @@ class AgentStrategyProtocol(Protocol):
         tool_registry: ToolRegistry,
         inputs: Dict[str, Any],
         context: AgentContext,
-                      """Function implementation."""
     ) -> AgentResult: ...
 
 

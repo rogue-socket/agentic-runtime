@@ -35,9 +35,12 @@ TODO(ux): ICP is solo dev / small team building an agent. The CLI
 """
 
 import argparse
+import io
 import getpass
 import json
 import os
+import tarfile
+import time
 from pathlib import Path
 from pprint import pformat
 import re
@@ -118,6 +121,89 @@ def _to_int(value: Any) -> int:
     if isinstance(value, (int, float)):
         return int(value)
     return 0
+
+
+def _strip_secret_keys(obj: Any) -> Any:
+    """Remove secret-like keys from a nested structure."""
+    if isinstance(obj, dict):
+        cleaned: Dict[str, Any] = {}
+        for key, value in obj.items():
+            key_lower = str(key).lower()
+            if _SECRET_KEY_RE.search(key_lower) and not key_lower.endswith("_env"):
+                continue
+            cleaned[key] = _strip_secret_keys(value)
+        return cleaned
+    if isinstance(obj, list):
+        return [_strip_secret_keys(item) for item in obj]
+    return obj
+
+
+def _resolve_project_path(project_root: str, path_value: str) -> str:
+    """Resolve a path from runtime.yaml relative to the project root."""
+    if not path_value:
+        return ""
+    if os.path.isabs(path_value):
+        return path_value
+    return os.path.join(project_root, path_value)
+
+
+def _write_tar_text(tar: tarfile.TarFile, arcname: str, text: str) -> None:
+    """Write a text file into a tar archive."""
+    data = text.encode("utf-8")
+    info = tarfile.TarInfo(arcname)
+    info.size = len(data)
+    info.mtime = time.time()
+    tar.addfile(info, io.BytesIO(data))
+
+
+def _add_directory_to_tar(
+    tar: tarfile.TarFile,
+    source_dir: str,
+    arc_dir: str,
+) -> int:
+    """Add a directory tree to a tar archive under a target archive path."""
+    if not source_dir or not os.path.isdir(source_dir):
+        info = tarfile.TarInfo(arc_dir.rstrip("/") + "/")
+        info.type = tarfile.DIRTYPE
+        info.mtime = time.time()
+        tar.addfile(info)
+        return 0
+
+    files_added = 0
+    for root, dirs, files in os.walk(source_dir):
+        dirs[:] = [d for d in dirs if d not in ("__pycache__", ".git", ".venv", ".pytest_cache")]
+        rel_root = os.path.relpath(root, source_dir)
+        rel_root = "" if rel_root == "." else rel_root
+        for file_name in files:
+            if file_name in (".DS_Store",):
+                continue
+            if file_name.endswith((".pyc", ".pyo")):
+                continue
+            src_path = os.path.join(root, file_name)
+            rel_path = os.path.join(rel_root, file_name) if rel_root else file_name
+            arc_path = os.path.join(arc_dir, rel_path)
+            tar.add(src_path, arcname=arc_path, recursive=False)
+            files_added += 1
+    return files_added
+
+
+def _safe_extract_tar(tar: tarfile.TarFile, target_dir: str) -> None:
+    """Extract tar contents, blocking path traversal and absolute paths."""
+    target_dir = os.path.abspath(target_dir)
+    for member in tar.getmembers():
+        if not member.name:
+            continue
+        if member.issym() or member.islnk():
+            raise SystemExit(f"Unsafe archive entry (link): {member.name}")
+        if os.path.isabs(member.name):
+            raise SystemExit(f"Unsafe archive entry (absolute path): {member.name}")
+        normalized = os.path.normpath(member.name)
+        if normalized.startswith(".."):
+            raise SystemExit(f"Unsafe archive entry (path traversal): {member.name}")
+        dest_path = os.path.abspath(os.path.join(target_dir, normalized))
+        if not dest_path.startswith(target_dir + os.sep):
+            raise SystemExit(f"Unsafe archive entry (escaped root): {member.name}")
+    tar.extractall(path=target_dir)
 
 
 def _estimate_step_cost_usd(
@@ -714,6 +800,151 @@ def _build_docs_index(docs_root: Path) -> int:
     manifest_path.write_text(json.dumps(docs), encoding="utf-8")
     
     return len(docs)
+
+
+def _build_export_runtime_yaml(
+    runtime_path: str,
+    *,
+    include_tools: bool,
+) -> Dict[str, Any]:
+    """Load runtime.yaml and normalize paths for export portability."""
+    try:
+        with open(runtime_path, "r", encoding="utf-8") as f:
+            raw = yaml.safe_load(f) or {}
+    except Exception:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+
+    normalized = _strip_secret_keys(raw)
+    if not isinstance(normalized, dict):
+        normalized = {}
+
+    normalized["workflows_dir"] = "workflows"
+    normalized["agents_dir"] = "agents"
+    normalized["functions_dir"] = "functions"
+    if include_tools:
+        normalized["tools_dir"] = "tools"
+    else:
+        normalized.pop("tools_dir", None)
+
+    db_path = normalized.get("db_path")
+    if isinstance(db_path, str) and os.path.isabs(db_path):
+        normalized["db_path"] = "runtime.db"
+
+    return normalized
+
+
+def _run_export(
+    project_root: str,
+    *,
+    output_path: Optional[str],
+    include_tools: bool,
+) -> int:
+    """Export a project bundle ready to run on another runtime install."""
+    if not os.path.isdir(project_root):
+        raise SystemExit(f"Project path does not exist: {project_root}")
+
+    runtime_path = os.path.join(project_root, "runtime.yaml")
+    if not os.path.exists(runtime_path):
+        raise SystemExit(f"No runtime.yaml found at {runtime_path}")
+
+    cfg = load_config(runtime_path)
+    workflows_dir = _resolve_project_path(project_root, cfg.workflows_dir)
+    agents_dir = _resolve_project_path(project_root, cfg.agents_dir)
+    functions_dir = _resolve_project_path(project_root, cfg.functions_dir)
+    tools_dir = _resolve_project_path(project_root, cfg.tools_dir) if include_tools else ""
+    prompts_dir = os.path.join(project_root, "prompts")
+
+    if not output_path:
+        project_name = os.path.basename(os.path.abspath(project_root)) or "agentic-project"
+        output_path = os.path.join(
+            project_root, f"{project_name}.agentic-export.tar.gz"
+        )
+
+    export_runtime = _build_export_runtime_yaml(
+        runtime_path,
+        include_tools=include_tools,
+    )
+
+    manifest = {
+        "schema_version": "v1",
+        "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "includes": {
+            "workflows": True,
+            "agents": True,
+            "functions": True,
+            "tools": include_tools,
+            "prompts": os.path.isdir(prompts_dir),
+        },
+    }
+
+    with tarfile.open(output_path, "w:gz") as tar:
+        _write_tar_text(
+            tar,
+            "runtime.yaml",
+            yaml.safe_dump(export_runtime, sort_keys=False),
+        )
+        _write_tar_text(
+            tar,
+            "export-manifest.json",
+            json.dumps(manifest, indent=2),
+        )
+
+        _add_directory_to_tar(tar, workflows_dir, "workflows")
+        _add_directory_to_tar(tar, agents_dir, "agents")
+        _add_directory_to_tar(tar, functions_dir, "functions")
+        if include_tools:
+            _add_directory_to_tar(tar, tools_dir, "tools")
+        if os.path.isdir(prompts_dir):
+            _add_directory_to_tar(tar, prompts_dir, "prompts")
+
+    print(f"Exported bundle: {output_path}")
+    contents = ["runtime.yaml", "workflows/", "agents/", "functions/"]
+    if include_tools:
+        contents.append("tools/")
+    if os.path.isdir(prompts_dir):
+        contents.append("prompts/")
+    print("Bundle contents: " + " + ".join(contents))
+    print("Note: .env is intentionally excluded; set API keys in the target environment.")
+    return 0
+
+
+def _run_import(
+    bundle_path: str,
+    *,
+    target_dir: str,
+    run_workflow: Optional[str],
+) -> int:
+    """Import a portable bundle into a project directory and optionally run a workflow."""
+    if not os.path.isfile(bundle_path):
+        raise SystemExit(f"Bundle not found: {bundle_path}")
+
+    os.makedirs(target_dir, exist_ok=True)
+
+    with tarfile.open(bundle_path, "r:*") as tar:
+        _safe_extract_tar(tar, target_dir)
+
+    runtime_path = os.path.join(target_dir, "runtime.yaml")
+    if not os.path.exists(runtime_path):
+        raise SystemExit(f"Import failed: runtime.yaml not found in {target_dir}")
+
+    print(f"Imported bundle to: {target_dir}")
+
+    if not run_workflow:
+        example_workflow = os.path.join(target_dir, "workflows", "example.yaml")
+        suggestion = "workflows/example.yaml" if os.path.exists(example_workflow) else "<workflow.yaml>"
+        print("Next steps:")
+        print(f"  ai run {suggestion}")
+        print("Note: set API keys in your environment or .env before running.")
+        return 0
+
+    cwd = os.getcwd()
+    try:
+        os.chdir(target_dir)
+        return run_cli(["run", run_workflow])
+    finally:
+        os.chdir(cwd)
 
 
 
@@ -1756,20 +1987,6 @@ def _run_quickstart(project_root: str, *, sample: str = "starter") -> int:
 
     _load_dotenv(os.path.join(project_root, ".env"))
 
-    # Zero-config first success path: if no credentials are configured,
-    # avoid interactive setup prompts and run a deterministic sample.
-    pre_cfg = load_config(runtime_path)
-    pre_creds = pre_cfg.llm_registry.check_credentials()
-    if not any(pre_creds.values()):
-        print("\n[!] No LLM API keys found in .env or environment.")
-        print("No credentials configured; skipping setup and running no-key sample automatically (branching triage).")
-        return _run_quickstart_sample(
-            project_root,
-            "branching_triage.yaml",
-            "branching triage",
-            needs_llm=False,
-        )
-
     _run_setup_flow(
         project_root,
         provider=None,
@@ -1988,6 +2205,36 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         "--no-site-index",
         action="store_true",
         help="Skip rebuilding docs/site/content.js",
+    )
+
+    export_parser = subparsers.add_parser(
+        "export",
+        help="Export a portable project bundle (no API keys)",
+    )
+    export_parser.add_argument("--path", default=".", help="Project root (contains runtime.yaml)")
+    export_parser.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help="Output archive path (default: <project>.agentic-export.tar.gz)",
+    )
+    export_parser.add_argument(
+        "--no-tools",
+        action="store_true",
+        help="Exclude tools/ from the export bundle",
+    )
+
+    import_parser = subparsers.add_parser(
+        "import",
+        help="Import a portable bundle into a project directory",
+    )
+    import_parser.add_argument("bundle", help="Path to .tar.gz export bundle")
+    import_parser.add_argument("--path", default=".", help="Target directory to extract into")
+    import_parser.add_argument(
+        "--run",
+        dest="run_workflow",
+        default=None,
+        help="Workflow path to run after import (relative to target dir)",
     )
 
 
@@ -2213,6 +2460,22 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
 
         return 0
+
+    if args.command == "export":
+        project_root = os.path.abspath(args.path)
+        return _run_export(
+            project_root,
+            output_path=args.output,
+            include_tools=not args.no_tools,
+        )
+
+    if args.command == "import":
+        target_dir = os.path.abspath(args.path)
+        return _run_import(
+            args.bundle,
+            target_dir=target_dir,
+            run_workflow=args.run_workflow,
+        )
 
 
     _load_dotenv()
