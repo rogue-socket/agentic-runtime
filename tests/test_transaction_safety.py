@@ -32,6 +32,7 @@ from conftest import make_storage, make_memory_manager
 
 
 def _make_step(**overrides) -> StepExecution:
+    """Function implementation."""
     defaults = dict(
         step_id="s1",
         step_type="function",
@@ -53,6 +54,7 @@ def _make_step(**overrides) -> StepExecution:
 
 
 def _make_run(storage: SQLiteStorage, run_id: str = "run-txn-test") -> Run:
+    """Function implementation."""
     run = Run(
         run_id=run_id,
         workflow_id="test_wf",
@@ -76,6 +78,7 @@ class TestTransactionCommit:
     """Multiple writes inside a transaction() block are committed together."""
 
     def test_step_and_state_committed_together(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         run = _make_run(storage)
 
@@ -92,6 +95,7 @@ class TestTransactionCommit:
         assert storage.load_latest_state_version(run.run_id) == 1
 
     def test_multiple_steps_committed_together(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         run = _make_run(storage)
 
@@ -109,6 +113,7 @@ class TestTransactionRollback:
     """On exception, all writes in a transaction() block are rolled back."""
 
     def test_exception_rolls_back_all_writes(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         run = _make_run(storage)
 
@@ -139,6 +144,7 @@ class TestTransactionRollback:
         assert len(steps) == 0
 
     def test_run_status_update_rolled_back(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         run = _make_run(storage)
 
@@ -155,6 +161,7 @@ class TestTransactionNesting:
     """Nested transaction() calls are absorbed by the outermost transaction."""
 
     def test_nested_commit(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         run = _make_run(storage)
 
@@ -167,6 +174,7 @@ class TestTransactionNesting:
         assert len(steps) == 2
 
     def test_nested_exception_rolls_back_outer(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         run = _make_run(storage)
 
@@ -186,6 +194,7 @@ class TestAutoCommitOutsideTransaction:
     """Operations outside a transaction() block auto-commit individually."""
 
     def test_append_step_auto_commits(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         run = _make_run(storage)
         storage.append_step(run.run_id, _make_step())
@@ -194,6 +203,7 @@ class TestAutoCommitOutsideTransaction:
         assert len(steps) == 1
 
     def test_save_state_auto_commits(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         run = _make_run(storage)
         storage.save_state(run.run_id, None, 0, {"inputs": {}, "steps": {}, "runtime": {}})
@@ -206,11 +216,13 @@ class TestStorageClose:
     """Storage.close() releases the connection cleanly."""
 
     def test_close_idempotent(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         storage.close()
         storage.close()  # second call should not raise
 
     def test_operations_after_close_raise(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         storage.close()
         with pytest.raises(Exception):
@@ -221,10 +233,12 @@ class TestStorageClose:
 
 
 def _echo_handler(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    """Function implementation."""
     return {"echo": inputs.get("text") or "default"}
 
 
 def _failing_handler(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    """Function implementation."""
     raise RuntimeError("step deliberately failed")
 
 
@@ -232,6 +246,7 @@ class TestExecutorAtomicPersist:
     """Executor persists step record + state version atomically per step."""
 
     def test_successful_step_persists_step_and_state(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         step_defs = [
             StepDefinition(
@@ -268,6 +283,7 @@ class TestExecutorAtomicPersist:
         assert state["steps"]["echo"]["echo"] == "hello"
 
     def test_failed_step_persists_step_and_status_atomically(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         step_defs = [
             StepDefinition(
@@ -381,16 +397,19 @@ class TestTransactionStateProperty:
     """Verify the _in_transaction flag behaves correctly."""
 
     def test_not_in_transaction_initially(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         assert storage._in_transaction is False
 
     def test_in_transaction_inside_block(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         with storage.transaction():
             assert storage._in_transaction is True
         assert storage._in_transaction is False
 
     def test_in_transaction_reset_after_exception(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         with pytest.raises(RuntimeError):
             with storage.transaction():

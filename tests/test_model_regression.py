@@ -15,6 +15,7 @@ from agent_runtime.utils import utc_now
 
 
 def _make_storage(tmp_path: str) -> SQLiteStorage:
+    """Function implementation."""
     return SQLiteStorage(os.path.join(tmp_path, "test.db"))
 
 
@@ -40,6 +41,7 @@ def _seed_run(storage: SQLiteStorage, run_id: str, steps: list[StepExecution]) -
 
 class TestCompareRuns:
     def test_identical_runs_no_diffs(self, tmp_path):
+        """Function implementation."""
         storage = _make_storage(str(tmp_path))
         step = StepExecution(
             step_id="s1", step_type="agent", status=StepStatus.COMPLETED,
@@ -57,6 +59,7 @@ class TestCompareRuns:
         assert result.diffs == []
 
     def test_model_name_diff_detected(self, tmp_path):
+        """Function implementation."""
         storage = _make_storage(str(tmp_path))
         step_a = StepExecution(
             step_id="s1", step_type="agent", status=StepStatus.COMPLETED,
@@ -80,6 +83,7 @@ class TestCompareRuns:
         assert model_diffs[0].value_b == "gpt-4o-2024-08-06"
 
     def test_output_diff_detected(self, tmp_path):
+        """Function implementation."""
         storage = _make_storage(str(tmp_path))
         step_a = StepExecution(
             step_id="s1", step_type="function", status=StepStatus.COMPLETED,
@@ -99,6 +103,7 @@ class TestCompareRuns:
         assert len(output_diffs) == 1
 
     def test_missing_step_detected(self, tmp_path):
+        """Function implementation."""
         storage = _make_storage(str(tmp_path))
         step_a = StepExecution(
             step_id="s1", step_type="function", status=StepStatus.COMPLETED,
@@ -124,6 +129,7 @@ class TestCompareRuns:
         assert presence_diffs[0].value_a == "missing"
 
     def test_status_diff_detected(self, tmp_path):
+        """Function implementation."""
         storage = _make_storage(str(tmp_path))
         step_a = StepExecution(
             step_id="s1", step_type="agent", status=StepStatus.COMPLETED,

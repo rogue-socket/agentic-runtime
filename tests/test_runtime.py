@@ -26,6 +26,7 @@ from conftest import make_storage, make_memory_manager
 
 
 def generate_summary(inputs: Dict[str, Any]) -> Dict[str, Any]:
+    """Function implementation."""
     issue = inputs.get("issue", "")
     if not issue:
         raise KeyError("Missing required key: issue")
@@ -34,18 +35,22 @@ def generate_summary(inputs: Dict[str, Any]) -> Dict[str, Any]:
 
 class CounterMemory:
     def __init__(self) -> None:
+        """Function implementation."""
         self.read_calls = 0
         self.write_calls = 0
 
     def read(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         self.read_calls += 1
         return {}
 
     def write(self, payload: Dict[str, Any]) -> None:
+        """Function implementation."""
         self.write_calls += 1
 
 
 def test_function_step_success() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     logger = None
@@ -67,6 +72,7 @@ def test_function_step_success() -> None:
 
 
 def test_function_step_missing_issue() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     logger = None
@@ -87,10 +93,12 @@ def test_function_step_missing_issue() -> None:
 
 
 def test_step_output_cannot_use_reserved_namespaces() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def bad_output(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"runtime": {"secret": "x"}}
 
     steps = [
@@ -109,10 +117,12 @@ def test_step_output_cannot_use_reserved_namespaces() -> None:
 
 
 def test_run_applies_workflow_input_defaults_when_provided() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def read_priority(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"priority": inputs["priority"]}
 
     steps = [
@@ -138,10 +148,12 @@ def test_run_applies_workflow_input_defaults_when_provided() -> None:
 
 
 def test_run_default_does_not_override_explicit_input() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def read_priority(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"priority": inputs["priority"]}
 
     steps = [
@@ -167,6 +179,7 @@ def test_run_default_does_not_override_explicit_input() -> None:
 
 
 def test_tool_step_success() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
@@ -178,6 +191,7 @@ def test_tool_step_success() -> None:
         retries = None
 
         async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+            """Function implementation."""
             return ToolResult(success=True, output={"x": input["x"]}, error=None, metadata=None)
 
     tool_registry.register(EchoTool())
@@ -203,6 +217,7 @@ def test_run_async_executes_tool_step() -> None:
         retries = None
 
         async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+            """Function implementation."""
             return ToolResult(success=True, output={"x": input["x"]}, error=None, metadata=None)
 
     tool_registry.register(EchoTool())
@@ -210,6 +225,7 @@ def test_run_async_executes_tool_step() -> None:
     executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
 
     async def _run() -> None:
+        """Function implementation."""
         run = await executor.run_async("wf", {"issue": "x"})
         assert run.status == StepStatus.COMPLETED
         assert run.state.data["steps"]["echo"]["x"] == 2
@@ -232,6 +248,7 @@ def test_run_raises_inside_event_loop() -> None:
     executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
 
     async def _run() -> None:
+        """Function implementation."""
         with pytest.raises(RuntimeError):
             executor.run("wf", {"issue": "Login API fails for invalid token"})
 
@@ -239,6 +256,7 @@ def test_run_raises_inside_event_loop() -> None:
 
 
 def test_workflow_yaml_validation(tmp_path) -> None:
+    """Function implementation."""
     bad_yaml = tmp_path / "bad.yaml"
     bad_yaml.write_text("name: x\nsteps: {}\n", encoding="utf-8")
 
@@ -247,6 +265,7 @@ def test_workflow_yaml_validation(tmp_path) -> None:
 
 
 def test_state_versioning() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
@@ -271,6 +290,7 @@ def test_state_versioning() -> None:
 
 
 def test_memory_hooks_invoked() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
@@ -304,6 +324,7 @@ def test_memory_hooks_invoked() -> None:
 
 
 def test_retry_policy_succeeds() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     logger = None
@@ -311,6 +332,7 @@ def test_retry_policy_succeeds() -> None:
     attempts = {"count": 0}
 
     def flaky_function(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         attempts["count"] += 1
         if attempts["count"] < 2:
             raise ValueError("transient")
@@ -332,6 +354,7 @@ def test_retry_policy_succeeds() -> None:
 
 
 def test_retry_emits_step_retry_event() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     events = []
@@ -339,6 +362,7 @@ def test_retry_emits_step_retry_event() -> None:
     attempts = {"count": 0}
 
     def flaky_function(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         attempts["count"] += 1
         if attempts["count"] < 2:
             raise ValueError("transient")
@@ -354,6 +378,7 @@ def test_retry_emits_step_retry_event() -> None:
     ]
 
     def on_event(event: str, payload: Dict[str, Any]) -> None:
+        """Function implementation."""
         events.append((event, payload))
 
     executor = Executor(
@@ -376,13 +401,16 @@ def test_retry_emits_step_retry_event() -> None:
 
 
 def test_optional_step_uses_default_output_and_continues() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def enrich_fails(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         raise ValueError("enrichment backend unavailable")
 
     def consume_summary(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"final": f"used={inputs['summary']}"}
 
     steps = [
@@ -417,6 +445,7 @@ def test_optional_step_uses_default_output_and_continues() -> None:
 
 
 def test_heartbeat_emitted_for_long_running_tool_step() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     events = []
@@ -429,6 +458,7 @@ def test_heartbeat_emitted_for_long_running_tool_step() -> None:
         retries = None
 
         async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+            """Function implementation."""
             await asyncio.sleep(0.08)
             return ToolResult(success=True, output={"ok": True}, error=None, metadata=None)
 
@@ -437,6 +467,7 @@ def test_heartbeat_emitted_for_long_running_tool_step() -> None:
     steps = [StepDefinition(step_id="slow", step_type="tool", tool_name="tools.slow", raw_input={})]
 
     def on_event(event: str, payload: Dict[str, Any]) -> None:
+        """Function implementation."""
         events.append((event, payload))
 
     executor = Executor(
@@ -464,6 +495,7 @@ def test_heartbeat_emitted_for_long_running_tool_step() -> None:
 
 
 def test_tool_step_timeout_retries_and_fails_cleanly() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
@@ -475,6 +507,7 @@ def test_tool_step_timeout_retries_and_fails_cleanly() -> None:
         retries = None
 
         async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+            """Function implementation."""
             await asyncio.sleep(0.08)
             return ToolResult(success=True, output={"ok": True}, error=None, metadata=None)
 
@@ -505,13 +538,16 @@ def test_tool_step_timeout_retries_and_fails_cleanly() -> None:
 
 
 def test_event_callback_failure_is_non_fatal() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"ok": True}
 
     def on_event(event: str, payload: Dict[str, Any]) -> None:
+        """Function implementation."""
         raise RuntimeError("observer unavailable")
 
     steps = [
@@ -536,16 +572,19 @@ def test_event_callback_failure_is_non_fatal() -> None:
 
 
 def test_storage_append_failure_marks_run_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     captured_run_id: Dict[str, str] = {}
 
     def ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"ok": True}
 
     original_create_run = storage.create_run
 
     def track_create_run(run) -> None:
+        """Function implementation."""
         captured_run_id["id"] = run.run_id
         original_create_run(run)
 
@@ -554,6 +593,7 @@ def test_storage_append_failure_marks_run_failed(monkeypatch: pytest.MonkeyPatch
     failure_once = {"raised": False}
 
     def fail_append_step(run_id: str, step) -> None:
+        """Function implementation."""
         if not failure_once["raised"]:
             failure_once["raised"] = True
             raise RuntimeError("append write failed")
@@ -576,13 +616,16 @@ def test_storage_append_failure_marks_run_failed(monkeypatch: pytest.MonkeyPatch
 def test_original_error_is_preserved_when_status_persist_also_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"ok": True}
 
     def fail_append_step(run_id: str, step) -> None:
+        """Function implementation."""
         raise RuntimeError("append write failed")
 
     def fail_update_run_status(
@@ -592,6 +635,7 @@ def test_original_error_is_preserved_when_status_persist_also_fails(
         started_at: str | None = None,
         completed_at: str | None = None,
     ) -> None:
+        """Function implementation."""
         raise RuntimeError("status persist failed")
 
     monkeypatch.setattr(storage, "append_step", fail_append_step)
@@ -605,13 +649,16 @@ def test_original_error_is_preserved_when_status_persist_also_fails(
 
 
 def test_on_error_continue_completes_with_errors() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def fail_step(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         raise ValueError("boom")
 
     def success_step(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"ok": True}
 
     steps = [
@@ -629,6 +676,7 @@ def test_on_error_continue_completes_with_errors() -> None:
 
 
 def test_state_snapshots_persisted() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 

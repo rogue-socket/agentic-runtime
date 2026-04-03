@@ -9,6 +9,7 @@ from agent_runtime.workflow import WORKFLOW_SCHEMA_VERSION_CURRENT, load_workflo
 
 
 def test_schema_v1_parses() -> None:
+    """Function implementation."""
     raw = """
 schema_version: v1
 workflow:
@@ -26,6 +27,7 @@ steps:
 
 
 def test_missing_schema_version_is_rejected() -> None:
+    """Function implementation."""
     raw = """
 workflow:
   id: missing_schema
@@ -42,6 +44,7 @@ steps:
 
 
 def test_legacy_name_version_identity_is_rejected() -> None:
+    """Function implementation."""
     raw = """
 schema_version: v1
 name: old_style_flow
@@ -58,6 +61,7 @@ steps:
 
 
 def test_rejects_non_current_schema_version() -> None:
+    """Function implementation."""
     raw = """
 schema_version: v2
 workflow:
@@ -73,6 +77,7 @@ steps:
 
 
 def test_step_input_field_is_rejected() -> None:
+    """Function implementation."""
     raw = """
 schema_version: v1
 workflow:
@@ -90,4 +95,5 @@ steps:
 
 
 def test_constant_tracks_current_schema() -> None:
+    """Function implementation."""
     assert WORKFLOW_SCHEMA_VERSION_CURRENT == "v1"

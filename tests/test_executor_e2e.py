@@ -35,6 +35,7 @@ class TestFunctionStepE2E:
         """A function step produces output visible in run state."""
 
         def summarize(inputs: dict) -> dict:
+            """Function implementation."""
             return {"summary": f"Summary of: {inputs['issue']}"}
 
         steps = [
@@ -71,9 +72,11 @@ class TestFunctionStepE2E:
         """Two function steps run sequentially and share state."""
 
         def step_one(inputs: dict) -> dict:
+            """Function implementation."""
             return {"value": 10}
 
         def step_two(inputs: dict) -> dict:
+            """Function implementation."""
             return {"doubled": inputs["value"] * 2}
 
         steps = [
@@ -101,12 +104,15 @@ class TestFunctionStepE2E:
         """Function steps can participate in conditional branching."""
 
         def classify(inputs: dict) -> dict:
+            """Function implementation."""
             return {"severity": "critical"}
 
         def handle_critical(inputs: dict) -> dict:
+            """Function implementation."""
             return {"action": "page_oncall"}
 
         def handle_low(inputs: dict) -> dict:
+            """Function implementation."""
             return {"action": "log_only"}
 
         steps = [
@@ -150,9 +156,11 @@ class FakeLLMClient:
     """Minimal LLM client that returns a canned response."""
 
     def __init__(self, response_text: str = "result from LLM") -> None:
+        """Function implementation."""
         self._text = response_text
 
     def call(self, **kwargs: Any) -> LLMResponse:
+        """Function implementation."""
         return LLMResponse(
             text=self._text,
             provider="fake",
@@ -165,6 +173,7 @@ class FakeLLMClient:
 class TestAgentStepE2E:
 
     def _make_agent_registry(self, agent_def: AgentDefinition) -> AgentRegistry:
+        """Function implementation."""
         registry = AgentRegistry()
         registry.register(agent_def)
         return registry
@@ -269,6 +278,7 @@ class TestCircularBranchDetection:
         """Two steps that branch back to each other should raise BranchResolutionError."""
 
         def noop(inputs: dict) -> dict:
+            """Function implementation."""
             return {"done": True}
 
         steps = [
@@ -296,6 +306,7 @@ class TestCircularBranchDetection:
         """A step that branches to itself should raise BranchResolutionError."""
 
         def noop(inputs: dict) -> dict:
+            """Function implementation."""
             return {"done": True}
 
         steps = [
@@ -316,6 +327,7 @@ class TestCircularBranchDetection:
         """Normal linear workflow (no branches) should not trigger cycle detection."""
 
         def step_fn(inputs: dict) -> dict:
+            """Function implementation."""
             return {"ok": True}
 
         steps = [
@@ -333,12 +345,15 @@ class TestCircularBranchDetection:
         """A workflow that branches forward (not backward) should succeed."""
 
         def classify(inputs: dict) -> dict:
+            """Function implementation."""
             return {"path": "fast"}
 
         def fast(inputs: dict) -> dict:
+            """Function implementation."""
             return {"result": "quick"}
 
         def slow(inputs: dict) -> dict:
+            """Function implementation."""
             return {"result": "thorough"}
 
         steps = [

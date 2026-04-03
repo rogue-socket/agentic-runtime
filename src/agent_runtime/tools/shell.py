@@ -134,6 +134,7 @@ class ShellTool:
         return None
 
     async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+        """Function implementation."""
         command = input.get("command", "")
         if not command:
             return ToolResult(success=False, output=None, error="command is required", metadata=None)

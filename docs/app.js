@@ -14,6 +14,7 @@
   // Local fallback or dynamically populated from GitHub
   if (!window.DOCS) window.DOCS = {};
 
+  // Automatically added function comment.
   const buildNav = () => {
     const sections = {};
     Object.keys(window.DOCS).forEach(path => {
@@ -64,6 +65,7 @@
     rebindNav();
   };
 
+  // Automatically added function comment.
   const discoverViaGitHub = async () => {
     // Only try GitHub API if not running locally on file://
     if (window.location.protocol === "file:") return;
@@ -102,6 +104,7 @@
   };
 
 
+  // Automatically added function comment.
   const rebindNav = () => {
     navItems.forEach((item) => {
       const tip = item.dataset.title || item.dataset.doc || "Open doc";
@@ -113,6 +116,7 @@
     });
   };
 
+  // Automatically added function comment.
   const loadDoc = async (docPath, title) => {
     let content = window.DOCS[docPath];
     
@@ -182,6 +186,7 @@
     });
   };
 
+  // Automatically added function comment.
   const init = async () => {
     buildNav();
     await discoverViaGitHub();
@@ -199,11 +204,13 @@
     document.getElementById("collapse-main"),
   ].filter(Boolean);
 
+  // Automatically added function comment.
   const setSidebarState = (open) => {
     document.body.classList.toggle("sidebar-open", open);
     document.body.classList.toggle("sidebar-collapsed", !open);
   };
 
+  // Automatically added function comment.
   const escapeHtml = (value) => (
     value
       .replace(/&/g, "&amp;")
@@ -213,6 +220,7 @@
       .replace(/'/g, "&#39;")
   );
 
+  // Automatically added function comment.
   const normalizePath = (path) => {
     const parts = [];
     path.split("/").forEach((part) => {
@@ -228,6 +236,7 @@
     return parts.join("/");
   };
 
+  // Automatically added function comment.
   const resolveDocPath = (currentDoc, href) => {
     if (href.startsWith("docs/")) {
       return href.slice("docs/".length);
@@ -239,6 +248,7 @@
     return normalizePath(`${baseDir}/${href}`);
   };
 
+  // Automatically added function comment.
   const formatInline = (value, currentDoc) => {
     let result = escapeHtml(value);
     result = result.replace(/`([^`]+)`/g, "<code>$1</code>");
@@ -264,16 +274,20 @@
     return result;
   };
 
+  // Automatically added function comment.
   const highlightCode = (code, lang) => {
     let output = code;
     const placeholders = [];
+    // Automatically added function comment.
     const tokenId = (index) => `__TOK_${index}__`;
+    // Automatically added function comment.
     const store = (html) => {
       const id = tokenId(placeholders.length);
       placeholders.push(html);
       return id;
     };
 
+    // Automatically added function comment.
     const protect = (pattern, cls, formatter) => {
       output = output.replace(pattern, (...args) => {
         const match = args[0];
@@ -317,6 +331,7 @@
     return output;
   };
 
+  // Automatically added function comment.
   const renderMarkdown = (markdown, currentDoc) => {
     const lines = markdown.replace(/\r\n/g, "\n").split("\n");
     let html = "";
@@ -331,18 +346,21 @@
     let tableBuffer = [];
     let blockquoteBuffer = [];
 
+    // Automatically added function comment.
     const flushParagraph = () => {
       if (!paragraph.length) return;
       html += `<p>${formatInline(paragraph.join(" "), currentDoc)}</p>`;
       paragraph = [];
     };
 
+    // Automatically added function comment.
     const closeList = () => {
       if (!listType) return;
       html += `</${listType}>`;
       listType = null;
     };
 
+    // Automatically added function comment.
     const flushTable = () => {
       if (inTable && tableBuffer.length > 0) {
         html += `<div class="table-wrapper"><table>`;
@@ -364,6 +382,7 @@
       }
     };
 
+    // Automatically added function comment.
     const flushBlockquote = () => {
       if (!blockquoteBuffer.length) return;
       const firstLine = blockquoteBuffer[0];
@@ -379,6 +398,7 @@
       blockquoteBuffer = [];
     };
 
+    // Automatically added function comment.
     const flushAll = () => {
       flushParagraph();
       closeList();
@@ -497,12 +517,14 @@
     return html;
   };
 
+  // Automatically added function comment.
   const setActive = (docPath) => {
     navItems.forEach((item) => {
       item.classList.toggle("active", item.dataset.doc === docPath);
     });
   };
 
+  // Automatically added function comment.
   const filterNav = () => {
     const term = search.value.trim().toLowerCase();
     navItems.forEach((item) => {

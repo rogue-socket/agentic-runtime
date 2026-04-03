@@ -24,6 +24,7 @@ class Breakpoint:
     enabled: bool = True
 
     def matches(self, event: str, payload: Dict[str, Any]) -> bool:
+        """Function implementation."""
         if not self.enabled:
             return False
         if self.kind == "event":
@@ -132,6 +133,7 @@ class LiveDebugger:
         input_fn: Callable[[str], str] = input,
         output_fn: Callable[[str], None] = print,
     ) -> None:
+        """Function implementation."""
         self._load_latest_state = load_latest_state
         self._input = input_fn
         self._output = output_fn
@@ -170,6 +172,7 @@ class LiveDebugger:
         self._command_loop(event, payload, depth)
 
     def _should_pause(self, event: str, payload: Dict[str, Any], depth: int) -> bool:
+        """Function implementation."""
         if self._pause_once:
             self._pause_once = False
             return True
@@ -209,6 +212,7 @@ class LiveDebugger:
         return False
 
     def _event_depth(self, event: str) -> int:
+        """Function implementation."""
         if event.startswith("AGENT_"):
             return 2
         if event in {"STEP_PROGRESS", "STEP_HEARTBEAT"}:
@@ -218,6 +222,7 @@ class LiveDebugger:
         return 0
 
     def _render_pause_banner(self, event: str, payload: Dict[str, Any]) -> None:
+        """Function implementation."""
         step_id = payload.get("step_id", "-")
         step_type = payload.get("step_type", "-")
         exec_idx = payload.get("execution_index", "-")
@@ -226,6 +231,7 @@ class LiveDebugger:
         )
 
     def _command_loop(self, event: str, payload: Dict[str, Any], depth: int) -> None:
+        """Function implementation."""
         while True:
             try:
                 raw = self._input("(debug) ").strip()
@@ -334,6 +340,7 @@ class LiveDebugger:
             self._output("Unknown command. Type 'h' for help.")
 
     def _list_breakpoints(self) -> None:
+        """Function implementation."""
         if not self._breakpoints:
             self._output("No breakpoints.")
             return
@@ -341,6 +348,7 @@ class LiveDebugger:
             self._output(f"{idx}. {bp.kind}:{bp.value}")
 
     def _print_state(self, payload: Dict[str, Any], path: str) -> None:
+        """Function implementation."""
         run_id = str(payload.get("run_id", ""))
         if not run_id:
             self._output("No run_id in current payload.")
@@ -363,6 +371,7 @@ class LiveDebugger:
         self._output(str(_sanitize_trace_value(value)))
 
     def _parse_breakpoint(self, spec: str) -> Optional[Breakpoint]:
+        """Function implementation."""
         raw = spec.strip()
         if not raw:
             return None
@@ -379,9 +388,11 @@ class LiveDebugger:
         return Breakpoint(kind=kind, value=value)
 
     def _breakpoint_specs(self) -> List[str]:
+        """Function implementation."""
         return [f"{bp.kind}:{bp.value}" for bp in self._breakpoints]
 
     def _evaluate_expression_breakpoint(self, expression: str, payload: Dict[str, Any]) -> bool:
+        """Function implementation."""
         run_id = str(payload.get("run_id", ""))
         if not run_id:
             return False
@@ -402,6 +413,7 @@ class LiveDebugger:
             return False
 
     def _log_event(self, event: str, payload: Dict[str, Any]) -> None:
+        """Function implementation."""
         if self._event_log_dir is None:
             return
         run_id = str(payload.get("run_id", ""))
@@ -422,6 +434,7 @@ class LiveDebugger:
             return
 
     def _help_text(self) -> str:
+        """Function implementation."""
         return (
             "Commands: c(continue), s(step), n(next), i(into), o(out), "
             "b <spec>, bl, bd <index>, save <path>, p [path], where, q(quit debugger), h(help)"

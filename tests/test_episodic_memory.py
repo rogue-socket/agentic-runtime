@@ -12,16 +12,19 @@ class TestEpisodicMemoryStubMode:
     """Backward-compatible stub mode (no db_path)."""
 
     def test_read_returns_empty_initially(self) -> None:
+        """Function implementation."""
         mem = EpisodicMemory()
         assert mem.read({}) == {}
 
     def test_write_and_read_stub(self) -> None:
+        """Function implementation."""
         mem = EpisodicMemory()
         mem.write({"key": "value"})
         result = mem.read({})
         assert result == {"key": "value"}
 
     def test_recall_returns_empty_in_stub(self) -> None:
+        """Function implementation."""
         mem = EpisodicMemory()
         assert mem.recall("any_workflow") == []
 
@@ -30,9 +33,11 @@ class TestEpisodicMemorySQLite:
     """SQLite-backed mode."""
 
     def _db(self, tmpdir: str) -> str:
+        """Function implementation."""
         return os.path.join(tmpdir, "test_memory.db")
 
     def test_record_and_recall(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mem = EpisodicMemory(db_path=self._db(tmpdir))
             try:
@@ -63,6 +68,7 @@ class TestEpisodicMemorySQLite:
                 mem.close()
 
     def test_recall_filters_by_workflow_id(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mem = EpisodicMemory(db_path=self._db(tmpdir))
             try:
@@ -76,6 +82,7 @@ class TestEpisodicMemorySQLite:
                 mem.close()
 
     def test_recall_limit(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mem = EpisodicMemory(db_path=self._db(tmpdir))
             try:
@@ -88,6 +95,7 @@ class TestEpisodicMemorySQLite:
                 mem.close()
 
     def test_recall_all(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mem = EpisodicMemory(db_path=self._db(tmpdir))
             try:
@@ -100,6 +108,7 @@ class TestEpisodicMemorySQLite:
                 mem.close()
 
     def test_write_persists_episode(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mem = EpisodicMemory(db_path=self._db(tmpdir))
             try:
@@ -125,6 +134,7 @@ class TestEpisodicMemorySQLite:
                 mem.close()
 
     def test_read_hydrates_runtime_episodes(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mem = EpisodicMemory(db_path=self._db(tmpdir))
             try:
@@ -138,6 +148,7 @@ class TestEpisodicMemorySQLite:
                 mem.close()
 
     def test_read_returns_empty_for_unknown_workflow(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mem = EpisodicMemory(db_path=self._db(tmpdir))
             try:
@@ -147,6 +158,7 @@ class TestEpisodicMemorySQLite:
                 mem.close()
 
     def test_persistence_across_instances(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db = self._db(tmpdir)
             mem1 = EpisodicMemory(db_path=db)
@@ -163,6 +175,7 @@ class TestEpisodicMemorySQLite:
                 mem2.close()
 
     def test_max_recall_config(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mem = EpisodicMemory(db_path=self._db(tmpdir), max_recall=2)
             try:

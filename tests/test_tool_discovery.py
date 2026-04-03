@@ -53,6 +53,7 @@ class NotATool:
 class TestDiscoverTools:
 
     def test_discover_valid_tool(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "greet.py"), "w") as f:
                 f.write(_VALID_TOOL_SRC)
@@ -61,6 +62,7 @@ class TestDiscoverTools:
             assert hasattr(tools["tools.greet"], "execute")
 
     def test_discover_multiple_tools(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "greet.py"), "w") as f:
                 f.write(_VALID_TOOL_SRC)
@@ -72,6 +74,7 @@ class TestDiscoverTools:
             assert "tools.count" in tools
 
     def test_no_tools_in_module(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "helpers.py"), "w") as f:
                 f.write(_NO_TOOLS_SRC)
@@ -79,6 +82,7 @@ class TestDiscoverTools:
             assert tools == {}
 
     def test_ignores_invalid_tool_classes(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "bad.py"), "w") as f:
                 f.write(_INVALID_TOOL_SRC)
@@ -86,6 +90,7 @@ class TestDiscoverTools:
             assert tools == {}
 
     def test_ignores_underscore_files(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "_internal.py"), "w") as f:
                 f.write(_VALID_TOOL_SRC)
@@ -93,10 +98,12 @@ class TestDiscoverTools:
             assert tools == {}
 
     def test_nonexistent_directory(self) -> None:
+        """Function implementation."""
         tools = discover_tools("/nonexistent/path/tools")
         assert tools == {}
 
     def test_empty_directory(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             tools = discover_tools(d)
             assert tools == {}
@@ -105,6 +112,7 @@ class TestDiscoverTools:
 class TestRegisterDiscoveredTools:
 
     def test_registers_into_registry(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "greet.py"), "w") as f:
                 f.write(_VALID_TOOL_SRC)
@@ -118,6 +126,7 @@ class TestRegisterDiscoveredTools:
 class TestToolDiscoveryClass:
 
     def test_discover_returns_specs(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "greet.py"), "w") as f:
                 f.write(_VALID_TOOL_SRC)

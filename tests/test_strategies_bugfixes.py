@@ -6,6 +6,7 @@ class TestParseToolCallsRegex:
     """Bug 6: _parse_tool_calls now uses regex tolerant of whitespace."""
 
     def test_standard_format(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _parse_tool_calls
         text = '```tool_call\n{"tool": "search", "input": {"q": "hello"}}\n```'
         result = _parse_tool_calls(text)
@@ -13,6 +14,7 @@ class TestParseToolCallsRegex:
         assert result[0]["tool"] == "search"
 
     def test_space_before_tag(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _parse_tool_calls
         text = '``` tool_call\n{"tool": "search", "input": {}}\n```'
         result = _parse_tool_calls(text)
@@ -20,6 +22,7 @@ class TestParseToolCallsRegex:
         assert result[0]["tool"] == "search"
 
     def test_extra_whitespace(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _parse_tool_calls
         text = '```  tool_call  \n{"tool": "fetch", "input": {"url": "x"}}\n```'
         result = _parse_tool_calls(text)
@@ -27,6 +30,7 @@ class TestParseToolCallsRegex:
         assert result[0]["tool"] == "fetch"
 
     def test_multiple_calls(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _parse_tool_calls
         text = (
             'some text\n```tool_call\n{"tool": "a", "input": {}}\n```\n'
@@ -38,11 +42,13 @@ class TestParseToolCallsRegex:
         assert result[1]["tool"] == "b"
 
     def test_invalid_json_skipped(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _parse_tool_calls
         text = '```tool_call\nnot json\n```'
         assert _parse_tool_calls(text) == []
 
     def test_no_tool_key_skipped(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _parse_tool_calls
         text = '```tool_call\n{"action": "search"}\n```'
         assert _parse_tool_calls(text) == []
@@ -52,18 +58,21 @@ class TestParseFinalAnswerRegex:
     """Bug 6: _parse_final_answer now uses regex tolerant of whitespace."""
 
     def test_standard_format(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _parse_final_answer
         text = '```final_answer\n{"result": "done"}\n```'
         result = _parse_final_answer(text)
         assert result == {"result": "done"}
 
     def test_space_before_tag(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _parse_final_answer
         text = '``` final_answer\n{"result": "ok"}\n```'
         result = _parse_final_answer(text)
         assert result == {"result": "ok"}
 
     def test_no_answer(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _parse_final_answer
         assert _parse_final_answer("just some text") is None
 
@@ -72,6 +81,7 @@ class TestResolvePipelineToolInputs:
     """Bug 5: dotted literals like 'com.example.package' should not resolve as paths."""
 
     def test_dotted_literal_not_resolved(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _resolve_pipeline_tool_inputs
         state = {"inputs": {"x": 1}}
         result = _resolve_pipeline_tool_inputs(
@@ -81,6 +91,7 @@ class TestResolvePipelineToolInputs:
         assert result["pkg"] == "com.example.package"
 
     def test_valid_path_resolved(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _resolve_pipeline_tool_inputs
         state = {"inputs": {"url": "https://example.com"}, "analyze": {"file": "main.py"}}
         result = _resolve_pipeline_tool_inputs(
@@ -90,6 +101,7 @@ class TestResolvePipelineToolInputs:
         assert result["target"] == "main.py"
 
     def test_inputs_path_resolved(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _resolve_pipeline_tool_inputs
         state = {"inputs": {"repo": "my-repo"}}
         result = _resolve_pipeline_tool_inputs(
@@ -99,6 +111,7 @@ class TestResolvePipelineToolInputs:
         assert result["repo"] == "my-repo"
 
     def test_non_dotted_passes_through(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _resolve_pipeline_tool_inputs
         state = {"inputs": {}}
         result = _resolve_pipeline_tool_inputs(
@@ -108,6 +121,7 @@ class TestResolvePipelineToolInputs:
         assert result["name"] == "hello"
 
     def test_empty_inputs(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _resolve_pipeline_tool_inputs
         assert _resolve_pipeline_tool_inputs(None, {}) == {}
 
@@ -116,6 +130,7 @@ class TestLLMClientMemoryLeak:
     """Bug 2: _run_usage should not grow unbounded."""
 
     def test_clear_run_usage(self):
+        """Function implementation."""
         from agent_runtime.llm.client import LLMClient
         from agent_runtime.llm.registry import LLMRegistry
         client = LLMClient(registry=LLMRegistry())
@@ -129,6 +144,7 @@ class TestLLMClientMemoryLeak:
         assert "run-2" in client._run_usage
 
     def test_lru_eviction(self):
+        """Function implementation."""
         from agent_runtime.llm.client import LLMClient
         from agent_runtime.llm.registry import LLMRegistry
         client = LLMClient(registry=LLMRegistry())
@@ -143,6 +159,7 @@ class TestLLMClientMemoryLeak:
         assert len(client._run_usage) == 3
 
     def test_clear_nonexistent_noop(self):
+        """Function implementation."""
         from agent_runtime.llm.client import LLMClient
         from agent_runtime.llm.registry import LLMRegistry
         client = LLMClient(registry=LLMRegistry())
@@ -154,6 +171,7 @@ class TestStopConditionErrorLogging:
 
     @pytest.mark.asyncio
     async def test_bad_condition_emits_event(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import ReActStrategy, AgentContext
         from agent_runtime.agent.definition import (
             AgentDefinition, PipelineStep, StrategyConfig,
@@ -164,10 +182,12 @@ class TestStopConditionErrorLogging:
         events = []
 
         def on_event(name, payload):
+            """Function implementation."""
             events.append((name, payload))
 
         class FakeLLM:
             def call(self, **kwargs):
+                """Function implementation."""
                 return LLMResponse(
                     text='```final_answer\n{"done": true}\n```',
                     usage={"input_tokens": 10, "output_tokens": 10},
@@ -193,6 +213,7 @@ class TestStopConditionErrorLogging:
 
         class FakeLLM2:
             def call(self, **kwargs):
+                """Function implementation."""
                 return LLMResponse(
                     text="I need to think more",
                     usage={"input_tokens": 10, "output_tokens": 10},
@@ -222,6 +243,7 @@ class TestDispatchToolCallUnified:
 
     @pytest.mark.asyncio
     async def test_allowlist_rejection(self):
+        """Function implementation."""
         from agent_runtime.agent.strategies import _dispatch_tool_call, AgentContext
         from agent_runtime.agent.definition import AgentDefinition, PipelineStep, StrategyConfig
         from agent_runtime.tools.registry import ToolRegistry

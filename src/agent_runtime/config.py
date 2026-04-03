@@ -35,6 +35,7 @@ def _interpolate_env_vars(value: Any) -> Any:
     """
     if isinstance(value, str):
         def _replace(m: re.Match) -> str:
+            """Function implementation."""
             return os.environ.get(m.group(1), m.group(0))
         return _ENV_VAR_RE.sub(_replace, value)
     if isinstance(value, dict):
@@ -164,6 +165,7 @@ def load_config(config_path: str = "runtime.yaml") -> RuntimeConfig:
         cfg.model = raw["model"]
 
     def _apply_limits_block(limits_block: Any) -> None:
+        """Function implementation."""
         if isinstance(limits_block, dict):
             if "rate_limit_rpm" in limits_block:
                 cfg.llm_rate_limit_rpm = int(limits_block["rate_limit_rpm"])

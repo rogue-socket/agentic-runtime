@@ -12,35 +12,42 @@ class TestSemanticMemoryStubMode:
     """In-memory fallback when no db_path is provided."""
 
     def test_read_returns_empty_initially(self) -> None:
+        """Function implementation."""
         mem = SemanticMemory()
         assert mem.read({}) == {}
 
     def test_write_and_read_stub(self) -> None:
+        """Function implementation."""
         mem = SemanticMemory()
         mem.write({"some": "data"})
         assert mem.read({}) == {"some": "data"}
 
     def test_store_and_get_stub(self) -> None:
+        """Function implementation."""
         mem = SemanticMemory()
         mem.store("api_limit", "1000 req/min")
         result = mem.get("api_limit")
         assert result == {"key": "api_limit", "value": "1000 req/min"}
 
     def test_get_missing_returns_none(self) -> None:
+        """Function implementation."""
         mem = SemanticMemory()
         assert mem.get("missing") is None
 
     def test_delete_stub(self) -> None:
+        """Function implementation."""
         mem = SemanticMemory()
         mem.store("key", "val")
         assert mem.delete("key") is True
         assert mem.get("key") is None
 
     def test_delete_missing_returns_false(self) -> None:
+        """Function implementation."""
         mem = SemanticMemory()
         assert mem.delete("nope") is False
 
     def test_count_stub(self) -> None:
+        """Function implementation."""
         mem = SemanticMemory()
         assert mem.count() == 0
         mem.store("a", "1")
@@ -48,6 +55,7 @@ class TestSemanticMemoryStubMode:
         assert mem.count() == 2
 
     def test_list_all_stub(self) -> None:
+        """Function implementation."""
         mem = SemanticMemory()
         mem.store("x", "1")
         mem.store("y", "2")
@@ -56,6 +64,7 @@ class TestSemanticMemoryStubMode:
         assert keys == {"x", "y"}
 
     def test_search_returns_empty_in_stub(self) -> None:
+        """Function implementation."""
         mem = SemanticMemory()
         assert mem.search("anything") == []
 
@@ -64,9 +73,11 @@ class TestSemanticMemorySQLite:
     """SQLite-backed mode with FTS5."""
 
     def _db(self, tmpdir: str) -> str:
+        """Function implementation."""
         return os.path.join(tmpdir, "semantic.db")
 
     def test_store_and_get(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -81,6 +92,7 @@ class TestSemanticMemorySQLite:
                 mem.close()
 
     def test_get_missing(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -89,6 +101,7 @@ class TestSemanticMemorySQLite:
                 mem.close()
 
     def test_update_existing_key(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -101,6 +114,7 @@ class TestSemanticMemorySQLite:
                 mem.close()
 
     def test_delete(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -112,6 +126,7 @@ class TestSemanticMemorySQLite:
                 mem.close()
 
     def test_delete_missing_returns_false(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -120,6 +135,7 @@ class TestSemanticMemorySQLite:
                 mem.close()
 
     def test_count(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -131,6 +147,7 @@ class TestSemanticMemorySQLite:
                 mem.close()
 
     def test_list_all(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -144,6 +161,7 @@ class TestSemanticMemorySQLite:
                 mem.close()
 
     def test_full_text_search(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -158,6 +176,7 @@ class TestSemanticMemorySQLite:
                 mem.close()
 
     def test_search_no_results(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -168,6 +187,7 @@ class TestSemanticMemorySQLite:
                 mem.close()
 
     def test_search_empty_query(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -178,6 +198,7 @@ class TestSemanticMemorySQLite:
                 mem.close()
 
     def test_search_by_tags_any(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -192,6 +213,7 @@ class TestSemanticMemorySQLite:
                 mem.close()
 
     def test_search_by_tags_all(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -205,6 +227,7 @@ class TestSemanticMemorySQLite:
                 mem.close()
 
     def test_metadata_roundtrip(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mem = SemanticMemory(db_path=self._db(d))
             try:
@@ -220,6 +243,7 @@ class TestSemanticMemoryTierProtocol:
     """Tests for the MemoryTier read/write interface."""
 
     def test_read_returns_count(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             db = os.path.join(d, "sem.db")
             mem = SemanticMemory(db_path=db)
@@ -232,6 +256,7 @@ class TestSemanticMemoryTierProtocol:
                 mem.close()
 
     def test_read_with_query(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             db = os.path.join(d, "sem.db")
             mem = SemanticMemory(db_path=db)
@@ -246,6 +271,7 @@ class TestSemanticMemoryTierProtocol:
                 mem.close()
 
     def test_write_stores_facts(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             db = os.path.join(d, "sem.db")
             mem = SemanticMemory(db_path=db)

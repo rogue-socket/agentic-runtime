@@ -20,6 +20,7 @@ from conftest import make_memory_manager, make_storage
 
 class TestCostReporting:
     def test_estimate_cost_with_wildcard_pricing(self) -> None:
+        """Function implementation."""
         pricing = {"*": {"input": 0.01, "output": 0.03}}
         usage = {"input_tokens": 1000, "output_tokens": 500}
         cost = _estimate_step_cost_usd(usage, pricing)
@@ -27,6 +28,7 @@ class TestCostReporting:
         assert abs(cost - 0.025) < 1e-9  # (1000/1000)*0.01 + (500/1000)*0.03
 
     def test_estimate_cost_with_openai_keys(self) -> None:
+        """Function implementation."""
         pricing = {"*": {"input": 0.01, "output": 0.03}}
         usage = {"prompt_tokens": 2000, "completion_tokens": 1000}
         cost = _estimate_step_cost_usd(usage, pricing)
@@ -34,12 +36,15 @@ class TestCostReporting:
         assert abs(cost - 0.05) < 1e-9
 
     def test_estimate_cost_no_pricing_returns_none(self) -> None:
+        """Function implementation."""
         assert _estimate_step_cost_usd({"input_tokens": 100}, {}) is None
 
     def test_estimate_cost_empty_usage_returns_none(self) -> None:
+        """Function implementation."""
         assert _estimate_step_cost_usd({}, {"*": {"input": 0.01}}) is None
 
     def test_to_int_coercion(self) -> None:
+        """Function implementation."""
         assert _to_int(42) == 42
         assert _to_int(3.7) == 3
         assert _to_int("nope") == 0
@@ -51,17 +56,20 @@ class TestCostReporting:
 
 class TestEpisodicMemoryDepth:
     def test_truncated_json_short(self) -> None:
+        """Function implementation."""
         result = _truncated_json({"key": "value"})
         assert '"key"' in result
         assert '"value"' in result
 
     def test_truncated_json_long(self) -> None:
+        """Function implementation."""
         big = {"key": "x" * 1000}
         result = _truncated_json(big, max_bytes=50)
         assert len(result) == 50
         assert result.endswith("...")
 
     def test_write_stores_actual_values(self) -> None:
+        """Function implementation."""
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         tmp.close()
         mem = EpisodicMemory(db_path=tmp.name)
@@ -96,39 +104,47 @@ class TestEpisodicMemoryDepth:
 
 class TestOutputSchemaValidation:
     def test_type_validation_passes(self) -> None:
+        """Function implementation."""
         _validate_output_schema("s1", {"severity": "P0"}, {"severity": {"type": "str"}})
 
     def test_type_validation_fails(self) -> None:
+        """Function implementation."""
         with pytest.raises(StepExecutionError, match="expected type str"):
             _validate_output_schema("s1", {"severity": 123}, {"severity": {"type": "str"}})
 
     def test_enum_validation_passes(self) -> None:
+        """Function implementation."""
         _validate_output_schema(
             "s1", {"severity": "P0"}, {"severity": {"enum": ["P0", "P1", "P2"]}}
         )
 
     def test_enum_validation_fails(self) -> None:
+        """Function implementation."""
         with pytest.raises(StepExecutionError, match="not in allowed values"):
             _validate_output_schema(
                 "s1", {"severity": "it's bad"}, {"severity": {"enum": ["P0", "P1", "P2"]}}
             )
 
     def test_regex_validation_passes(self) -> None:
+        """Function implementation."""
         _validate_output_schema(
             "s1", {"code": "ABC-123"}, {"code": {"regex": r"[A-Z]+-\d+"}}
         )
 
     def test_regex_validation_fails(self) -> None:
+        """Function implementation."""
         with pytest.raises(StepExecutionError, match="does not match regex"):
             _validate_output_schema(
                 "s1", {"code": "nope"}, {"code": {"regex": r"[A-Z]+-\d+"}}
             )
 
     def test_combined_rules(self) -> None:
+        """Function implementation."""
         schema = {"severity": {"type": "str", "enum": ["P0", "P1"], "regex": r"P\d"}}
         _validate_output_schema("s1", {"severity": "P0"}, schema)
 
     def test_combined_rules_multiple_errors(self) -> None:
+        """Function implementation."""
         schema = {"severity": {"type": "int", "enum": ["P0"]}}
         with pytest.raises(StepExecutionError, match="expected type int.*not in allowed"):
             _validate_output_schema("s1", {"severity": "bad"}, schema)
@@ -142,6 +158,7 @@ class TestOutputSchemaValidation:
         storage = make_storage()
 
         def bad_function(inputs: Dict[str, Any]) -> Dict[str, Any]:
+            """Function implementation."""
             return {"severity": "it's pretty bad"}
 
         steps = [
@@ -165,6 +182,7 @@ class TestOutputSchemaValidation:
         storage = make_storage()
 
         def good_function(inputs: Dict[str, Any]) -> Dict[str, Any]:
+            """Function implementation."""
             return {"severity": "P0"}
 
         steps = [

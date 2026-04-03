@@ -150,6 +150,7 @@ def _estimate_step_cost_usd(
 
 
 def _parse_env_line(line: str) -> Optional[tuple[str, str]]:
+    """Function implementation."""
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         return None
@@ -196,6 +197,7 @@ def _load_dotenv(path: str = ".env") -> None:
 
 
 def _quote_env_value(value: str) -> str:
+    """Function implementation."""
     if not value:
         return value
     if re.search(r"\s|#", value):
@@ -205,6 +207,7 @@ def _quote_env_value(value: str) -> str:
 
 
 def _update_dotenv(path: str, updates: Dict[str, str]) -> None:
+    """Function implementation."""
     lines: List[str] = []
     seen: set[str] = set()
     if os.path.isfile(path):
@@ -228,6 +231,7 @@ def _update_dotenv(path: str, updates: Dict[str, str]) -> None:
 
 
 def _prompt_value(prompt: str, default: Optional[str] = None, secret: bool = False) -> str:
+    """Function implementation."""
     suffix = f" [{default}]" if default else ""
     full_prompt = f"{prompt}{suffix}: "
     if secret:
@@ -240,6 +244,7 @@ def _prompt_value(prompt: str, default: Optional[str] = None, secret: bool = Fal
 
 
 def _prompt_yes_no(prompt: str, default: bool = True) -> bool:
+    """Function implementation."""
     hint = "Y/n" if default else "y/N"
     while True:
         raw = input(f"{prompt} [{hint}]: ").strip().lower()
@@ -252,6 +257,7 @@ def _prompt_yes_no(prompt: str, default: bool = True) -> bool:
 
 
 def _prompt_choice(prompt: str, choices: List[str], default: str) -> str:
+    """Function implementation."""
     choices_lower = [c.lower() for c in choices]
     while True:
         raw = input(f"{prompt} {choices} [{default}]: ").strip()
@@ -262,6 +268,7 @@ def _prompt_choice(prompt: str, choices: List[str], default: str) -> str:
 
 
 def _prompt_int(prompt: str, min_value: int, max_value: int, default: int) -> int:
+    """Function implementation."""
     while True:
         raw = input(f"{prompt} [{default}]: ").strip()
         if not raw:
@@ -1509,6 +1516,7 @@ def _run_setup_flow(
     no_dotenv: bool,
     no_default: bool,
 ) -> Dict[str, Any]:
+    """Function implementation."""
     runtime_path = os.path.join(project_root, "runtime.yaml")
     dotenv_path = os.path.join(project_root, ".env")
 
@@ -1620,6 +1628,7 @@ def _run_setup_flow(
 
 
 def _run_onboard_flow(project_root: str) -> int:
+    """Function implementation."""
     print("\nWelcome to agentic-runtime.")
     print("This wizard sets up a project and your first LLM provider.\n")
 
@@ -1673,6 +1682,7 @@ def _run_onboard_flow(project_root: str) -> int:
 
 
 def _normalize_quickstart_sample(sample: str) -> str:
+    """Function implementation."""
     normalized = (sample or "starter").strip().lower().replace("_", "-")
     aliases = {
         "starter": "starter",
@@ -1700,6 +1710,7 @@ def _normalize_quickstart_sample(sample: str) -> str:
 
 
 def _run_quickstart(project_root: str, *, sample: str = "starter") -> int:
+    """Function implementation."""
     sample_name = _normalize_quickstart_sample(sample)
 
     if sample_name != "starter":
@@ -1861,6 +1872,7 @@ def _run_quickstart_sample(
 
 
 def _run_home_screen(project_root: str) -> int:
+    """Function implementation."""
     print("\nagentic-runtime")
     print("Choose an action:\n")
     print("  1) Guided setup (recommended)")
@@ -1981,6 +1993,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
 
     def _add_llm_control_args(cmd_parser: argparse.ArgumentParser) -> None:
+        """Function implementation."""
         cmd_parser.add_argument(
             "--llm-rate-limit-rpm",
             type=int,
@@ -2494,6 +2507,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             print("Debug mode enabled. Type 'h' at the (debug) prompt for commands.")
 
         def _progress_callback(event: str, payload: Dict[str, Any]) -> None:
+            """Function implementation."""
             if debugger is not None and debugger.enabled:
                 debugger.handle_event(event, payload)
                 return
@@ -2938,6 +2952,7 @@ def _diff_state(before: dict, after: dict, *, diff_limit: int = 20, full: bool =
     max_items = max(0, int(diff_limit))
 
     def _truncate(items: list[str]) -> list[str]:
+        """Function implementation."""
         if full:
             return items
         if max_items == 0:

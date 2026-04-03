@@ -480,6 +480,7 @@ class Executor:
     # -- End dispatch helpers -------------------------------------------------
 
     def _mark_run_failed_best_effort(self, run: Run, error: str) -> Optional[Exception]:
+        """Function implementation."""
         if run.status != StepStatus.FAILED:
             run.set_status(StepStatus.FAILED, error=error, completed_at=utc_now().isoformat())
         else:
@@ -653,6 +654,7 @@ class Executor:
         state_version: int,
         workflow_hash: Optional[str] = None,
     ) -> Run:
+        """Function implementation."""
         self._ensure_no_running_loop("resume_async")
         return asyncio.run(
             self.resume_async(
@@ -733,6 +735,7 @@ class Executor:
         self, run: Run, current_step_id: Optional[str], on_error: str,
         state_version: int, had_errors: bool, execution_index: int,
     ) -> Run:
+        """Function implementation."""
         visited: Set[str] = set()
         run_start_mono = time.monotonic()
         while current_step_id is not None:

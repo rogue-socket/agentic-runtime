@@ -20,14 +20,17 @@ from agent_runtime.utils import utc_now
 
 class TestHasCompletedSideEffects:
     def test_no_side_effects(self):
+        """Function implementation."""
         step = StepExecution(step_id="s1", step_type="tool", side_effects=None)
         assert has_completed_side_effects(step) is False
 
     def test_empty_side_effects(self):
+        """Function implementation."""
         step = StepExecution(step_id="s1", step_type="tool", side_effects=[])
         assert has_completed_side_effects(step) is False
 
     def test_completed_side_effect(self):
+        """Function implementation."""
         step = StepExecution(
             step_id="s1", step_type="tool",
             side_effects=[{"type": "api_call", "target": "slack", "completed": True}],
@@ -35,6 +38,7 @@ class TestHasCompletedSideEffects:
         assert has_completed_side_effects(step) is True
 
     def test_incomplete_side_effect(self):
+        """Function implementation."""
         step = StepExecution(
             step_id="s1", step_type="tool",
             side_effects=[{"type": "api_call", "target": "slack", "completed": False}],
@@ -42,6 +46,7 @@ class TestHasCompletedSideEffects:
         assert has_completed_side_effects(step) is False
 
     def test_mixed_side_effects(self):
+        """Function implementation."""
         step = StepExecution(
             step_id="s1", step_type="tool",
             side_effects=[
@@ -52,6 +57,7 @@ class TestHasCompletedSideEffects:
         assert has_completed_side_effects(step) is True
 
     def test_non_dict_entries_ignored(self):
+        """Function implementation."""
         step = StepExecution(
             step_id="s1", step_type="tool",
             side_effects=["not-a-dict", 42],
@@ -61,10 +67,12 @@ class TestHasCompletedSideEffects:
 
 class TestGetSideEffectSummary:
     def test_empty(self):
+        """Function implementation."""
         step = StepExecution(step_id="s1", step_type="tool", side_effects=None)
         assert get_side_effect_summary(step) == []
 
     def test_summary_format(self):
+        """Function implementation."""
         step = StepExecution(
             step_id="s1", step_type="tool",
             side_effects=[
@@ -106,6 +114,7 @@ class TestSideEffectsSQLiteRoundtrip:
         assert loaded[0].side_effects == effects
 
     def test_none_side_effects_roundtrip(self, tmp_path):
+        """Function implementation."""
         from agent_runtime.core import Run, RunState
         storage = SQLiteStorage(os.path.join(str(tmp_path), "test.db"))
         run = Run(

@@ -39,6 +39,7 @@ class PromptRegistry:
     """
 
     def __init__(self) -> None:
+        """Function implementation."""
         self._prompts: Dict[str, Dict[str, PromptEntry]] = {}  # id -> {version -> entry}
 
     # -- public api --------------------------------------------------------
@@ -109,6 +110,7 @@ class PromptRegistry:
 
     @staticmethod
     def _latest(versions: Dict[str, PromptEntry]) -> PromptEntry:
+        """Function implementation."""
         key = sorted(versions.keys(), key=_version_sort_key)[-1]
         return versions[key]
 
@@ -169,6 +171,7 @@ def _load_prompt_file(path: str) -> List[PromptEntry]:
 
 
 def _validate_prompt_item(item: dict, path: str) -> None:
+    """Function implementation."""
     if not isinstance(item, dict):
         raise ValueError(f"{path}: each prompt must be a mapping")
     for key in ("id", "text"):

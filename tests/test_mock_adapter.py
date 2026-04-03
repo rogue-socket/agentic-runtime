@@ -8,6 +8,7 @@ from agent_runtime.llm.adapters import MockAdapter
 
 
 def _sample_tools() -> list[dict]:
+    """Function implementation."""
     return [
         {
             "name": "tools.lookup",
@@ -22,6 +23,7 @@ def _sample_tools() -> list[dict]:
 
 
 def test_mock_adapter_emits_valid_tool_call_request() -> None:
+    """Function implementation."""
     adapter = MockAdapter()
 
     with patch("agent_runtime.llm.adapters.time.sleep", return_value=None):
@@ -46,6 +48,7 @@ def test_mock_adapter_emits_valid_tool_call_request() -> None:
 
 
 def test_mock_adapter_stops_after_native_tool_results_history() -> None:
+    """Function implementation."""
     adapter = MockAdapter()
 
     history = [
@@ -82,6 +85,7 @@ def test_mock_adapter_stops_after_native_tool_results_history() -> None:
 
 
 def test_mock_adapter_stops_after_text_observation_history() -> None:
+    """Function implementation."""
     adapter = MockAdapter()
 
     history = [

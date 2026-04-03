@@ -11,6 +11,7 @@ OUT_PATH = ROOT / "content.js"
 _SKIP = {"content.js", "app.js", "styles.css", "build-content.py", "mermaid.min.js"}
 
 def build() -> None:
+    """Function implementation."""
     docs = {}
     for path in ROOT.rglob("*.md"):
         if path.name in _SKIP:

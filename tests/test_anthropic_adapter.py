@@ -20,6 +20,7 @@ import pytest
 
 
 def _mock_anthropic_response(text: str = "Hello!", usage: Optional[Dict] = None) -> bytes:
+    """Function implementation."""
     body = {
         "content": [{"type": "text", "text": text}],
         "model": "claude-3-opus",
@@ -29,6 +30,7 @@ def _mock_anthropic_response(text: str = "Hello!", usage: Optional[Dict] = None)
 
 
 def _mock_anthropic_tool_use_response() -> bytes:
+    """Function implementation."""
     body = {
         "content": [
             {
@@ -45,6 +47,7 @@ def _mock_anthropic_tool_use_response() -> bytes:
 
 
 def test_anthropic_adapter_call_success() -> None:
+    """Function implementation."""
     adapter = AnthropicAdapter()
     mock_resp = MagicMock()
     mock_resp.read.return_value = _mock_anthropic_response("Test output")
@@ -69,6 +72,7 @@ def test_anthropic_adapter_call_success() -> None:
 
 
 def test_anthropic_adapter_with_system_prompt() -> None:
+    """Function implementation."""
     adapter = AnthropicAdapter()
     mock_resp = MagicMock()
     mock_resp.read.return_value = _mock_anthropic_response("With system")
@@ -96,6 +100,7 @@ def test_anthropic_adapter_with_system_prompt() -> None:
 
 
 def test_anthropic_adapter_missing_key() -> None:
+    """Function implementation."""
     adapter = AnthropicAdapter()
     with pytest.raises(ValueError, match="Missing Anthropic API key"):
         adapter.call(
@@ -110,6 +115,7 @@ def test_anthropic_adapter_missing_key() -> None:
 
 
 def test_anthropic_adapter_custom_base_url() -> None:
+    """Function implementation."""
     adapter = AnthropicAdapter()
     mock_resp = MagicMock()
     mock_resp.read.return_value = _mock_anthropic_response("custom")
@@ -132,6 +138,7 @@ def test_anthropic_adapter_custom_base_url() -> None:
 
 
 def test_anthropic_adapter_empty_content_raises() -> None:
+    """Function implementation."""
     adapter = AnthropicAdapter()
     body = json.dumps({"content": [], "model": "claude-3-opus"}).encode("utf-8")
     mock_resp = MagicMock()
@@ -153,6 +160,7 @@ def test_anthropic_adapter_empty_content_raises() -> None:
 
 
 def test_anthropic_adapter_native_tool_use_request_and_parse() -> None:
+    """Function implementation."""
     adapter = AnthropicAdapter()
     mock_resp = MagicMock()
     mock_resp.read.return_value = _mock_anthropic_tool_use_response()
@@ -222,6 +230,7 @@ def test_anthropic_adapter_native_tool_use_request_and_parse() -> None:
 
 
 def test_client_routes_to_anthropic() -> None:
+    """Function implementation."""
     registry = LLMRegistry()
     provider = LLMProvider(name="anthropic", api_key_env="ANTHROPIC_API_KEY")
     provider.add_model(ModelConfig(model_id="claude-3-opus"))
@@ -246,6 +255,7 @@ def test_client_routes_to_anthropic() -> None:
 
 
 def test_client_resolves_provider_slash_model() -> None:
+    """Function implementation."""
     registry = LLMRegistry()
     provider = LLMProvider(name="anthropic", api_key_env="ANTHROPIC_API_KEY")
     provider.add_model(ModelConfig(model_id="claude-3-opus"))

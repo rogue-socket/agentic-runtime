@@ -27,32 +27,40 @@ from conftest import make_storage
 
 class TestCoerceValue:
     def test_bool_true(self) -> None:
+        """Function implementation."""
         assert _coerce_value("true") is True
         assert _coerce_value("True") is True
         assert _coerce_value("TRUE") is True
 
     def test_bool_false(self) -> None:
+        """Function implementation."""
         assert _coerce_value("false") is False
 
     def test_int(self) -> None:
+        """Function implementation."""
         assert _coerce_value("42") == 42
         assert _coerce_value("-1") == -1
 
     def test_float(self) -> None:
+        """Function implementation."""
         assert _coerce_value("3.14") == 3.14
 
     def test_json_object(self) -> None:
+        """Function implementation."""
         result = _coerce_value('{"key": "val"}')
         assert result == {"key": "val"}
 
     def test_json_array(self) -> None:
+        """Function implementation."""
         result = _coerce_value('[1, 2, 3]')
         assert result == [1, 2, 3]
 
     def test_plain_string(self) -> None:
+        """Function implementation."""
         assert _coerce_value("hello world") == "hello world"
 
     def test_string_looks_like_json_but_invalid(self) -> None:
+        """Function implementation."""
         assert _coerce_value("{broken") == "{broken"
 
 
@@ -61,28 +69,36 @@ class TestCoerceValue:
 
 class TestParseEnvLine:
     def test_basic(self) -> None:
+        """Function implementation."""
         assert _parse_env_line("FOO=bar") == ("FOO", "bar")
 
     def test_quoted_double(self) -> None:
+        """Function implementation."""
         assert _parse_env_line('KEY="value"') == ("KEY", "value")
 
     def test_quoted_single(self) -> None:
+        """Function implementation."""
         assert _parse_env_line("KEY='value'") == ("KEY", "value")
 
     def test_export_prefix(self) -> None:
+        """Function implementation."""
         assert _parse_env_line("export MY_VAR=123") == ("MY_VAR", "123")
 
     def test_comment_ignored(self) -> None:
+        """Function implementation."""
         assert _parse_env_line("# comment") is None
 
     def test_empty_ignored(self) -> None:
+        """Function implementation."""
         assert _parse_env_line("") is None
         assert _parse_env_line("   ") is None
 
     def test_no_equals(self) -> None:
+        """Function implementation."""
         assert _parse_env_line("NOVALUE") is None
 
     def test_empty_key(self) -> None:
+        """Function implementation."""
         assert _parse_env_line("=value") is None
 
 
@@ -91,25 +107,30 @@ class TestParseEnvLine:
 
 class TestRedact:
     def test_redacts_api_key(self) -> None:
+        """Function implementation."""
         result = _redact({"api_key": "sk-secret", "name": "safe"})
         assert result["api_key"] == "***REDACTED***"
         assert result["name"] == "safe"
 
     def test_redacts_nested(self) -> None:
+        """Function implementation."""
         result = _redact({"outer": {"password": "x", "data": 1}})
         assert result["outer"]["password"] == "***REDACTED***"
         assert result["outer"]["data"] == 1
 
     def test_redacts_token(self) -> None:
+        """Function implementation."""
         result = _redact({"auth_token": "abc"})
         assert result["auth_token"] == "***REDACTED***"
 
     def test_list_recursion(self) -> None:
+        """Function implementation."""
         result = _redact([{"secret": "x"}, {"name": "y"}])
         assert result[0]["secret"] == "***REDACTED***"
         assert result[1]["name"] == "y"
 
     def test_plain_value_passthrough(self) -> None:
+        """Function implementation."""
         assert _redact("hello") == "hello"
         assert _redact(42) == 42
 
@@ -119,10 +140,12 @@ class TestRedact:
 
 class TestBuildInputState:
     def test_no_declared_inputs_passthrough(self) -> None:
+        """Function implementation."""
         result = _build_input_state(["a=1", "b=hello"], {})
         assert result == {"a": 1, "b": "hello"}
 
     def test_declared_required_provided(self) -> None:
+        """Function implementation."""
         result = _build_input_state(
             ["issue=bug report"],
             {"issue": {"required": True}},
@@ -130,6 +153,7 @@ class TestBuildInputState:
         assert result == {"issue": "bug report"}
 
     def test_declared_default_used(self) -> None:
+        """Function implementation."""
         result = _build_input_state(
             [],
             {"severity": {"required": False, "default": "low"}},
@@ -137,10 +161,12 @@ class TestBuildInputState:
         assert result == {"severity": "low"}
 
     def test_missing_required_raises(self) -> None:
+        """Function implementation."""
         with pytest.raises(SystemExit, match="Missing required input"):
             _build_input_state([], {"issue": {"required": True}})
 
     def test_unknown_input_raises(self) -> None:
+        """Function implementation."""
         with pytest.raises(SystemExit, match="Unknown inputs"):
             _build_input_state(
                 ["extra=val"],
@@ -148,10 +174,12 @@ class TestBuildInputState:
             )
 
     def test_invalid_format_raises(self) -> None:
+        """Function implementation."""
         with pytest.raises(SystemExit, match="Invalid input format"):
             _build_input_state(["no-equals"], {})
 
     def test_coercion_in_values(self) -> None:
+        """Function implementation."""
         result = _build_input_state(["flag=true", "count=5"], {})
         assert result["flag"] is True
         assert result["count"] == 5
@@ -162,6 +190,7 @@ class TestBuildInputState:
 
 class TestInitProject:
     def test_creates_scaffold(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             _init_project(d)
             assert os.path.isdir(os.path.join(d, "workflows"))
@@ -176,6 +205,7 @@ class TestInitProject:
             assert os.path.isfile(os.path.join(d, "agents", "fixer.yaml"))
 
     def test_idempotent(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             _init_project(d)
             # Overwrite one file to confirm it's not clobbered
@@ -202,6 +232,7 @@ class TestInitProject:
 
 class TestRunCLIInit:
     def test_init_returns_zero(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             code = run_cli(["init", "--path", d])
             assert code == 0
@@ -210,11 +241,13 @@ class TestRunCLIInit:
 
 class TestRunCLIList:
     def test_list_no_agents_dir(self, capsys) -> None:
+        """Function implementation."""
         code = run_cli(["list", "--agents-dir", "/nonexistent_dir_xyz"])
         assert code == 0
         assert "No agents directory" in capsys.readouterr().out
 
     def test_list_empty_agents_dir(self, capsys) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             code = run_cli(["list", "--agents-dir", d])
             assert code == 0
@@ -223,6 +256,7 @@ class TestRunCLIList:
 
 class TestRunCLIDocs:
     def test_docs_builds_index_and_workflow_reference(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             docs_guide = os.path.join(d, "docs", "guide")
             workflows_dir = os.path.join(d, "workflows")
@@ -266,6 +300,7 @@ steps:
             assert "summarize" in generated_text
 
     def test_docs_builds_site_index_when_present(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             docs_site = os.path.join(d, "docs", "site")
             os.makedirs(docs_site, exist_ok=True)
@@ -280,6 +315,7 @@ steps:
 
 class TestRunCLIMetrics:
     def test_metrics_json_output(self, capsys) -> None:
+        """Function implementation."""
         storage = make_storage()
         try:
             code = run_cli(["metrics", "--db-path", storage.db_path, "--json"])
@@ -295,6 +331,7 @@ class TestRunCLIMetrics:
 
 class TestDiffState:
     def test_diff_state_default_truncates(self) -> None:
+        """Function implementation."""
         before = {}
         after = {f"k{i}": i for i in range(25)}
         diff = _diff_state(before, after)
@@ -302,6 +339,7 @@ class TestDiffState:
         assert diff["added"][-1] == "... (+5 more)"
 
     def test_diff_state_full_shows_all(self) -> None:
+        """Function implementation."""
         before = {}
         after = {f"k{i}": i for i in range(25)}
         diff = _diff_state(before, after, full=True)
@@ -309,6 +347,7 @@ class TestDiffState:
         assert not any(item.startswith("...") for item in diff["added"])
 
     def test_diff_state_respects_custom_limit(self) -> None:
+        """Function implementation."""
         before = {}
         after = {f"k{i}": i for i in range(10)}
         diff = _diff_state(before, after, diff_limit=3)
@@ -316,6 +355,7 @@ class TestDiffState:
         assert diff["added"][-1] == "... (+7 more)"
 
     def test_diff_state_zero_limit_hides_paths(self) -> None:
+        """Function implementation."""
         before = {}
         after = {f"k{i}": i for i in range(4)}
         diff = _diff_state(before, after, diff_limit=0)
@@ -324,6 +364,7 @@ class TestDiffState:
 
 class TestRunCLIDiffArgs:
     def test_state_diff_accepts_new_flags(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         try:
             code = run_cli(["state-diff", "missing", "--db-path", storage.db_path, "--diff-limit", "5", "--full"])
@@ -332,6 +373,7 @@ class TestRunCLIDiffArgs:
             storage.close()
 
     def test_state_diff_negative_limit_exits(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         try:
             with pytest.raises(SystemExit, match="--diff-limit must be >= 0"):
@@ -340,6 +382,7 @@ class TestRunCLIDiffArgs:
             storage.close()
 
     def test_inspect_accepts_diff_flags(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         try:
             code = run_cli(["inspect", "missing", "--db-path", storage.db_path, "--state-history", "--diff-limit", "5", "--full"])
@@ -350,6 +393,7 @@ class TestRunCLIDiffArgs:
 
 class TestRunCLIQuickstart:
     def test_quickstart_starter_without_keys_auto_falls_back(self, capsys) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             with patch("agent_runtime.cli._run_setup_flow") as mock_setup:
                 code = run_cli(["quickstart", "--path", d])
@@ -371,6 +415,7 @@ class TestRunCLIQuickstart:
             assert "COMPLETED" in statuses
 
     def test_quickstart_branching_sample_first_success(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             code = run_cli(["quickstart", "--path", d, "--sample", "branching"])
             assert code == 0
@@ -386,6 +431,7 @@ class TestRunCLIQuickstart:
             assert "COMPLETED" in statuses
 
     def test_quickstart2_alias_warns_and_still_runs(self, capsys) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             code = run_cli(["quickstart2", "--path", d])
             assert code == 0

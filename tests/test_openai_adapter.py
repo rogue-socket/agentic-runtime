@@ -22,6 +22,7 @@ from agent_runtime.llm import LLMRegistry, LLMProvider, ModelConfig
 
 
 def _mock_openai_response(text: str = "Hello!", usage: Optional[Dict] = None) -> bytes:
+    """Function implementation."""
     body: Dict[str, Any] = {
         "choices": [
             {"message": {"role": "assistant", "content": text}}
@@ -33,6 +34,7 @@ def _mock_openai_response(text: str = "Hello!", usage: Optional[Dict] = None) ->
 
 
 def _mock_openai_tool_call_response() -> bytes:
+    """Function implementation."""
     body: Dict[str, Any] = {
         "choices": [
             {
@@ -59,6 +61,7 @@ def _mock_openai_tool_call_response() -> bytes:
 
 
 def _urlopen_mock(response_bytes: bytes) -> MagicMock:
+    """Function implementation."""
     mock_resp = MagicMock()
     mock_resp.read.return_value = response_bytes
     mock_resp.__enter__ = lambda s: s
@@ -70,6 +73,7 @@ def _urlopen_mock(response_bytes: bytes) -> MagicMock:
 
 
 def test_openai_adapter_call_success() -> None:
+    """Function implementation."""
     adapter = OpenAIAdapter()
     mock_resp = _urlopen_mock(_mock_openai_response("Test output"))
 
@@ -91,6 +95,7 @@ def test_openai_adapter_call_success() -> None:
 
 
 def test_openai_adapter_with_system_prompt() -> None:
+    """Function implementation."""
     adapter = OpenAIAdapter()
     mock_resp = _urlopen_mock(_mock_openai_response("With system"))
 
@@ -115,6 +120,7 @@ def test_openai_adapter_with_system_prompt() -> None:
 
 
 def test_openai_adapter_missing_key() -> None:
+    """Function implementation."""
     adapter = OpenAIAdapter()
     with pytest.raises(ValueError, match="Missing OpenAI API key"):
         adapter.call(
@@ -129,6 +135,7 @@ def test_openai_adapter_missing_key() -> None:
 
 
 def test_openai_adapter_custom_base_url() -> None:
+    """Function implementation."""
     adapter = OpenAIAdapter()
     mock_resp = _urlopen_mock(_mock_openai_response("custom"))
 
@@ -148,6 +155,7 @@ def test_openai_adapter_custom_base_url() -> None:
 
 
 def test_openai_adapter_no_choices_raises() -> None:
+    """Function implementation."""
     adapter = OpenAIAdapter()
     body = json.dumps({"choices": [], "model": "gpt-4o"}).encode("utf-8")
     mock_resp = _urlopen_mock(body)
@@ -166,6 +174,7 @@ def test_openai_adapter_no_choices_raises() -> None:
 
 
 def test_openai_adapter_empty_message_raises() -> None:
+    """Function implementation."""
     adapter = OpenAIAdapter()
     body = json.dumps({
         "choices": [{"message": {"role": "assistant", "content": None}}],
@@ -187,6 +196,7 @@ def test_openai_adapter_empty_message_raises() -> None:
 
 
 def test_openai_adapter_usage_returned() -> None:
+    """Function implementation."""
     adapter = OpenAIAdapter()
     usage = {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}
     mock_resp = _urlopen_mock(_mock_openai_response("ok", usage=usage))
@@ -206,6 +216,7 @@ def test_openai_adapter_usage_returned() -> None:
 
 
 def test_openai_adapter_params_forwarded() -> None:
+    """Function implementation."""
     adapter = OpenAIAdapter()
     mock_resp = _urlopen_mock(_mock_openai_response("ok"))
 
@@ -228,6 +239,7 @@ def test_openai_adapter_params_forwarded() -> None:
 
 
 def test_openai_adapter_no_system_only_user_message() -> None:
+    """Function implementation."""
     adapter = OpenAIAdapter()
     mock_resp = _urlopen_mock(_mock_openai_response("ok"))
 
@@ -249,6 +261,7 @@ def test_openai_adapter_no_system_only_user_message() -> None:
 
 
 def test_openai_adapter_native_tool_call_request_and_parse() -> None:
+    """Function implementation."""
     adapter = OpenAIAdapter()
     mock_resp = _urlopen_mock(_mock_openai_tool_call_response())
 
@@ -307,6 +320,7 @@ def test_openai_adapter_native_tool_call_request_and_parse() -> None:
 
 
 def _make_http_error(code: int, body: str = "") -> urllib.error.HTTPError:
+    """Function implementation."""
     import urllib.error
     exc = urllib.error.HTTPError(
         url="https://api.example.com",
@@ -451,6 +465,7 @@ def test_exponential_backoff_delays() -> None:
 
 
 def test_client_routes_to_openai() -> None:
+    """Function implementation."""
     registry = LLMRegistry()
     provider = LLMProvider(name="openai", api_key_env="OPENAI_API_KEY")
     provider.add_model(ModelConfig(model_id="gpt-4o"))

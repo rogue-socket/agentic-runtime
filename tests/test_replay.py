@@ -26,14 +26,17 @@ class CountingTool:
     retries = None
 
     def __init__(self) -> None:
+        """Function implementation."""
         self.calls = 0
 
     async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+        """Function implementation."""
         self.calls += 1
         return ToolResult(success=True, output={"message": input.get("message")}, error=None, metadata=None)
 
 
 def test_basic_replay() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     tool = CountingTool()
@@ -53,6 +56,7 @@ def test_basic_replay() -> None:
 
 
 def test_replay_state_matches() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     tool_registry.register(CountingTool())
@@ -68,6 +72,7 @@ def test_replay_state_matches() -> None:
 
 
 def test_replay_does_not_call_tools() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     tool = CountingTool()
@@ -85,11 +90,13 @@ def test_replay_does_not_call_tools() -> None:
 
 
 def test_replay_step_limit() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     tool_registry.register(CountingTool())
 
     def model_step(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"summary": "ok"}
 
     steps = [
@@ -106,6 +113,7 @@ def test_replay_step_limit() -> None:
 
 
 def test_replay_running_run_errors() -> None:
+    """Function implementation."""
     storage = make_storage()
     from agent_runtime.core import Run, RunState
     run = Run(

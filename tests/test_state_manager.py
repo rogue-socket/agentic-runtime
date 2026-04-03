@@ -10,12 +10,14 @@ from agent_runtime.state import RuntimeState
 
 
 def test_set_get() -> None:
+    """Function implementation."""
     state = RuntimeState({"inputs": {"issue": "x"}, "steps": {}, "runtime": {}})
     state.set("runtime.mode", "test", step_name="executor")
     assert state.get("runtime.mode") == "test"
 
 
 def test_step_output_isolation() -> None:
+    """Function implementation."""
     state = RuntimeState({"inputs": {"issue": "x"}, "steps": {}, "runtime": {}})
     state.set_step_output("step_a", {"summary": "a"})
     state.set_step_output("step_b", {"summary": "b"})
@@ -25,6 +27,7 @@ def test_step_output_isolation() -> None:
 
 
 def test_snapshot_is_copy() -> None:
+    """Function implementation."""
     state = RuntimeState({"inputs": {"issue": "x"}, "steps": {}, "runtime": {}})
     snap = state.snapshot()
     snap["inputs"]["issue"] = "y"
@@ -32,6 +35,7 @@ def test_snapshot_is_copy() -> None:
 
 
 def test_diff() -> None:
+    """Function implementation."""
     before = {"inputs": {"issue": "x"}, "steps": {}, "runtime": {}}
     after = {"inputs": {"issue": "x"}, "steps": {"a": {"ok": True}}, "runtime": {}}
     diff = RuntimeState.diff(before, after)
@@ -39,6 +43,7 @@ def test_diff() -> None:
 
 
 def test_overwrite_warning(capsys) -> None:
+    """Function implementation."""
     state = RuntimeState({"inputs": {"issue": "x"}, "steps": {}, "runtime": {}})
     state.set("runtime.flag", True, step_name="s1")
     state.set("runtime.flag", False, step_name="s2")

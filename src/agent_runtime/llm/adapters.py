@@ -44,6 +44,7 @@ class MockAdapter:
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResponse:
         # Simulate slight delay
+        """Function implementation."""
         time.sleep(0.5)
         
         tool_calls = []
@@ -337,6 +338,7 @@ class OpenAIAdapter:
         timeout: int = DEFAULT_TIMEOUT,
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResponse:
+        """Function implementation."""
         if not api_key:
             raise ValueError("Missing OpenAI API key.")
 
@@ -441,6 +443,7 @@ class AnthropicAdapter:
         timeout: int = DEFAULT_TIMEOUT,
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResponse:
+        """Function implementation."""
         if not api_key:
             raise ValueError("Missing Anthropic API key.")
 
@@ -583,6 +586,7 @@ class GeminiAdapter:
         timeout: int = DEFAULT_TIMEOUT,
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResponse:
+        """Function implementation."""
         if not api_key:
             raise ValueError("Missing Gemini API key.")
 

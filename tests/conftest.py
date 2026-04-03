@@ -49,10 +49,12 @@ class FakeLLMClient:
     """Fake LLM client that returns pre-configured responses."""
 
     def __init__(self, responses):
+        """Function implementation."""
         self.responses = list(responses)
         self.calls = []
 
     def call(self, **kwargs):
+        """Function implementation."""
         self.calls.append(kwargs)
         text = self.responses.pop(0) if self.responses else "empty"
         return LLMResponse(
@@ -64,6 +66,7 @@ class FakeTool:
     """Minimal tool that satisfies the Tool protocol."""
 
     def __init__(self, name, output=None):
+        """Function implementation."""
         self.name = name
         self.description = f"Fake {name}"
         self.input_schema = {"type": "object", "properties": {}}
@@ -72,14 +75,17 @@ class FakeTool:
         self._output = output or {"result": "ok"}
 
     async def execute(self, input, context):
+        """Function implementation."""
         return ToolResult(success=True, output=self._output, error=None, metadata=None)
 
 
 class FakeToolRegistry:
     def __init__(self, tools=None):
+        """Function implementation."""
         self._tools = {t.name: t for t in (tools or [])}
 
     def get(self, name):
+        """Function implementation."""
         if name not in self._tools:
             raise KeyError(f"Tool '{name}' not found")
         return self._tools[name]

@@ -383,6 +383,7 @@ class RunComparison:
 
     @property
     def has_diffs(self) -> bool:
+        """Function implementation."""
         return len(self.diffs) > 0
 
 

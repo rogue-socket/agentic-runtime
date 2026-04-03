@@ -67,6 +67,7 @@ class StructuredLogger:
         self._level = _LEVELS.get(level, 1)
 
     def _emit(self, level: int, event: str, payload: Dict[str, Any]) -> None:
+        """Function implementation."""
         if level < self._level:
             return
         record = {"event": event, **payload}

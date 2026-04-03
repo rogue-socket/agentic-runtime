@@ -48,6 +48,7 @@ class FileTool:
     retries: Optional[int] = None
 
     def __init__(self, root: Optional[str] = None) -> None:
+        """Function implementation."""
         self.root = os.path.realpath(root or _get_default_root())
 
     def _safe_path(self, relative: str) -> Optional[str]:
@@ -62,6 +63,7 @@ class FileTool:
         return resolved
 
     async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+        """Function implementation."""
         action = input.get("action", "")
         rel_path = input.get("path", "")
         content = input.get("content", "")

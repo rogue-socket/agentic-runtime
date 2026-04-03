@@ -19,6 +19,7 @@ WORKFLOW_SOURCES = (
 
 
 def _all_workflow_specs() -> list[tuple[Path, Path, Path]]:
+    """Function implementation."""
     specs: list[tuple[Path, Path, Path]] = []
     for workflows_dir, functions_dir, agents_dir in WORKFLOW_SOURCES:
         for workflow_path in sorted(workflows_dir.rglob("*.yaml")):
@@ -51,6 +52,7 @@ def test_all_workflow_files_parse_and_agent_refs_resolve(
     functions_dir: Path,
     agents_dir: Path,
 ) -> None:
+    """Function implementation."""
     workflow = load_workflow(str(workflow_path), functions_dir=str(functions_dir))
 
     assert workflow["workflow_id"]
@@ -95,6 +97,7 @@ def test_no_llm_workflows_execute(
     workflow_rel_path: str,
     expected_status: str,
 ) -> None:
+    """Function implementation."""
     workflow_path = ROOT / workflow_rel_path
     functions_dir = ROOT / "functions"
 

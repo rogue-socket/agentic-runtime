@@ -32,6 +32,7 @@ class ModelConfig:
     extra: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
+        """Function implementation."""
         d: Dict[str, Any] = {
             "model_id": self.model_id,
             "temperature": self.temperature,
@@ -62,20 +63,25 @@ class LLMProvider:
         return os.environ.get(self.api_key_env)
 
     def has_credentials(self) -> bool:
+        """Function implementation."""
         return self.resolve_api_key() is not None
 
     # ---- model helpers -----
 
     def add_model(self, config: ModelConfig) -> None:
+        """Function implementation."""
         self.models[config.model_id] = config
 
     def get_model(self, model_id: str) -> Optional[ModelConfig]:
+        """Function implementation."""
         return self.models.get(model_id)
 
     def list_models(self) -> List[str]:
+        """Function implementation."""
         return list(self.models.keys())
 
     def to_dict(self) -> Dict[str, Any]:
+        """Function implementation."""
         d: Dict[str, Any] = {
             "name": self.name,
             "api_key_env": self.api_key_env,
@@ -111,6 +117,7 @@ class LLMRegistry:
     """
 
     def __init__(self, default_provider: Optional[str] = None) -> None:
+        """Function implementation."""
         self._providers: Dict[str, LLMProvider] = {}
         self._default_provider = default_provider
 
@@ -120,32 +127,39 @@ class LLMRegistry:
 
     @property
     def default_provider(self) -> Optional[str]:
+        """Function implementation."""
         return self._default_provider
 
     @default_provider.setter
     def default_provider(self, name: Optional[str]) -> None:
+        """Function implementation."""
         self._default_provider = name
 
     # ---- registration -----
 
     def register_provider(self, provider: LLMProvider) -> None:
+        """Function implementation."""
         self._providers[provider.name] = provider
 
     def remove_provider(self, name: str) -> None:
+        """Function implementation."""
         self._providers.pop(name, None)
 
     # ---- lookup -----
 
     def get_provider(self, name: str) -> Optional[LLMProvider]:
+        """Function implementation."""
         return self._providers.get(name)
 
     def get_model(self, provider_name: str, model_id: str) -> Optional[ModelConfig]:
+        """Function implementation."""
         provider = self._providers.get(provider_name)
         if provider is None:
             return None
         return provider.get_model(model_id)
 
     def list_providers(self) -> List[str]:
+        """Function implementation."""
         return list(self._providers.keys())
 
     def list_all_models(self) -> Dict[str, List[str]]:
@@ -161,6 +175,7 @@ class LLMRegistry:
     # ---- serialization -----
 
     def to_dict(self) -> Dict[str, Any]:
+        """Function implementation."""
         return {name: p.to_dict() for name, p in self._providers.items()}
 
     # ---- loading from config -----

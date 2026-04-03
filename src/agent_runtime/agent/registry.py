@@ -13,6 +13,7 @@ class AgentRegistry:
     """In-memory index of agent definitions, keyed by ``(agent_id, version)``."""
 
     def __init__(self) -> None:
+        """Function implementation."""
         self._agents: Dict[str, Dict[str, AgentDefinition]] = {}
 
     def register(self, defn: AgentDefinition) -> None:
@@ -67,6 +68,7 @@ class AgentRegistry:
 
     @staticmethod
     def _latest(versions: Dict[str, AgentDefinition]) -> AgentDefinition:
+        """Function implementation."""
         key = sorted(versions.keys(), key=_version_sort_key)[-1]
         return versions[key]
 

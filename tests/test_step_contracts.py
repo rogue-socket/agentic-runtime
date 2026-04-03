@@ -17,6 +17,7 @@ from conftest import make_storage, make_memory_manager, functions_dir
 
 
 def test_contract_future_read_rejected() -> None:
+    """Function implementation."""
     raw = """
 schema_version: v1
 workflow:
@@ -40,6 +41,7 @@ steps:
 
 
 def test_contract_output_collision_rejected() -> None:
+    """Function implementation."""
     raw = """
 schema_version: v1
 workflow:
@@ -63,10 +65,12 @@ steps:
 
 
 def test_runtime_output_contract_enforced() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def bad_function(inputs):
+        """Function implementation."""
         return {"wrong": "x"}
 
     steps = [
@@ -86,6 +90,7 @@ def test_runtime_output_contract_enforced() -> None:
 
 
 def test_contract_inputs_list_maps_correctly() -> None:
+    """Function implementation."""
     raw = """
 schema_version: v1
 workflow:

@@ -145,6 +145,7 @@ def render_path_template(text: str, state: Dict[str, Any]) -> str:
         'Issue: x'
     """
     def replace(match: re.Match[str]) -> str:
+        """Function implementation."""
         path = match.group(1).strip()
         return _sanitize_interpolated_value(resolve_path(path, state))
 

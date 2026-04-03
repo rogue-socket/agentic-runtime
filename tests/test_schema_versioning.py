@@ -16,6 +16,7 @@ from agent_runtime.schema_versioning import (
 
 
 def test_all_component_schema_versions_share_same_baseline() -> None:
+    """Function implementation."""
     assert WORKFLOW_SCHEMA_VERSION_CURRENT == SCHEMA_VERSION_BASELINE
     assert AGENT_SCHEMA_VERSION_CURRENT == SCHEMA_VERSION_BASELINE
     assert RUNTIME_CONFIG_SCHEMA_VERSION_CURRENT == SCHEMA_VERSION_BASELINE
@@ -24,6 +25,7 @@ def test_all_component_schema_versions_share_same_baseline() -> None:
 
 
 def test_normalize_version_supports_minor_increments() -> None:
+    """Function implementation."""
     assert normalize_version("v1") == "v1"
     assert normalize_version("1") == "v1"
     assert normalize_version("v1.1") == "v1.1"
@@ -31,6 +33,7 @@ def test_normalize_version_supports_minor_increments() -> None:
 
 
 def test_normalize_version_rejects_invalid_formats() -> None:
+    """Function implementation."""
     with pytest.raises(ValueError):
         normalize_version("version1")
     with pytest.raises(ValueError):
@@ -38,11 +41,13 @@ def test_normalize_version_rejects_invalid_formats() -> None:
 
 
 def test_version_components_support_numeric_ordering() -> None:
+    """Function implementation."""
     assert version_components("v1.10") > version_components("v1.2")
     assert version_components("v2") > version_components("v1.99")
 
 
 def test_parse_required_schema_version_validates_expected_value() -> None:
+    """Function implementation."""
     raw = {"schema_version": "v1"}
     parsed = parse_required_schema_version(
         raw,

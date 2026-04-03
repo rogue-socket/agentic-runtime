@@ -112,6 +112,7 @@ class AgentStrategyProtocol(Protocol):
         tool_registry: ToolRegistry,
         inputs: Dict[str, Any],
         context: AgentContext,
+                      """Function implementation."""
     ) -> AgentResult: ...
 
 
@@ -607,6 +608,7 @@ class SingleCallStrategy:
         inputs: Dict[str, Any],
         context: AgentContext,
     ) -> AgentResult:
+        """Function implementation."""
         pipeline_state: Dict[str, Any] = {"inputs": inputs}
         tools = _build_tool_schemas(agent, tool_registry) if agent.tools else None
         turns, pipeline_state, last_text, _ = await _run_pipeline(
@@ -652,6 +654,7 @@ class ReActStrategy:
         inputs: Dict[str, Any],
         context: AgentContext,
     ) -> AgentResult:
+        """Function implementation."""
         max_iter = agent.strategy.max_iterations
         # TODO(eng): make referencing configurable (options: named ids, positional prev.*, accumulator)
         pipeline_state: Dict[str, Any] = {"inputs": inputs}

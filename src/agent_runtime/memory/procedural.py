@@ -23,6 +23,7 @@ class ProceduralMemory:
     """
 
     def __init__(self, db_path: Optional[str] = None) -> None:
+        """Function implementation."""
         self._db_path = db_path
         self._store: Dict[str, Any] = {}
         self._conn: Optional[sqlite3.Connection] = None
@@ -35,12 +36,14 @@ class ProceduralMemory:
     # ------------------------------------------------------------------
 
     def _open_connection(self) -> sqlite3.Connection:
+        """Function implementation."""
         assert self._db_path is not None
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row
         return conn
 
     def _init_db(self) -> None:
+        """Function implementation."""
         assert self._conn is not None
         self._conn.execute(
             """

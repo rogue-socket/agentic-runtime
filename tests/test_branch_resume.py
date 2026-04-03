@@ -23,10 +23,12 @@ class FlakyTool:
     retries = None
 
     async def execute(self, input, context: RuntimeContext) -> ToolResult:
+        """Function implementation."""
         raise ValueError("fail")
 
 
 def test_resume_after_branch_follows_same_path() -> None:
+    """Function implementation."""
     yaml_text = """
 schema_version: v1
 workflow:

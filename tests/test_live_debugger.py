@@ -8,9 +8,11 @@ from agent_runtime.debugger import LiveDebugger, load_debug_profile, save_debug_
 
 class _InputScript:
     def __init__(self, commands: list[str]) -> None:
+        """Function implementation."""
         self._commands = iter(commands)
 
     def __call__(self, _: str) -> str:
+        """Function implementation."""
         return next(self._commands, "c")
 
 
@@ -21,6 +23,7 @@ def _payload(
     step_type: str = "function",
     execution_index: int = 1,
 ) -> Dict[str, object]:
+    """Function implementation."""
     return {
         "run_id": run_id,
         "step_id": step_id,
@@ -30,6 +33,7 @@ def _payload(
 
 
 def test_debugger_pauses_on_first_debug_event() -> None:
+    """Function implementation."""
     outputs: list[str] = []
     debugger = LiveDebugger(
         load_latest_state=lambda _run_id: {},
@@ -45,6 +49,7 @@ def test_debugger_pauses_on_first_debug_event() -> None:
 
 
 def test_breakpoint_by_step_id() -> None:
+    """Function implementation."""
     debugger = LiveDebugger(
         load_latest_state=lambda _run_id: {},
         breakpoints=["step:target"],
@@ -60,6 +65,7 @@ def test_breakpoint_by_step_id() -> None:
 
 
 def test_next_command_pauses_on_next_workflow_step() -> None:
+    """Function implementation."""
     debugger = LiveDebugger(
         load_latest_state=lambda _run_id: {},
         start_paused=True,
@@ -78,6 +84,7 @@ def test_next_command_pauses_on_next_workflow_step() -> None:
 
 
 def test_into_command_pauses_on_nested_event() -> None:
+    """Function implementation."""
     debugger = LiveDebugger(
         load_latest_state=lambda _run_id: {},
         start_paused=True,
@@ -98,6 +105,7 @@ def test_into_command_pauses_on_nested_event() -> None:
 
 
 def test_out_command_pauses_when_returning_to_shallower_depth() -> None:
+    """Function implementation."""
     debugger = LiveDebugger(
         load_latest_state=lambda _run_id: {},
         start_paused=True,
@@ -113,6 +121,7 @@ def test_out_command_pauses_when_returning_to_shallower_depth() -> None:
 
 
 def test_expression_breakpoint_matches_payload_state() -> None:
+    """Function implementation."""
     debugger = LiveDebugger(
         load_latest_state=lambda _run_id: {
             "inputs": {"priority": "high"},
@@ -131,6 +140,7 @@ def test_expression_breakpoint_matches_payload_state() -> None:
 
 
 def test_debug_profile_roundtrip_json(tmp_path) -> None:
+    """Function implementation."""
     profile_path = tmp_path / "debug-profile.json"
     save_debug_profile(
         str(profile_path),
@@ -145,6 +155,7 @@ def test_debug_profile_roundtrip_json(tmp_path) -> None:
 
 
 def test_debugger_persists_event_log(tmp_path) -> None:
+    """Function implementation."""
     debugger = LiveDebugger(
         load_latest_state=lambda _run_id: {},
         start_paused=False,

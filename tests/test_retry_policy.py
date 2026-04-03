@@ -18,12 +18,14 @@ from conftest import make_storage, make_memory_manager
 
 
 def test_retry_success_attempt_count() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     attempts = {"count": 0}
 
     def flaky_function(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         attempts["count"] += 1
         if attempts["count"] < 2:
             raise ValueError("transient")
@@ -48,10 +50,12 @@ def test_retry_success_attempt_count() -> None:
 
 
 def test_retry_exhaustion_marks_failed() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def always_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         raise ValueError("fail")
 
     steps = [
@@ -73,10 +77,12 @@ def test_retry_exhaustion_marks_failed() -> None:
 
 
 def test_no_retry_defaults_to_one_attempt() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"ok": True}
 
     steps = [StepDefinition(step_id="ok", step_type="function", function_callable=ok, input_spec={"issue": "inputs.issue"})]
@@ -88,6 +94,7 @@ def test_no_retry_defaults_to_one_attempt() -> None:
 
 
 def test_workflow_retry_validation(tmp_path) -> None:
+    """Function implementation."""
     bad_yaml = tmp_path / "bad.yaml"
     bad_yaml.write_text(
         "name: wf\nsteps:\n  - id: a\n    type: function\n    function: stubs.generate_summary\n    retry:\n      attempts: 0\n",

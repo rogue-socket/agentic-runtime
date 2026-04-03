@@ -19,13 +19,16 @@ from conftest import make_storage, make_memory_manager
 
 
 def test_resume_from_failed_step() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def step_one(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"one": True}
 
     def step_two_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         raise ValueError("boom")
 
     steps = [
@@ -42,6 +45,7 @@ def test_resume_from_failed_step() -> None:
     assert resume_step == "step_two"
 
     def step_two_ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"two": True}
 
     resume_steps = [
@@ -65,11 +69,13 @@ def test_resume_from_failed_step() -> None:
 
 
 def test_validate_resume_blocks_completed() -> None:
+    """Function implementation."""
     with pytest.raises(StepExecutionError):
         validate_resume(StepStatus.COMPLETED)
 
 
 def test_validate_resume_blocks_running() -> None:
+    """Function implementation."""
     with pytest.raises(StepExecutionError):
         validate_resume(StepStatus.RUNNING)
 
@@ -88,14 +94,17 @@ class _FailingTool:
     retries = None
 
     async def execute(self, input, context: RuntimeContext) -> ToolResult:
+        """Function implementation."""
         raise ValueError("tool failure")
 
 
 def test_resume_policy_blocks_non_retryable_error_type() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def step_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         raise ValueError("boom")
 
     steps = [StepDefinition(step_id="step_fail", step_type="function", function_callable=step_fail)]
@@ -111,10 +120,12 @@ def test_resume_policy_blocks_non_retryable_error_type() -> None:
 
 
 def test_resume_policy_allows_retryable_error_type() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
 
     def step_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         raise ValueError("boom")
 
     steps = [StepDefinition(step_id="step_fail", step_type="function", function_callable=step_fail)]
@@ -129,6 +140,7 @@ def test_resume_policy_allows_retryable_error_type() -> None:
 
 
 def test_resume_policy_blocks_non_idempotent_tool_step() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     tool_registry.register(_FailingTool())
@@ -146,6 +158,7 @@ def test_resume_policy_blocks_non_idempotent_tool_step() -> None:
 
 
 def test_resume_policy_allows_idempotent_tool_step() -> None:
+    """Function implementation."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     tool_registry.register(_FailingTool())

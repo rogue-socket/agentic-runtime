@@ -14,10 +14,12 @@ from agent_runtime.utils import utc_now
 
 
 def _make_storage(tmp_path: str) -> SQLiteStorage:
+    """Function implementation."""
     return SQLiteStorage(os.path.join(tmp_path, "test.db"))
 
 
 def _seed_run(storage: SQLiteStorage, run_id: str, steps: list[StepExecution]) -> None:
+    """Function implementation."""
     run = Run(
         run_id=run_id,
         workflow_id="wf1",
@@ -52,6 +54,7 @@ WORKFLOW_STEPS = [
 
 class TestBranchCoverage:
     def test_full_coverage(self, tmp_path):
+        """Function implementation."""
         storage = _make_storage(str(tmp_path))
         # Run 1 takes the escalate branch
         step1 = StepExecution(
@@ -76,6 +79,7 @@ class TestBranchCoverage:
         assert result.untested == []
 
     def test_partial_coverage(self, tmp_path):
+        """Function implementation."""
         storage = _make_storage(str(tmp_path))
         step = StepExecution(
             step_id="classify", step_type="agent", status=StepStatus.COMPLETED,
@@ -93,6 +97,7 @@ class TestBranchCoverage:
         assert result.untested[0]["target"] == "close"
 
     def test_zero_coverage(self, tmp_path):
+        """Function implementation."""
         storage = _make_storage(str(tmp_path))
         replayer = RunReplayer(storage, printer=lambda _: None)
         result = replayer.branch_coverage(WORKFLOW_STEPS, [])

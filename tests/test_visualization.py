@@ -24,15 +24,18 @@ class EchoTool:
     retries = None
 
     async def execute(self, input, context: RuntimeContext) -> ToolResult:
+        """Function implementation."""
         return ToolResult(success=True, output={"message": input["message"]}, error=None, metadata=None)
 
 
 def _generate_summary(inputs: dict) -> dict:
+    """Function implementation."""
     issue = inputs.get("issue", "")
     return {"summary": f"Summary of issue: {issue}"}
 
 
 def test_ascii_visualization_contains_sections() -> None:
+    """Function implementation."""
     storage = make_storage()
     tools = ToolRegistry()
     tools.register(EchoTool())
@@ -67,6 +70,7 @@ def test_ascii_visualization_contains_sections() -> None:
 
 
 def test_html_visualization_writes_file() -> None:
+    """Function implementation."""
     storage = make_storage()
     tools = ToolRegistry()
     tools.register(EchoTool())

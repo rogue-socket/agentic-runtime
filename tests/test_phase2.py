@@ -41,6 +41,7 @@ from conftest import FakeLLMClient, FakeTool, FakeToolRegistry, fake_agent_conte
 
 
 def _run(coro):
+    """Function implementation."""
     return asyncio.run(coro)
 
 
@@ -48,6 +49,7 @@ def _run(coro):
 
 
 def _ctx():
+    """Function implementation."""
     return fake_agent_context()
 
 
@@ -56,33 +58,40 @@ def _ctx():
 
 class TestPipelineStep:
     def test_valid_model_step(self):
+        """Function implementation."""
         s = PipelineStep(id="a", type="model", prompt="Hello")
         assert s.type == "model"
         assert s.prompt == "Hello"
 
     def test_valid_tool_step(self):
+        """Function implementation."""
         s = PipelineStep(id="a", type="tool", tool="tools.echo")
         assert s.type == "tool"
         assert s.tool == "tools.echo"
 
     def test_invalid_type_raises(self):
+        """Function implementation."""
         with pytest.raises(AgentValidationError, match="Invalid pipeline step type"):
             PipelineStep(id="a", type="agent")
 
     def test_model_without_prompt_raises(self):
+        """Function implementation."""
         with pytest.raises(AgentValidationError, match="requires a 'prompt'"):
             PipelineStep(id="a", type="model", prompt="")
 
     def test_tool_without_tool_raises(self):
+        """Function implementation."""
         with pytest.raises(AgentValidationError, match="requires a 'tool'"):
             PipelineStep(id="a", type="tool")
 
     def test_model_inherits_defaults(self):
+        """Function implementation."""
         s = PipelineStep(id="a", type="model", prompt="Hello")
         assert s.model is None  # will inherit from agent
         assert s.system is None  # will inherit from agent
 
     def test_model_override(self):
+        """Function implementation."""
         s = PipelineStep(
             id="a", type="model", prompt="Hello",
             model="openai/gpt-4", system="Override system"
@@ -96,6 +105,7 @@ class TestPipelineStep:
 
 class TestPipelineParsing:
     def test_multi_step_pipeline(self):
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
@@ -137,6 +147,7 @@ class TestPipelineParsing:
             os.unlink(path)
 
     def test_duplicate_pipeline_ids_raises(self):
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
@@ -164,6 +175,7 @@ class TestPipelineParsing:
             os.unlink(path)
 
     def test_tool_not_in_allowlist_raises(self):
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
@@ -195,25 +207,30 @@ class TestPipelineParsing:
 
 class TestPipelinePromptRendering:
     def test_render_inputs(self):
+        """Function implementation."""
         state = {"inputs": {"code": "x = 1"}}
         result = _render_pipeline_prompt("Review: {{ inputs.code }}", state)
         assert result == "Review: x = 1"
 
     def test_render_step_ref(self):
+        """Function implementation."""
         state = {"inputs": {}, "analyze": {"text": "found bug"}}
         result = _render_pipeline_prompt("Issues: {{ analyze.text }}", state)
         assert result == "Issues: found bug"
 
     def test_render_missing_raises(self):
+        """Function implementation."""
         with pytest.raises(KeyError, match="not found"):
             _render_pipeline_prompt("{{ missing.key }}", {"inputs": {}})
 
     def test_render_structured_value_as_json(self):
+        """Function implementation."""
         state = {"inputs": {"payload": {"b": 2, "a": 1}}}
         result = _render_pipeline_prompt("Payload: {{ inputs.payload }}", state)
         assert result == 'Payload: {"a": 1, "b": 2}'
 
     def test_render_strips_nul_control_characters(self):
+        """Function implementation."""
         state = {"inputs": {"issue": "bad\x00text"}}
         result = _render_pipeline_prompt("Issue: {{ inputs.issue }}", state)
         assert result == "Issue: badtext"
@@ -224,6 +241,7 @@ class TestPipelinePromptRendering:
 
 class TestPipelineToolInputs:
     def test_resolve_dot_path(self):
+        """Function implementation."""
         state = {"analyze": {"file": "/tmp/a.py"}}
         result = _resolve_pipeline_tool_inputs(
             {"path": "analyze.file"}, state
@@ -231,15 +249,18 @@ class TestPipelineToolInputs:
         assert result == {"path": "/tmp/a.py"}
 
     def test_literal_passthrough(self):
+        """Function implementation."""
         result = _resolve_pipeline_tool_inputs(
             {"count": 5, "flag": True}, {}
         )
         assert result == {"count": 5, "flag": True}
 
     def test_none_inputs(self):
+        """Function implementation."""
         assert _resolve_pipeline_tool_inputs(None, {}) == {}
 
     def test_unresolvable_dot_path_literal(self):
+        """Function implementation."""
         result = _resolve_pipeline_tool_inputs(
             {"path": "missing.key"}, {"inputs": {}}
         )
@@ -362,6 +383,7 @@ class TestMultiStepPipeline:
             retries = None
 
             async def execute(self, input, context):
+                """Function implementation."""
                 return ToolResult(success=False, output=None, error="boom", metadata=None)
 
         agent = AgentDefinition(
@@ -409,6 +431,7 @@ class TestPipelinePromptResolution:
 
 class TestFunctionResolver:
     def test_qualified_reference(self):
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mod_path = os.path.join(d, "formatters.py")
             with open(mod_path, "w") as f:
@@ -418,6 +441,7 @@ class TestFunctionResolver:
             assert fn({"text": "hello"}) == {"report": "hello"}
 
     def test_unqualified_reference(self):
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             mod_path = os.path.join(d, "utils.py")
             with open(mod_path, "w") as f:
@@ -426,6 +450,7 @@ class TestFunctionResolver:
             assert fn({}) == {"out": True}
 
     def test_unqualified_ambiguous_raises(self):
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             for name in ["a.py", "b.py"]:
                 with open(os.path.join(d, name), "w") as f:
@@ -434,11 +459,13 @@ class TestFunctionResolver:
                 resolve_function("shared", d)
 
     def test_qualified_missing_file_raises(self):
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             with pytest.raises(ValueError, match="not found"):
                 resolve_function("nonexistent.func", d)
 
     def test_qualified_missing_function_raises(self):
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "mod.py"), "w") as f:
                 f.write("def other(inputs): return {}\n")
@@ -446,6 +473,7 @@ class TestFunctionResolver:
                 resolve_function("mod.missing_func", d)
 
     def test_unqualified_not_found_raises(self):
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "mod.py"), "w") as f:
                 f.write("def other(inputs): return {}\n")
@@ -453,6 +481,7 @@ class TestFunctionResolver:
                 resolve_function("nonexistent", d)
 
     def test_subdirectory_qualified(self):
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             subdir = os.path.join(d, "reporting")
             os.makedirs(subdir)
@@ -463,10 +492,12 @@ class TestFunctionResolver:
             assert fn({}) == {"report": "done"}
 
     def test_missing_directory_raises(self):
+        """Function implementation."""
         with pytest.raises(ValueError, match="not found"):
             resolve_function("func", "/nonexistent/dir")
 
     def test_skips_private_files(self):
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "_private.py"), "w") as f:
                 f.write("def secret(inputs): return {}\n")
@@ -479,31 +510,39 @@ class TestFunctionResolver:
 
 class TestWorkflowStepValidation:
     def test_agent_step_valid(self):
+        """Function implementation."""
         _validate_step({"id": "s1", "type": "agent", "agent": "reviewer"})
 
     def test_agent_step_missing_agent(self):
+        """Function implementation."""
         with pytest.raises(WorkflowValidationError, match="agent"):
             _validate_step({"id": "s1", "type": "agent"})
 
     def test_agent_step_non_string_agent(self):
+        """Function implementation."""
         with pytest.raises(WorkflowValidationError, match="string"):
             _validate_step({"id": "s1", "type": "agent", "agent": 123})
 
     def test_function_step_valid(self):
+        """Function implementation."""
         _validate_step({"id": "s1", "type": "function", "function": "format_markdown"})
 
     def test_function_step_missing_function(self):
+        """Function implementation."""
         with pytest.raises(WorkflowValidationError, match="function"):
             _validate_step({"id": "s1", "type": "function"})
 
     def test_function_step_non_string(self):
+        """Function implementation."""
         with pytest.raises(WorkflowValidationError, match="string"):
             _validate_step({"id": "s1", "type": "function", "function": 123})
 
     def test_tool_step_valid(self):
+        """Function implementation."""
         _validate_step({"id": "s1", "type": "tool", "tool": "tools.echo"})
 
     def test_invalid_type(self):
+        """Function implementation."""
         with pytest.raises(WorkflowValidationError):
             _validate_step({"id": "s1", "type": "invalid"})
 
@@ -513,6 +552,7 @@ class TestWorkflowStepValidation:
 
 class TestWorkflowParsing:
     def test_parse_agent_step(self):
+        """Function implementation."""
         yaml_text = (
             "schema_version: v1\n"
             "workflow:\n"
@@ -533,6 +573,7 @@ class TestWorkflowParsing:
         assert step.agent_version is None
 
     def test_parse_agent_step_with_version(self):
+        """Function implementation."""
         yaml_text = (
             "schema_version: v1\n"
             "workflow:\n"

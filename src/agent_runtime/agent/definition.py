@@ -39,6 +39,7 @@ class StrategyConfig:
     custom_handler: Optional[str] = None  # module.ClassName for custom
 
     def __post_init__(self) -> None:
+        """Function implementation."""
         if self.type not in VALID_STRATEGIES:
             raise AgentValidationError(
                 f"Invalid strategy type '{self.type}'. "
@@ -82,6 +83,7 @@ class PipelineStep:
     inputs: Optional[Dict[str, Any]] = None  # bare dot-paths for tool inputs
 
     def __post_init__(self) -> None:
+        """Function implementation."""
         if self.type not in VALID_PIPELINE_STEP_TYPES:
             raise AgentValidationError(
                 f"Invalid pipeline step type '{self.type}'. "
@@ -141,6 +143,7 @@ class AgentDefinition:
 
     def __post_init__(self) -> None:
         # Validate that all tool steps reference tools in the allowlist
+        """Function implementation."""
         for step in self.pipeline:
             if step.type == "tool" and step.tool and step.tool not in self.tools:
                 raise AgentValidationError(
@@ -307,6 +310,7 @@ def _parse_pipeline(data: Any, path: str) -> List[PipelineStep]:
 
 
 def _parse_strategy(data, path: str) -> StrategyConfig:
+    """Function implementation."""
     if not data:
         return StrategyConfig()
     if isinstance(data, str):
@@ -401,6 +405,7 @@ def _register_prompt_item(
 
 
 def _parse_list(value, field_name: str, path: str) -> list:
+    """Function implementation."""
     if isinstance(value, list):
         return value
     if isinstance(value, str):

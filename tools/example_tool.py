@@ -46,6 +46,7 @@ class ReportBuilderTool:
     async def execute(
         self, input: Dict[str, Any], context: RuntimeContext
     ) -> ToolResult:
+        """Function implementation."""
         title = input.get("title", "Quickstart Report")
         summary = input.get("summary", "")
         priority = input.get("priority", "")
@@ -91,6 +92,7 @@ class PriorityHeuristicTool:
     async def execute(
         self, input: Dict[str, Any], context: RuntimeContext
     ) -> ToolResult:
+        """Function implementation."""
         issue = (input.get("issue") or "").lower()
         if any(token in issue for token in ("outage", "down", "500", "crash")):
             priority = "P0 (critical)"

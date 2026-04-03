@@ -26,6 +26,7 @@ class AgentExecutor:
         tool_registry: ToolRegistry,
         logger: Any = None,
     ) -> None:
+        """Function implementation."""
         self.llm_client = llm_client
         self.tool_registry = tool_registry
         self.logger = logger

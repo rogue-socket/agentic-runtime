@@ -36,6 +36,7 @@ from conftest import FakeLLMClient, FakeTool, FakeToolRegistry, fake_agent_conte
 
 
 def _run(coro):
+    """Function implementation."""
     return asyncio.run(coro)
 
 
@@ -49,18 +50,21 @@ def _simple_pipeline(prompt="Hello {{ inputs.text }}"):
 
 class TestPromptRegistry:
     def test_register_and_get(self):
+        """Function implementation."""
         reg = PromptRegistry()
         entry = PromptEntry(prompt_id="sys", version="v1", text="Hello")
         reg.register(entry)
         assert reg.get("sys", "v1") is entry
 
     def test_get_latest(self):
+        """Function implementation."""
         reg = PromptRegistry()
         reg.register(PromptEntry(prompt_id="sys", version="v1", text="Old"))
         reg.register(PromptEntry(prompt_id="sys", version="v2", text="New"))
         assert reg.get("sys").text == "New"
 
     def test_get_latest_numeric_sort(self):
+        """Function implementation."""
         reg = PromptRegistry()
         for i in [1, 2, 10, 3]:
             reg.register(
@@ -69,28 +73,33 @@ class TestPromptRegistry:
         assert reg.get("p").version == "v10"
 
     def test_duplicate_raises(self):
+        """Function implementation."""
         reg = PromptRegistry()
         reg.register(PromptEntry(prompt_id="p", version="v1", text="a"))
         with pytest.raises(ValueError, match="already registered"):
             reg.register(PromptEntry(prompt_id="p", version="v1", text="b"))
 
     def test_get_missing_raises(self):
+        """Function implementation."""
         reg = PromptRegistry()
         with pytest.raises(KeyError, match="not found"):
             reg.get("nope")
 
     def test_get_missing_version_raises(self):
+        """Function implementation."""
         reg = PromptRegistry()
         reg.register(PromptEntry(prompt_id="p", version="v1", text="a"))
         with pytest.raises(KeyError, match="version 'v9'"):
             reg.get("p", "v9")
 
     def test_resolve_latest(self):
+        """Function implementation."""
         reg = PromptRegistry()
         reg.register(PromptEntry(prompt_id="sys", version="v1", text="Hello"))
         assert reg.resolve("prompts.sys") == "Hello"
 
     def test_resolve_pinned(self):
+        """Function implementation."""
         reg = PromptRegistry()
         reg.register(PromptEntry(prompt_id="sys", version="v1", text="Old"))
         reg.register(PromptEntry(prompt_id="sys", version="v2", text="New"))
@@ -98,11 +107,13 @@ class TestPromptRegistry:
         assert reg.resolve("prompts.sys@v2") == "New"
 
     def test_resolve_bad_prefix(self):
+        """Function implementation."""
         reg = PromptRegistry()
         with pytest.raises(ValueError, match="must start with"):
             reg.resolve("sys.prompt")
 
     def test_list_prompts(self):
+        """Function implementation."""
         reg = PromptRegistry()
         reg.register(PromptEntry(prompt_id="a", version="v2", text="x"))
         reg.register(PromptEntry(prompt_id="a", version="v1", text="y"))
@@ -111,6 +122,7 @@ class TestPromptRegistry:
         assert listing == {"a": ["v1", "v2"], "b": ["v1"]}
 
     def test_from_directory(self):
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "test.yaml")
             with open(path, "w") as f:
@@ -128,6 +140,7 @@ class TestPromptRegistry:
             assert reg.get("farewell").text == "Goodbye"
 
     def test_from_directory_single_prompt(self):
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "single.yaml")
             with open(path, "w") as f:
@@ -141,6 +154,7 @@ class TestPromptRegistry:
             assert reg.resolve("prompts.solo") == "I am alone"
 
     def test_from_directory_missing_dir(self):
+        """Function implementation."""
         reg = PromptRegistry.from_directory("/nonexistent/path")
         assert reg.list_prompts() == {}
 
@@ -150,6 +164,7 @@ class TestPromptRegistry:
 
 class TestAgentDefinition:
     def test_load_minimal(self):
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
@@ -182,6 +197,7 @@ class TestAgentDefinition:
             os.unlink(path)
 
     def test_load_full(self):
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
@@ -241,10 +257,12 @@ class TestAgentDefinition:
             os.unlink(path)
 
     def test_load_missing_file(self):
+        """Function implementation."""
         with pytest.raises(AgentValidationError, match="not found"):
             load_agent_definition("/nonexistent/agent.yaml")
 
     def test_load_missing_required_field(self):
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
@@ -258,6 +276,7 @@ class TestAgentDefinition:
             os.unlink(path)
 
     def test_load_missing_schema_version(self):
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
@@ -271,6 +290,7 @@ class TestAgentDefinition:
             os.unlink(path)
 
     def test_load_missing_agent_key(self):
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
@@ -284,14 +304,17 @@ class TestAgentDefinition:
             os.unlink(path)
 
     def test_invalid_strategy_type(self):
+        """Function implementation."""
         with pytest.raises(AgentValidationError, match="Invalid strategy type"):
             StrategyConfig(type="invalid")
 
     def test_custom_strategy_requires_handler(self):
+        """Function implementation."""
         with pytest.raises(AgentValidationError, match="requires 'custom_handler'"):
             StrategyConfig(type="custom")
 
     def test_to_dict_roundtrip(self):
+        """Function implementation."""
         defn = AgentDefinition(
             agent_id="test",
             version="v1",
@@ -308,6 +331,7 @@ class TestAgentDefinition:
         assert d["agent"]["pipeline"][0]["type"] == "model"
 
     def test_strategy_shorthand_string(self):
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
@@ -333,6 +357,7 @@ class TestAgentDefinition:
             os.unlink(path)
 
     def test_tools_as_single_string(self):
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
@@ -358,6 +383,7 @@ class TestAgentDefinition:
             os.unlink(path)
 
     def test_missing_pipeline_raises(self):
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".yaml", delete=False
         ) as f:
@@ -378,6 +404,7 @@ class TestAgentDefinition:
             os.unlink(path)
 
     def test_pipeline_tool_not_in_allowlist_raises(self):
+        """Function implementation."""
         with pytest.raises(AgentValidationError, match="not in the agent's tools list"):
             AgentDefinition(
                 agent_id="a", version="v1", model="m",
@@ -388,10 +415,12 @@ class TestAgentDefinition:
             )
 
     def test_pipeline_model_step_requires_prompt(self):
+        """Function implementation."""
         with pytest.raises(AgentValidationError, match="requires a 'prompt'"):
             PipelineStep(id="bad", type="model", prompt="")
 
     def test_pipeline_tool_step_requires_tool(self):
+        """Function implementation."""
         with pytest.raises(AgentValidationError, match="requires a 'tool'"):
             PipelineStep(id="bad", type="tool")
 
@@ -401,29 +430,34 @@ class TestAgentDefinition:
 
 class TestAgentRegistry:
     def test_register_and_get(self):
+        """Function implementation."""
         reg = AgentRegistry()
         defn = AgentDefinition(agent_id="a", version="v1", model="m")
         reg.register(defn)
         assert reg.get("a", "v1") is defn
 
     def test_get_latest(self):
+        """Function implementation."""
         reg = AgentRegistry()
         reg.register(AgentDefinition(agent_id="a", version="v1", model="m"))
         reg.register(AgentDefinition(agent_id="a", version="v2", model="m"))
         assert reg.get("a").version == "v2"
 
     def test_duplicate_raises(self):
+        """Function implementation."""
         reg = AgentRegistry()
         reg.register(AgentDefinition(agent_id="a", version="v1", model="m"))
         with pytest.raises(ValueError, match="already registered"):
             reg.register(AgentDefinition(agent_id="a", version="v1", model="m"))
 
     def test_get_missing_raises(self):
+        """Function implementation."""
         reg = AgentRegistry()
         with pytest.raises(KeyError, match="not found"):
             reg.get("nope")
 
     def test_list_agents(self):
+        """Function implementation."""
         reg = AgentRegistry()
         reg.register(AgentDefinition(agent_id="a", version="v2", model="m"))
         reg.register(AgentDefinition(agent_id="a", version="v1", model="m"))
@@ -431,6 +465,7 @@ class TestAgentRegistry:
         assert reg.list_agents() == {"a": ["v1", "v2"], "b": ["v1"]}
 
     def test_from_directory(self):
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "agent.yaml")
             with open(path, "w") as f:
@@ -450,6 +485,7 @@ class TestAgentRegistry:
             assert reg.get("disc_agent").model == "gpt-4"
 
     def test_from_directory_skips_invalid(self):
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             bad = os.path.join(d, "bad.yaml")
             with open(bad, "w") as f:
@@ -472,6 +508,7 @@ class TestAgentRegistry:
             assert "ok" in reg.list_agents()
 
     def test_from_directory_missing(self):
+        """Function implementation."""
         reg = AgentRegistry.from_directory("/nonexistent/path")
         assert reg.list_agents() == {}
 
@@ -481,6 +518,7 @@ class TestAgentRegistry:
 
 class TestStrategyParsing:
     def test_parse_tool_calls(self):
+        """Function implementation."""
         text = (
             "I need to check the file.\n"
             '```tool_call\n{"tool": "tools.file", "input": {"path": "a.py"}}\n```\n'
@@ -492,6 +530,7 @@ class TestStrategyParsing:
         assert calls[0]["input"]["path"] == "a.py"
 
     def test_parse_multiple_tool_calls(self):
+        """Function implementation."""
         text = (
             '```tool_call\n{"tool": "tools.file", "input": {}}\n```\n'
             '```tool_call\n{"tool": "tools.echo", "input": {"message": "hi"}}\n```'
@@ -500,13 +539,16 @@ class TestStrategyParsing:
         assert len(calls) == 2
 
     def test_parse_tool_calls_empty(self):
+        """Function implementation."""
         assert _parse_tool_calls("no tools here") == []
 
     def test_parse_tool_calls_bad_json(self):
+        """Function implementation."""
         text = "```tool_call\nnot json\n```"
         assert _parse_tool_calls(text) == []
 
     def test_parse_final_answer(self):
+        """Function implementation."""
         text = (
             "Thinking...\n"
             '```final_answer\n{"summary": "all good", "score": 9}\n```'
@@ -515,9 +557,11 @@ class TestStrategyParsing:
         assert result == {"summary": "all good", "score": 9}
 
     def test_parse_final_answer_none(self):
+        """Function implementation."""
         assert _parse_final_answer("just text") is None
 
     def test_parse_final_answer_bad_json(self):
+        """Function implementation."""
         text = "```final_answer\nnot json\n```"
         assert _parse_final_answer(text) is None
 
@@ -527,15 +571,18 @@ class TestStrategyParsing:
 
 class TestResolveStrategy:
     def test_resolve_single(self):
+        """Function implementation."""
         s = resolve_strategy(StrategyConfig(type="single"))
         assert isinstance(s, SingleCallStrategy)
 
     def test_resolve_react(self):
+        """Function implementation."""
         s = resolve_strategy(StrategyConfig(type="react"))
         assert isinstance(s, ReActStrategy)
 
     def test_resolve_unknown_raises(self):
         # Can't even construct with invalid type, so test resolve directly
+        """Function implementation."""
         with pytest.raises(ValueError, match="Unknown strategy"):
             cfg = StrategyConfig.__new__(StrategyConfig)
             cfg.type = "bogus"
@@ -549,11 +596,13 @@ class TestResolveStrategy:
 
 
 def _ctx():
+    """Function implementation."""
     return fake_agent_context()
 
 
 class TestSingleCallStrategy:
     def test_no_tools(self):
+        """Function implementation."""
         client = FakeLLMClient(["The answer is 42"])
         agent = AgentDefinition(
             agent_id="a", version="v1", model="m",
@@ -567,6 +616,7 @@ class TestSingleCallStrategy:
         assert len(result.trace) == 1
 
     def test_with_final_answer(self):
+        """Function implementation."""
         client = FakeLLMClient([
             '```final_answer\n{"status": "done"}\n```'
         ])
@@ -583,6 +633,7 @@ class TestSingleCallStrategy:
         # With pipeline, the model step's response contains a tool_call.
         # The pipeline executes it inline (no second LLM call — that's up to
         # the pipeline definition, not the strategy).
+        """Function implementation."""
         client = FakeLLMClient([
             '```tool_call\n{"tool": "tools.echo", "input": {"message": "hi"}}\n```',
         ])
@@ -603,6 +654,7 @@ class TestSingleCallStrategy:
 
 class TestReActStrategy:
     def test_immediate_final_answer(self):
+        """Function implementation."""
         client = FakeLLMClient([
             '```final_answer\n{"result": "fast"}\n```'
         ])
@@ -618,6 +670,7 @@ class TestReActStrategy:
         assert result.iterations == 1
 
     def test_tool_then_final(self):
+        """Function implementation."""
         client = FakeLLMClient([
             '```tool_call\n{"tool": "tools.echo", "input": {}}\n```',
             '```final_answer\n{"done": true}\n```',
@@ -639,6 +692,7 @@ class TestReActStrategy:
 
     def test_max_iterations(self):
         # Returns text without final_answer, pipeline runs each iteration
+        """Function implementation."""
         client = FakeLLMClient([
             "Thinking...",
             "Still thinking...",
@@ -657,6 +711,7 @@ class TestReActStrategy:
         assert result.iterations == 3
 
     def test_plain_text_response(self):
+        """Function implementation."""
         client = FakeLLMClient(["Just a plain answer"])
         agent = AgentDefinition(
             agent_id="a", version="v1", model="m",
@@ -675,6 +730,7 @@ class TestReActStrategy:
 
 class TestAgentExecutor:
     def test_execute_basic(self):
+        """Function implementation."""
         client = FakeLLMClient(["Hello world"])
         executor = AgentExecutor(
             llm_client=client,
@@ -688,6 +744,7 @@ class TestAgentExecutor:
         assert result.outputs == {"text": "Hello world"}
 
     def test_execute_resolves_prompt_reference(self):
+        """Function implementation."""
         client = FakeLLMClient(["Done"])
         prompt_reg = PromptRegistry()
         prompt_reg.register(
@@ -707,6 +764,7 @@ class TestAgentExecutor:
         assert client.calls[0]["system"] == "Resolved system prompt"
 
     def test_execute_resolves_pinned_prompt(self):
+        """Function implementation."""
         client = FakeLLMClient(["Done"])
         prompt_reg = PromptRegistry()
         prompt_reg.register(
@@ -728,6 +786,7 @@ class TestAgentExecutor:
         assert client.calls[0]["system"] == "Old"
 
     def test_execute_inline_prompt_untouched(self):
+        """Function implementation."""
         client = FakeLLMClient(["Done"])
         executor = AgentExecutor(
             llm_client=client,
@@ -742,6 +801,7 @@ class TestAgentExecutor:
         assert client.calls[0]["system"] == "Inline system prompt"
 
     def test_execute_with_react_strategy(self):
+        """Function implementation."""
         client = FakeLLMClient([
             '```tool_call\n{"tool": "tools.echo", "input": {}}\n```',
             '```final_answer\n{"status": "ok"}\n```',
@@ -781,6 +841,7 @@ def _tool_with_schema(name, description, properties, required=None):
 
 class TestBuildToolPreamble:
     def test_basic_preamble(self):
+        """Function implementation."""
         echo = _tool_with_schema(
             "tools.echo", "Echo a message back",
             {"message": {"type": "string", "description": "Text to echo"}},
@@ -803,6 +864,7 @@ class TestBuildToolPreamble:
         assert "```final_answer" in preamble
 
     def test_multiple_tools(self):
+        """Function implementation."""
         t1 = _tool_with_schema("tools.a", "Tool A", {"x": {"type": "integer"}})
         t2 = _tool_with_schema("tools.b", "Tool B", {"y": {"type": "string"}}, required=["y"])
         agent = AgentDefinition(
@@ -819,6 +881,7 @@ class TestBuildToolPreamble:
         assert "y (string, required)" in preamble
 
     def test_unknown_tool_graceful(self):
+        """Function implementation."""
         agent = AgentDefinition(
             agent_id="a", version="v1", model="m",
             tools=["tools.missing"],
@@ -830,6 +893,7 @@ class TestBuildToolPreamble:
         assert "not found" in preamble
 
     def test_tool_without_properties(self):
+        """Function implementation."""
         t = FakeTool("tools.noop")
         t.description = "Does nothing"
         t.input_schema = {"type": "object"}
@@ -846,6 +910,7 @@ class TestBuildToolPreamble:
 
 class TestResolvePipelineSystemInjection:
     def test_react_with_tools_injects_preamble(self):
+        """Function implementation."""
         echo = _tool_with_schema("tools.echo", "Echo", {"msg": {"type": "string"}})
         agent = AgentDefinition(
             agent_id="a", version="v1", model="m",
@@ -860,6 +925,7 @@ class TestResolvePipelineSystemInjection:
         assert "### tools.echo" in result
 
     def test_react_no_tools_no_preamble(self):
+        """Function implementation."""
         agent = AgentDefinition(
             agent_id="a", version="v1", model="m",
             system="Be helpful.",
@@ -871,6 +937,7 @@ class TestResolvePipelineSystemInjection:
         assert result == "Be helpful."
 
     def test_single_strategy_no_preamble(self):
+        """Function implementation."""
         echo = _tool_with_schema("tools.echo", "Echo", {"msg": {"type": "string"}})
         agent = AgentDefinition(
             agent_id="a", version="v1", model="m",
@@ -883,6 +950,7 @@ class TestResolvePipelineSystemInjection:
         assert result == "Be helpful."
 
     def test_auto_tool_prompt_false_skips(self):
+        """Function implementation."""
         echo = _tool_with_schema("tools.echo", "Echo", {"msg": {"type": "string"}})
         agent = AgentDefinition(
             agent_id="a", version="v1", model="m",
@@ -896,6 +964,7 @@ class TestResolvePipelineSystemInjection:
         assert result == "Manual instructions."
 
     def test_no_registry_no_preamble(self):
+        """Function implementation."""
         agent = AgentDefinition(
             agent_id="a", version="v1", model="m",
             tools=["tools.echo"], system="Be helpful.",
@@ -907,6 +976,7 @@ class TestResolvePipelineSystemInjection:
         assert result == "Be helpful."
 
     def test_no_system_prompt_preamble_only(self):
+        """Function implementation."""
         echo = _tool_with_schema("tools.echo", "Echo", {"msg": {"type": "string"}})
         agent = AgentDefinition(
             agent_id="a", version="v1", model="m",

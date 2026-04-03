@@ -18,11 +18,13 @@ from conftest import make_storage, make_memory_manager, functions_dir
 
 
 def _generate_summary(inputs: dict) -> dict:
+    """Function implementation."""
     issue = inputs.get("issue", "")
     return {"summary": f"Summary of issue: {issue}"}
 
 
 def test_workflow_parses_id_and_version() -> None:
+    """Function implementation."""
     raw = """
 schema_version: v1
 workflow:
@@ -39,6 +41,7 @@ steps:
 
 
 def test_workflow_registry_latest_version_resolution(tmp_path) -> None:
+    """Function implementation."""
     wf_dir = tmp_path / "workflows"
     wf_dir.mkdir()
 
@@ -79,6 +82,7 @@ steps:
 
 
 def test_workflow_registry_latest_version_resolution_with_minor_versions(tmp_path) -> None:
+    """Function implementation."""
     wf_dir = tmp_path / "workflows"
     wf_dir.mkdir()
 
@@ -129,6 +133,7 @@ steps:
 
 
 def test_workflow_registry_duplicate_version_rejected() -> None:
+    """Function implementation."""
     registry = WorkflowRegistry()
     workflow = {
         "workflow_id": "agent",
@@ -141,6 +146,7 @@ def test_workflow_registry_duplicate_version_rejected() -> None:
 
 
 def test_run_persists_workflow_version() -> None:
+    """Function implementation."""
     storage = make_storage()
     executor = Executor(
         steps=[
@@ -169,6 +175,7 @@ def test_run_persists_workflow_version() -> None:
 
 
 def test_workflow_parses_optional_default_step_fields() -> None:
+    """Function implementation."""
     raw = """
 schema_version: v1
 workflow:
@@ -190,6 +197,7 @@ steps:
 
 
 def test_workflow_rejects_default_without_optional() -> None:
+    """Function implementation."""
     raw = """
 schema_version: v1
 workflow:

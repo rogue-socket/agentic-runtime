@@ -16,6 +16,7 @@ class StubAdapter:
     provider_name = "openai"
 
     def __init__(self, responses: Optional[List[LLMResponse]] = None) -> None:
+        """Function implementation."""
         self._responses = list(responses or [])
         self.calls = 0
 
@@ -33,6 +34,7 @@ class StubAdapter:
         timeout: int = 60,
         tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResponse:
+        """Function implementation."""
         self.calls += 1
         if self._responses:
             return self._responses.pop(0)
@@ -46,6 +48,7 @@ class StubAdapter:
 
 
 def _client(adapter: StubAdapter, **kwargs: Any) -> LLMClient:
+    """Function implementation."""
     registry = LLMRegistry()
     provider = LLMProvider(name="openai", api_key_env="TEST_OPENAI_KEY")
     provider.add_model(ModelConfig(model_id="gpt-4o"))
@@ -54,6 +57,7 @@ def _client(adapter: StubAdapter, **kwargs: Any) -> LLMClient:
 
 
 def test_max_requests_per_run_is_enforced_pre_call() -> None:
+    """Function implementation."""
     adapter = StubAdapter()
     client = _client(adapter, max_requests_per_run=1)
 
@@ -68,6 +72,7 @@ def test_max_requests_per_run_is_enforced_pre_call() -> None:
 
 
 def test_max_total_tokens_per_run_is_enforced() -> None:
+    """Function implementation."""
     adapter = StubAdapter(
         responses=[
             LLMResponse(
@@ -97,6 +102,7 @@ def test_max_total_tokens_per_run_is_enforced() -> None:
 
 
 def test_max_cost_usd_per_run_uses_configured_pricing() -> None:
+    """Function implementation."""
     adapter = StubAdapter(
         responses=[
             LLMResponse(
@@ -127,6 +133,7 @@ def test_max_cost_usd_per_run_uses_configured_pricing() -> None:
 
 
 def test_rate_limit_rpm_throttles_calls() -> None:
+    """Function implementation."""
     adapter = StubAdapter()
     client = _client(adapter, rate_limit_rpm=1)
 
@@ -142,6 +149,7 @@ def test_rate_limit_rpm_throttles_calls() -> None:
 
 
 def test_usage_normalization_supports_gemini_shape() -> None:
+    """Function implementation."""
     adapter = StubAdapter(
         responses=[
             LLMResponse(

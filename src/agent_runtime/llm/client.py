@@ -37,6 +37,7 @@ class LLMClient:
         max_cost_usd_per_run: float = 0.0,
         pricing_usd_per_1k_tokens: Optional[Dict[str, Dict[str, float]]] = None,
     ) -> None:
+        """Function implementation."""
         self.registry = registry
         self.logger = logger
         self.adapters = adapters or {
@@ -280,6 +281,7 @@ class LLMClient:
 
     @staticmethod
     def _to_int(value: Any) -> int:
+        """Function implementation."""
         if isinstance(value, bool):
             return int(value)
         if isinstance(value, (int, float)):

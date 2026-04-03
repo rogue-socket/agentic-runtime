@@ -11,12 +11,14 @@ from agent_runtime.errors import ConfigValidationError
 
 
 def _with_schema(body: str) -> str:
+    """Function implementation."""
     return "schema_version: v1\n" + body
 
 
 class TestDefaults:
 
     def test_default_values(self) -> None:
+        """Function implementation."""
         cfg = RuntimeConfig()
         assert cfg.schema_version == "v1"
         assert cfg.db_path == "runtime.db"
@@ -42,10 +44,12 @@ class TestDefaults:
 class TestLoadConfig:
 
     def test_missing_file_returns_defaults(self) -> None:
+        """Function implementation."""
         cfg = load_config("/nonexistent/path/runtime.yaml")
         assert cfg.db_path == "runtime.db"
 
     def test_empty_file_returns_defaults(self) -> None:
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("")
             f.flush()
@@ -54,6 +58,7 @@ class TestLoadConfig:
         assert cfg.db_path == "runtime.db"
 
     def test_flat_keys_override(self) -> None:
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(_with_schema("db_path: custom.db\nworkflows_dir: my_workflows\noverwrite_policy: strict\n"))
             f.flush()
@@ -64,6 +69,7 @@ class TestLoadConfig:
         assert cfg.overwrite_policy == "strict"
 
     def test_logging_block(self) -> None:
+        """Function implementation."""
         yaml_text = _with_schema("logging:\n  level: debug\n  format: text\n")
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_text)
@@ -74,6 +80,7 @@ class TestLoadConfig:
         assert cfg.log_format == "text"
 
     def test_memory_block(self) -> None:
+        """Function implementation."""
         yaml_text = _with_schema("memory:\n  working:\n    max_entries: 100\n    max_scratch_bytes: 500000\n")
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_text)
@@ -84,6 +91,7 @@ class TestLoadConfig:
         assert cfg.working_memory_max_scratch_bytes == 500_000
 
     def test_shell_block(self) -> None:
+        """Function implementation."""
         yaml_text = _with_schema("shell:\n  allowlist:\n    - echo\n    - cat\n  denylist:\n    - rm\n")
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_text)
@@ -94,6 +102,7 @@ class TestLoadConfig:
         assert cfg.shell_denylist == ["rm"]
 
     def test_llm_provider_wiring(self) -> None:
+        """Function implementation."""
         yaml_text = (
             "schema_version: v1\n"
             "default_llm_provider: gemini\n"
@@ -115,6 +124,7 @@ class TestLoadConfig:
         assert provider is not None
 
     def test_llm_limits_block(self) -> None:
+        """Function implementation."""
         yaml_text = (
             "schema_version: v1\n"
             "llm:\n"
@@ -142,6 +152,7 @@ class TestLoadConfig:
         assert cfg.llm_pricing_usd_per_1k_tokens["openai/gpt-4o"]["output"] == 0.015
 
     def test_top_level_llm_limits_block(self) -> None:
+        """Function implementation."""
         yaml_text = (
             "schema_version: v1\n"
             "llm_limits:\n"
@@ -162,6 +173,7 @@ class TestLoadConfig:
         assert cfg.llm_max_cost_usd_per_run == 0.2
 
     def test_non_dict_yaml_returns_defaults(self) -> None:
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("just a string\n")
             f.flush()
@@ -170,6 +182,7 @@ class TestLoadConfig:
         assert cfg.db_path == "runtime.db"
 
     def test_unknown_keys_ignored(self) -> None:
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(_with_schema("unknown_setting: 42\ndb_path: test.db\n"))
             f.flush()
@@ -179,6 +192,7 @@ class TestLoadConfig:
         assert not hasattr(cfg, "unknown_setting")
 
     def test_missing_schema_version_is_rejected_for_non_empty_mapping(self) -> None:
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write("db_path: custom.db\n")
             f.flush()
@@ -193,6 +207,7 @@ class TestLoadConfig:
 class TestCLIOverrides:
 
     def test_db_path_override(self) -> None:
+        """Function implementation."""
         cfg = RuntimeConfig()
 
         class Args:
@@ -202,6 +217,7 @@ class TestCLIOverrides:
         assert cfg.db_path == "override.db"
 
     def test_no_override_when_none(self) -> None:
+        """Function implementation."""
         cfg = RuntimeConfig(db_path="from_yaml.db")
 
         class Args:
@@ -211,6 +227,7 @@ class TestCLIOverrides:
         assert cfg.db_path == "from_yaml.db"
 
     def test_llm_controls_override(self) -> None:
+        """Function implementation."""
         cfg = RuntimeConfig()
 
         class Args:
@@ -227,6 +244,7 @@ class TestCLIOverrides:
         assert cfg.llm_max_cost_usd_per_run == 1.25
 
     def test_no_override_when_missing_attr(self) -> None:
+        """Function implementation."""
         cfg = RuntimeConfig(db_path="original.db")
 
         class Args:

@@ -8,6 +8,7 @@ from agent_runtime.llm import LLMRegistry, LLMProvider, ModelConfig
 
 
 def test_register_and_lookup_provider() -> None:
+    """Function implementation."""
     registry = LLMRegistry()
     provider = LLMProvider(name="openai", api_key_env="OPENAI_API_KEY")
     provider.add_model(ModelConfig(model_id="gpt-4", temperature=0.2))
@@ -18,6 +19,7 @@ def test_register_and_lookup_provider() -> None:
 
 
 def test_get_model() -> None:
+    """Function implementation."""
     registry = LLMRegistry()
     provider = LLMProvider(name="anthropic", api_key_env="ANTHROPIC_API_KEY")
     provider.add_model(ModelConfig(model_id="claude-3-opus", temperature=0.3, max_tokens=8192))
@@ -31,17 +33,20 @@ def test_get_model() -> None:
 
 
 def test_get_model_unknown_provider() -> None:
+    """Function implementation."""
     registry = LLMRegistry()
     assert registry.get_model("nonexistent", "gpt-4") is None
 
 
 def test_get_model_unknown_model() -> None:
+    """Function implementation."""
     registry = LLMRegistry()
     registry.register_provider(LLMProvider(name="openai", api_key_env="KEY"))
     assert registry.get_model("openai", "nonexistent") is None
 
 
 def test_list_all_models() -> None:
+    """Function implementation."""
     registry = LLMRegistry()
     p1 = LLMProvider(name="openai", api_key_env="K1")
     p1.add_model(ModelConfig(model_id="gpt-4"))
@@ -57,6 +62,7 @@ def test_list_all_models() -> None:
 
 
 def test_credential_resolution(monkeypatch: Any) -> None:
+    """Function implementation."""
     provider = LLMProvider(name="openai", api_key_env="TEST_OPENAI_KEY_XYZ")
     assert provider.has_credentials() is False
     assert provider.resolve_api_key() is None
@@ -67,6 +73,7 @@ def test_credential_resolution(monkeypatch: Any) -> None:
 
 
 def test_check_credentials(monkeypatch: Any) -> None:
+    """Function implementation."""
     registry = LLMRegistry()
     registry.register_provider(LLMProvider(name="a", api_key_env="TEST_KEY_A"))
     registry.register_provider(LLMProvider(name="b", api_key_env="TEST_KEY_B"))
@@ -78,6 +85,7 @@ def test_check_credentials(monkeypatch: Any) -> None:
 
 
 def test_from_config() -> None:
+    """Function implementation."""
     config: Dict[str, Any] = {
         "providers": {
             "openai": {
@@ -113,11 +121,13 @@ def test_from_config() -> None:
 
 
 def test_from_config_empty() -> None:
+    """Function implementation."""
     registry = LLMRegistry.from_config({})
     assert registry.list_providers() == []
 
 
 def test_remove_provider() -> None:
+    """Function implementation."""
     registry = LLMRegistry()
     registry.register_provider(LLMProvider(name="x", api_key_env="K"))
     assert registry.list_providers() == ["x"]
@@ -126,6 +136,7 @@ def test_remove_provider() -> None:
 
 
 def test_to_dict() -> None:
+    """Function implementation."""
     registry = LLMRegistry()
     p = LLMProvider(name="openai", api_key_env="KEY", base_url="http://x")
     p.add_model(ModelConfig(model_id="gpt-4", temperature=0.5, max_tokens=1000))

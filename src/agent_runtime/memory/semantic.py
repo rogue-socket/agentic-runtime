@@ -35,6 +35,7 @@ class SemanticMemory:
     """
 
     def __init__(self, db_path: Optional[str] = None, max_results: int = 10) -> None:
+        """Function implementation."""
         self._db_path = db_path
         self._max_results = max_results
         self._fallback: Dict[str, Any] = {}
@@ -48,6 +49,7 @@ class SemanticMemory:
     # ------------------------------------------------------------------
 
     def _open_connection(self) -> sqlite3.Connection:
+        """Function implementation."""
         assert self._db_path is not None
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row
@@ -60,6 +62,7 @@ class SemanticMemory:
             self._conn = None
 
     def _init_db(self) -> None:
+        """Function implementation."""
         assert self._conn is not None
         self._conn.execute(
             """

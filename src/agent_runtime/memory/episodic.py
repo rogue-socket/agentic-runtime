@@ -37,6 +37,7 @@ class EpisodicMemory:
     """
 
     def __init__(self, db_path: Optional[str] = None, max_recall: int = 5) -> None:
+        """Function implementation."""
         self._db_path = db_path
         self._max_recall = max_recall
         self._fallback: Dict[str, Any] = {}
@@ -50,12 +51,14 @@ class EpisodicMemory:
     # ------------------------------------------------------------------
 
     def _open_connection(self) -> sqlite3.Connection:
+        """Function implementation."""
         assert self._db_path is not None
         conn = sqlite3.connect(self._db_path)
         conn.row_factory = sqlite3.Row
         return conn
 
     def _init_db(self) -> None:
+        """Function implementation."""
         assert self._conn is not None
         self._conn.execute(
             """

@@ -105,6 +105,7 @@ class HttpTool:
     retries: Optional[int] = None
 
     async def execute(self, input: Dict[str, Any], context: RuntimeContext) -> ToolResult:
+        """Function implementation."""
         url = input.get("url", "")
         method = input.get("method", "GET").upper()
         headers = dict(input.get("headers") or {})

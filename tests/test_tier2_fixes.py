@@ -43,10 +43,12 @@ from agent_runtime.workflow import _parse_workflow
 
 
 def _with_schema(body: str) -> str:
+    """Function implementation."""
     return "schema_version: v1\n" + body
 
 
 def _make_memory_manager():
+    """Function implementation."""
     return MemoryManager(
         working=WorkingMemory(),
         episodic=EpisodicMemory(),
@@ -63,28 +65,34 @@ def _make_memory_manager():
 class TestInterpolateEnvVars:
 
     def test_simple_substitution(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Function implementation."""
         monkeypatch.setenv("MY_DB", "prod.db")
         assert _interpolate_env_vars("${MY_DB}") == "prod.db"
 
     def test_unset_var_left_as_is(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Function implementation."""
         monkeypatch.delenv("NONEXISTENT_VAR_XYZ", raising=False)
         assert _interpolate_env_vars("${NONEXISTENT_VAR_XYZ}") == "${NONEXISTENT_VAR_XYZ}"
 
     def test_nested_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Function implementation."""
         monkeypatch.setenv("HOST", "localhost")
         result = _interpolate_env_vars({"server": {"host": "${HOST}", "port": 8080}})
         assert result == {"server": {"host": "localhost", "port": 8080}}
 
     def test_list_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Function implementation."""
         monkeypatch.setenv("ITEM", "foo")
         result = _interpolate_env_vars(["${ITEM}", "bar"])
         assert result == ["foo", "bar"]
 
     def test_non_string_passthrough(self) -> None:
+        """Function implementation."""
         assert _interpolate_env_vars(42) == 42
         assert _interpolate_env_vars(None) is None
 
     def test_mixed_text_and_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Function implementation."""
         monkeypatch.setenv("PREFIX", "prod")
         assert _interpolate_env_vars("db_${PREFIX}.sqlite") == "db_prod.sqlite"
 
@@ -92,16 +100,19 @@ class TestInterpolateEnvVars:
 class TestDeepMerge:
 
     def test_flat_overlay(self) -> None:
+        """Function implementation."""
         base = {"a": 1, "b": 2}
         overlay = {"b": 3, "c": 4}
         assert _deep_merge(base, overlay) == {"a": 1, "b": 3, "c": 4}
 
     def test_nested_merge(self) -> None:
+        """Function implementation."""
         base = {"llm": {"model": "gpt-4o", "temp": 0.2}}
         overlay = {"llm": {"temp": 0.0}}
         assert _deep_merge(base, overlay) == {"llm": {"model": "gpt-4o", "temp": 0.0}}
 
     def test_overlay_adds_nested_key(self) -> None:
+        """Function implementation."""
         base = {"llm": {"model": "gpt-4o"}}
         overlay = {"llm": {"timeout": 30}}
         assert _deep_merge(base, overlay) == {"llm": {"model": "gpt-4o", "timeout": 30}}
@@ -110,6 +121,7 @@ class TestDeepMerge:
 class TestConfigOverlayFile:
 
     def test_overlay_loaded_when_runtime_env_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             base_path = os.path.join(d, "runtime.yaml")
             overlay_path = os.path.join(d, "runtime.prod.yaml")
@@ -123,6 +135,7 @@ class TestConfigOverlayFile:
             assert cfg.overwrite_policy == "strict"
 
     def test_no_overlay_when_env_not_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Function implementation."""
         monkeypatch.delenv("RUNTIME_ENV", raising=False)
         with tempfile.TemporaryDirectory() as d:
             base_path = os.path.join(d, "runtime.yaml")
@@ -132,6 +145,7 @@ class TestConfigOverlayFile:
             assert cfg.db_path == "dev.db"
 
     def test_env_var_interpolation_in_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Function implementation."""
         monkeypatch.setenv("CUSTOM_DB", "/data/prod.db")
         monkeypatch.delenv("RUNTIME_ENV", raising=False)
         with tempfile.TemporaryDirectory() as d:
@@ -142,6 +156,7 @@ class TestConfigOverlayFile:
             assert cfg.db_path == "/data/prod.db"
 
     def test_overlay_missing_file_ignored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Function implementation."""
         monkeypatch.setenv("RUNTIME_ENV", "staging")
         with tempfile.TemporaryDirectory() as d:
             base_path = os.path.join(d, "runtime.yaml")
@@ -159,12 +174,14 @@ class TestConfigOverlayFile:
 def _make_slow_step(delay_s: float):
     """Create a function callable that sleeps for *delay_s* seconds."""
     def slow_func(state):
+        """Function implementation."""
         time.sleep(delay_s)
         return {"done": True}
     return slow_func
 
 
 def _make_executor(steps, latency_budget_ms=None, db_path=":memory:"):
+    """Function implementation."""
     storage = SQLiteStorage(db_path)
     return Executor(
         steps=steps,
@@ -179,6 +196,7 @@ def _make_executor(steps, latency_budget_ms=None, db_path=":memory:"):
 class TestLatencyBudgetParsing:
 
     def test_valid_budget_parsed(self) -> None:
+        """Function implementation."""
         yaml_text = (
             "schema_version: v1\n"
             "workflow:\n  id: w\n  version: v1\n"
@@ -189,6 +207,7 @@ class TestLatencyBudgetParsing:
         assert wf["latency_budget_ms"] == 5000
 
     def test_no_budget_is_none(self) -> None:
+        """Function implementation."""
         yaml_text = (
             "schema_version: v1\n"
             "workflow:\n  id: w\n  version: v1\n"
@@ -198,6 +217,7 @@ class TestLatencyBudgetParsing:
         assert wf["latency_budget_ms"] is None
 
     def test_invalid_budget_rejected(self) -> None:
+        """Function implementation."""
         yaml_text = (
             "schema_version: v1\n"
             "workflow:\n  id: w\n  version: v1\n"
@@ -208,6 +228,7 @@ class TestLatencyBudgetParsing:
             _parse_workflow(yaml_text)
 
     def test_string_budget_rejected(self) -> None:
+        """Function implementation."""
         yaml_text = (
             "schema_version: v1\n"
             "workflow:\n  id: w\n  version: v1\n"
@@ -327,6 +348,7 @@ def _setup_completed_run(storage: SQLiteStorage):
 class TestGoldenCapture:
 
     def test_capture_returns_fixture(self) -> None:
+        """Function implementation."""
         storage = SQLiteStorage(":memory:")
         run_id, initial_state = _setup_completed_run(storage)
         replayer = RunReplayer(storage, printer=lambda _: None)
@@ -341,6 +363,7 @@ class TestGoldenCapture:
         storage.close()
 
     def test_capture_rejects_failed_run(self) -> None:
+        """Function implementation."""
         storage = SQLiteStorage(":memory:")
         from agent_runtime.core import Run, RunState
         from agent_runtime.utils import utc_now
@@ -361,6 +384,7 @@ class TestGoldenCapture:
 class TestGoldenSaveLoad:
 
     def test_round_trip(self) -> None:
+        """Function implementation."""
         fixture = GoldenFixture(
             run_id="r1",
             workflow_id="w1",
@@ -383,6 +407,7 @@ class TestGoldenSaveLoad:
 class TestGoldenReplay:
 
     def test_consistent_fixture_passes(self) -> None:
+        """Function implementation."""
         state_0 = {"inputs": {"q": "hi"}, "steps": {}, "runtime": {}}
         state_1 = {"inputs": {"q": "hi"}, "steps": {"s1": {"a": 1}}, "runtime": {}}
         fixture = GoldenFixture(
@@ -403,6 +428,7 @@ class TestGoldenReplay:
         assert result.final_state == state_1
 
     def test_inconsistent_fixture_raises(self) -> None:
+        """Function implementation."""
         state_0 = {"inputs": {"q": "hi"}, "steps": {}, "runtime": {}}
         wrong_before = {"inputs": {"q": "WRONG"}, "steps": {}, "runtime": {}}
         fixture = GoldenFixture(
@@ -422,6 +448,7 @@ class TestGoldenReplay:
             RunReplayer.replay_golden(fixture)
 
     def test_multi_step_golden(self) -> None:
+        """Function implementation."""
         s0 = {"inputs": {}, "steps": {}, "runtime": {}}
         s1 = {"inputs": {}, "steps": {"a": {"x": 1}}, "runtime": {}}
         s2 = {"inputs": {}, "steps": {"a": {"x": 1}, "b": {"y": 2}}, "runtime": {}}

@@ -177,9 +177,11 @@ class SQLiteStorage(Storage):
             self._conn = None  # type: ignore[assignment]
 
     def __enter__(self) -> "SQLiteStorage":
+        """Function implementation."""
         return self
 
     def __exit__(self, *exc_info: Any) -> None:
+        """Function implementation."""
         self.close()
 
     # -- schema bootstrap -----------------------------------------------------
@@ -554,6 +556,7 @@ class SQLiteStorage(Storage):
 
     @staticmethod
     def _parse_iso_timestamp(raw: Any) -> Optional[datetime]:
+        """Function implementation."""
         if not isinstance(raw, str) or not raw:
             return None
         try:
@@ -566,6 +569,7 @@ class SQLiteStorage(Storage):
 
     @staticmethod
     def _pick_metadata_value(metadata: Dict[str, Any], keys: list[str]) -> tuple[Any, bool]:
+        """Function implementation."""
         if not isinstance(metadata, dict):
             return None, False
         for key in keys:
@@ -575,6 +579,7 @@ class SQLiteStorage(Storage):
 
     @staticmethod
     def _parse_bool(value: Any) -> Optional[bool]:
+        """Function implementation."""
         if isinstance(value, bool):
             return value
         if isinstance(value, (int, float)):
@@ -589,6 +594,7 @@ class SQLiteStorage(Storage):
 
     @staticmethod
     def _parse_confidence(value: Any) -> Optional[float]:
+        """Function implementation."""
         if not isinstance(value, (int, float)):
             return None
         conf = float(value)
@@ -602,6 +608,7 @@ class SQLiteStorage(Storage):
 
     @classmethod
     def _extract_confidence_values(cls, value: Any, depth: int = 0) -> list[float]:
+        """Function implementation."""
         if depth > 4:
             return []
         out: list[float] = []
@@ -620,6 +627,7 @@ class SQLiteStorage(Storage):
 
     @staticmethod
     def _extract_step_meta(workflow_yaml: Optional[str]) -> Dict[str, Dict[str, Any]]:
+        """Function implementation."""
         if not workflow_yaml:
             return {}
         try:
@@ -646,6 +654,7 @@ class SQLiteStorage(Storage):
 
     @staticmethod
     def _classify_input(initial_state: Optional[Dict[str, Any]], metadata: Dict[str, Any]) -> str:
+        """Function implementation."""
         value, found = SQLiteStorage._pick_metadata_value(metadata, ["input_class", "input_type", "segment"])
         if found and isinstance(value, str) and value.strip():
             return value.strip()
@@ -660,6 +669,7 @@ class SQLiteStorage(Storage):
 
     @staticmethod
     def _compute_ece(samples: list[tuple[float, bool]], bins: int = 10) -> tuple[Optional[float], list[Dict[str, Any]]]:
+        """Function implementation."""
         if not samples:
             return None, []
 
@@ -700,12 +710,14 @@ class SQLiteStorage(Storage):
 
     @staticmethod
     def _safe_rate(num: int, den: int) -> Optional[float]:
+        """Function implementation."""
         if den <= 0:
             return None
         return num / den
 
     @staticmethod
     def _score_latency(p95_ms: Optional[float], target_ms: int) -> Optional[float]:
+        """Function implementation."""
         if p95_ms is None:
             return None
         if p95_ms <= 0:
@@ -1016,6 +1028,7 @@ class SQLiteStorage(Storage):
                 record["window"] = "older"
 
         def _window_nis(target_runs: list[Dict[str, Any]], baseline_runs: list[Dict[str, Any]]) -> tuple[Optional[float], list[Dict[str, Any]]]:
+            """Function implementation."""
             target_eligible = [r for r in target_runs if r.get("eligible_terminal")]
             if not target_eligible:
                 return None, []
@@ -1037,6 +1050,7 @@ class SQLiteStorage(Storage):
             return nis, novel_classes
 
         def _compute_window_metrics(window_name: str) -> Dict[str, Any]:
+            """Function implementation."""
             segment = [r for r in run_records.values() if r.get("window") == window_name]
             eligible = [r for r in segment if r.get("eligible_terminal")]
             successful = [r for r in eligible if r.get("successful")]
@@ -1135,6 +1149,7 @@ class SQLiteStorage(Storage):
             per_step_fbsr.sort(key=lambda item: (item["fbsr"], item["count"]), reverse=True)
 
             def _top_rows(counter: Dict[str, int], key: str) -> list[Dict[str, Any]]:
+                """Function implementation."""
                 rows = []
                 for name, count in counter.items():
                     rows.append({
@@ -1198,6 +1213,7 @@ class SQLiteStorage(Storage):
         previous_nis, previous_novel_classes = _window_nis(previous_segment, older_segment)
 
         def _metric_or_neutral(value: Optional[float], *, invert: bool = False) -> tuple[float, bool]:
+            """Function implementation."""
             if value is None:
                 return 0.5, True
             bounded = max(0.0, min(1.0, float(value)))
@@ -1206,6 +1222,7 @@ class SQLiteStorage(Storage):
             return bounded, False
 
         def _compute_health(snapshot: Dict[str, Any], nis_value: Optional[float]) -> Dict[str, Any]:
+            """Function implementation."""
             outcomes = snapshot.get("outcomes", {})
             latency = snapshot.get("latency", {})
             calibration = snapshot.get("calibration", {})
@@ -1272,6 +1289,7 @@ class SQLiteStorage(Storage):
         breakers: list[Dict[str, Any]] = []
 
         def _add_breaker(name: str, tripped: bool, current: Optional[float], previous: Optional[float], reason: str) -> None:
+            """Function implementation."""
             breakers.append({
                 "name": name,
                 "tripped": tripped,

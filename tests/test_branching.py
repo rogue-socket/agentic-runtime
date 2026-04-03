@@ -24,10 +24,12 @@ class EchoTool:
     retries = None
 
     async def execute(self, input: dict, context: RuntimeContext) -> ToolResult:
+        """Function implementation."""
         return ToolResult(success=True, output={"ok": True}, error=None, metadata=None)
 
 
 def test_branch_bug_path() -> None:
+    """Function implementation."""
     yaml_text = """
 schema_version: v1
 workflow:
@@ -61,6 +63,7 @@ steps:
 
 
 def test_branch_default_path() -> None:
+    """Function implementation."""
     yaml_text = """
 schema_version: v1
 workflow:
@@ -94,6 +97,7 @@ steps:
 
 
 def test_invalid_branch_target() -> None:
+    """Function implementation."""
     yaml_text = """
 schema_version: v1
 workflow:

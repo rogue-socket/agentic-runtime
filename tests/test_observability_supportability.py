@@ -43,6 +43,7 @@ class _FakeTurn:
 
 
 def test_serialize_agent_trace_produces_model_and_tool_events() -> None:
+    """Function implementation."""
     turns = [
         _FakeTurn(
             iteration=1,
@@ -72,6 +73,7 @@ def test_serialize_agent_trace_produces_model_and_tool_events() -> None:
 
 
 def test_normalize_agent_trace_handles_legacy_shape() -> None:
+    """Function implementation."""
     legacy = [
         {
             "iteration": 1,
@@ -97,6 +99,7 @@ def test_normalize_agent_trace_handles_legacy_shape() -> None:
 
 
 def test_serialize_agent_trace_redacts_sensitive_patterns() -> None:
+    """Function implementation."""
     turns = [
         _FakeTurn(
             iteration=1,
@@ -125,6 +128,7 @@ def test_serialize_agent_trace_redacts_sensitive_patterns() -> None:
 
 
 def test_error_taxonomy_helpers_return_stable_code_and_message() -> None:
+    """Function implementation."""
     exc = StepExecutionError("step failed")
     assert get_error_code(exc) == "AR-STEP-EXECUTION"
     message = get_user_message(exc)
@@ -133,13 +137,16 @@ def test_error_taxonomy_helpers_return_stable_code_and_message() -> None:
 
 
 def test_storage_observability_report_aggregates_run_and_step_stats() -> None:
+    """Function implementation."""
     storage = make_storage()
     tools = ToolRegistry()
 
     def ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"ok": True}
 
     def boom(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         raise ValueError("boom")
 
     ok_executor = Executor(
@@ -171,6 +178,7 @@ def test_storage_observability_report_aggregates_run_and_step_stats() -> None:
 
 
 def test_storage_observability_report_includes_health_and_diagnostics_layers() -> None:
+    """Function implementation."""
     storage = make_storage()
     tools = ToolRegistry()
 
@@ -187,9 +195,11 @@ steps:
 """
 
     def classify(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"confidence": 0.92}
 
     def act(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         mode = (inputs.get("inputs") or {}).get("mode")
         if mode == "fail":
             raise ValueError("ActionError: simulated")

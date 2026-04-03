@@ -15,6 +15,7 @@ from agent_runtime.llm import LLMRegistry, LLMProvider, ModelConfig
 
 
 def _mock_gemini_response(text: str = "Hello!", usage: Optional[Dict] = None) -> bytes:
+    """Function implementation."""
     body: Dict[str, Any] = {
         "candidates": [
             {
@@ -29,6 +30,7 @@ def _mock_gemini_response(text: str = "Hello!", usage: Optional[Dict] = None) ->
 
 
 def _mock_gemini_function_call_response() -> bytes:
+    """Function implementation."""
     body: Dict[str, Any] = {
         "candidates": [
             {
@@ -50,6 +52,7 @@ def _mock_gemini_function_call_response() -> bytes:
 
 
 def test_gemini_adapter_call_success() -> None:
+    """Function implementation."""
     adapter = GeminiAdapter()
     mock_resp = MagicMock()
     mock_resp.read.return_value = _mock_gemini_response("Test output")
@@ -74,6 +77,7 @@ def test_gemini_adapter_call_success() -> None:
 
 
 def test_gemini_adapter_with_system_and_generation_config() -> None:
+    """Function implementation."""
     adapter = GeminiAdapter()
     mock_resp = MagicMock()
     mock_resp.read.return_value = _mock_gemini_response("With system")
@@ -101,6 +105,7 @@ def test_gemini_adapter_with_system_and_generation_config() -> None:
 
 
 def test_gemini_adapter_missing_key() -> None:
+    """Function implementation."""
     adapter = GeminiAdapter()
     with pytest.raises(ValueError, match="Missing Gemini API key"):
         adapter.call(
@@ -115,6 +120,7 @@ def test_gemini_adapter_missing_key() -> None:
 
 
 def test_gemini_adapter_custom_base_url() -> None:
+    """Function implementation."""
     adapter = GeminiAdapter()
     mock_resp = MagicMock()
     mock_resp.read.return_value = _mock_gemini_response("custom")
@@ -137,6 +143,7 @@ def test_gemini_adapter_custom_base_url() -> None:
 
 
 def test_client_routes_to_gemini() -> None:
+    """Function implementation."""
     registry = LLMRegistry()
     provider = LLMProvider(name="gemini", api_key_env="GEMINI_API_KEY")
     provider.add_model(ModelConfig(model_id="gemini-2.5-flash"))
@@ -161,6 +168,7 @@ def test_client_routes_to_gemini() -> None:
 
 
 def test_gemini_adapter_native_function_call_request_and_parse() -> None:
+    """Function implementation."""
     adapter = GeminiAdapter()
     mock_resp = MagicMock()
     mock_resp.read.return_value = _mock_gemini_function_call_response()

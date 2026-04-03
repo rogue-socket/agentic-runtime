@@ -35,6 +35,7 @@ def _ensure_run(storage: SQLiteStorage, run_id: str = "run1") -> None:
 
 
 def _make_step(**overrides) -> StepExecution:
+    """Function implementation."""
     defaults = dict(
         step_id="s1",
         step_type="function",
@@ -59,6 +60,7 @@ class TestAppendStepEmptyDict:
     """Empty dicts ({}) must survive the write→read roundtrip as dicts, not None."""
 
     def test_empty_input_roundtrips(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         _ensure_run(storage)
         step = _make_step(input={})
@@ -69,6 +71,7 @@ class TestAppendStepEmptyDict:
         assert loaded[0].input == {}
 
     def test_empty_output_roundtrips(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         _ensure_run(storage)
         step = _make_step(output={})
@@ -78,6 +81,7 @@ class TestAppendStepEmptyDict:
         assert loaded[0].output == {}
 
     def test_empty_state_before_roundtrips(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         _ensure_run(storage)
         step = _make_step(state_before={})
@@ -87,6 +91,7 @@ class TestAppendStepEmptyDict:
         assert loaded[0].state_before == {}
 
     def test_empty_state_after_roundtrips(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         _ensure_run(storage)
         step = _make_step(state_after={})
@@ -96,6 +101,7 @@ class TestAppendStepEmptyDict:
         assert loaded[0].state_after == {}
 
     def test_none_stays_none(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         _ensure_run(storage)
         step = _make_step(input=None, output=None, state_before=None, state_after=None)
@@ -108,6 +114,7 @@ class TestAppendStepEmptyDict:
         assert loaded[0].state_after is None
 
     def test_populated_dict_roundtrips(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         _ensure_run(storage)
         step = _make_step(
@@ -129,6 +136,7 @@ class TestAgentTraceRoundtrip:
     """Verify agent_trace field survives write→read roundtrip (C1 fix)."""
 
     def test_agent_trace_none_stays_none(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         _ensure_run(storage)
         step = _make_step(agent_trace=None)
@@ -138,6 +146,7 @@ class TestAgentTraceRoundtrip:
         assert loaded[0].agent_trace is None
 
     def test_agent_trace_roundtrips(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         _ensure_run(storage)
         trace = [
@@ -170,6 +179,7 @@ class TestAgentTraceRoundtrip:
         assert loaded[0].agent_trace[1]["llm_response_text"] == "No further info needed."
 
     def test_empty_trace_list_roundtrips(self) -> None:
+        """Function implementation."""
         storage = make_storage()
         _ensure_run(storage)
         step = _make_step(agent_trace=[])
@@ -181,6 +191,7 @@ class TestAgentTraceRoundtrip:
 
 class TestStorageSchemaVersion:
     def test_schema_version_metadata_is_written(self) -> None:
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
             db_path = tmp.name
         try:
@@ -200,6 +211,7 @@ class TestStorageSchemaVersion:
             os.unlink(db_path)
 
     def test_schema_version_mismatch_is_rejected(self) -> None:
+        """Function implementation."""
         with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
             db_path = tmp.name
         try:

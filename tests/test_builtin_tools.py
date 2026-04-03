@@ -19,10 +19,12 @@ from agent_runtime.tools.validation import validate_input
 
 
 def _ctx() -> RuntimeContext:
+    """Function implementation."""
     return RuntimeContext(run_id="r1", step_id="s1", state={}, logger=None)
 
 
 def _run(coro):
+    """Function implementation."""
     return asyncio.run(coro)
 
 
@@ -33,18 +35,21 @@ def _run(coro):
 
 class TestHttpTool:
     def test_rejects_non_http_scheme(self) -> None:
+        """Function implementation."""
         tool = HttpTool()
         result = _run(tool.execute({"url": "ftp://example.com/file"}, _ctx()))
         assert not result.success
         assert "not allowed" in result.error
 
     def test_rejects_file_scheme(self) -> None:
+        """Function implementation."""
         tool = HttpTool()
         result = _run(tool.execute({"url": "file:///etc/passwd"}, _ctx()))
         assert not result.success
         assert "not allowed" in result.error
 
     def test_successful_get(self) -> None:
+        """Function implementation."""
         tool = HttpTool()
         mock_resp = MagicMock()
         mock_resp.read.return_value = b"Hello World"
@@ -62,6 +67,7 @@ class TestHttpTool:
         assert result.output["body"] == "Hello World"
 
     def test_post_with_json_body(self) -> None:
+        """Function implementation."""
         tool = HttpTool()
         mock_resp = MagicMock()
         mock_resp.read.return_value = b'{"ok": true}'
@@ -85,6 +91,7 @@ class TestHttpTool:
         assert body["name"] == "test"
 
     def test_http_error_returns_failure(self) -> None:
+        """Function implementation."""
         import urllib.error
         tool = HttpTool()
         exc = urllib.error.HTTPError(
@@ -110,6 +117,7 @@ class TestHttpTool:
 
 class TestFileTool:
     def test_write_and_read(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tool = FileTool(root=tmpdir)
             w = _run(tool.execute({"action": "write", "path": "test.txt", "content": "hello"}, _ctx()))
@@ -120,6 +128,7 @@ class TestFileTool:
             assert r.output["content"] == "hello"
 
     def test_append(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tool = FileTool(root=tmpdir)
             _run(tool.execute({"action": "write", "path": "log.txt", "content": "line1\n"}, _ctx()))
@@ -129,6 +138,7 @@ class TestFileTool:
             assert r.output["content"] == "line1\nline2\n"
 
     def test_exists(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tool = FileTool(root=tmpdir)
             r = _run(tool.execute({"action": "exists", "path": "nope.txt"}, _ctx()))
@@ -136,6 +146,7 @@ class TestFileTool:
             assert r.output["exists"] is False
 
     def test_list_directory(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tool = FileTool(root=tmpdir)
             open(os.path.join(tmpdir, "a.txt"), "w").close()
@@ -147,6 +158,7 @@ class TestFileTool:
             assert "b.txt" in r.output["entries"]
 
     def test_path_traversal_blocked(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tool = FileTool(root=tmpdir)
             r = _run(tool.execute({"action": "read", "path": "../../etc/passwd"}, _ctx()))
@@ -154,6 +166,7 @@ class TestFileTool:
             assert "escapes" in r.error
 
     def test_read_nonexistent(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tool = FileTool(root=tmpdir)
             r = _run(tool.execute({"action": "read", "path": "missing.txt"}, _ctx()))
@@ -161,6 +174,7 @@ class TestFileTool:
             assert "not found" in r.error.lower()
 
     def test_write_creates_subdirectories(self) -> None:
+        """Function implementation."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tool = FileTool(root=tmpdir)
             r = _run(tool.execute({"action": "write", "path": "sub/dir/f.txt", "content": "ok"}, _ctx()))
@@ -175,6 +189,7 @@ class TestFileTool:
 
 class TestShellTool:
     def test_echo_command(self) -> None:
+        """Function implementation."""
         tool = ShellTool()
         result = _run(tool.execute({"command": "echo hello", "shell": True}, _ctx()))
         assert result.success
@@ -182,12 +197,14 @@ class TestShellTool:
         assert result.output["returncode"] == 0
 
     def test_failed_command(self) -> None:
+        """Function implementation."""
         tool = ShellTool()
         result = _run(tool.execute({"command": "exit 1", "shell": True}, _ctx()))
         assert not result.success
         assert result.output["returncode"] == 1
 
     def test_timeout(self) -> None:
+        """Function implementation."""
         tool = ShellTool()
         # Use a very short timeout with a long sleep
         if os.name == "nt":
@@ -199,6 +216,7 @@ class TestShellTool:
         assert "timed out" in result.error.lower()
 
     def test_empty_command_rejected(self) -> None:
+        """Function implementation."""
         tool = ShellTool()
         result = _run(tool.execute({"command": ""}, _ctx()))
         assert not result.success
@@ -212,6 +230,7 @@ class TestShellTool:
 
 class TestValidateInput:
     def test_missing_required_field_raises(self) -> None:
+        """Function implementation."""
         schema = {
             "type": "object",
             "properties": {"url": {"type": "string"}},
@@ -221,6 +240,7 @@ class TestValidateInput:
             validate_input({}, schema)
 
     def test_multiple_required_fields_reports_first_missing(self) -> None:
+        """Function implementation."""
         schema = {
             "type": "object",
             "properties": {
@@ -233,6 +253,7 @@ class TestValidateInput:
             validate_input({}, schema)
 
     def test_required_field_present_passes(self) -> None:
+        """Function implementation."""
         schema = {
             "type": "object",
             "properties": {"url": {"type": "string"}},
@@ -250,6 +271,7 @@ class TestValidateInput:
         validate_input({"url": None}, schema)
 
     def test_no_required_array_passes(self) -> None:
+        """Function implementation."""
         schema = {
             "type": "object",
             "properties": {"msg": {"type": "string"}},
@@ -257,6 +279,7 @@ class TestValidateInput:
         validate_input({}, schema)
 
     def test_empty_schema_passes(self) -> None:
+        """Function implementation."""
         validate_input({"anything": 1}, {})
 
     def test_http_tool_schema_rejects_empty(self) -> None:

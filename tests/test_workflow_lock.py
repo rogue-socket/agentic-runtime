@@ -18,9 +18,11 @@ def test_resume_blocked_when_workflow_hash_differs() -> None:
     tool_registry = ToolRegistry()
 
     def step_one(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"one": True}
 
     def step_two_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         raise ValueError("boom")
 
     steps = [
@@ -34,6 +36,7 @@ def test_resume_blocked_when_workflow_hash_differs() -> None:
 
     # Try resuming with a different workflow hash
     def step_two_ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"two": True}
 
     resume_steps = [
@@ -61,9 +64,11 @@ def test_resume_allowed_when_workflow_hash_matches() -> None:
     tool_registry = ToolRegistry()
 
     def step_one(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"one": True}
 
     def step_two_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         raise ValueError("boom")
 
     steps = [
@@ -76,6 +81,7 @@ def test_resume_allowed_when_workflow_hash_matches() -> None:
     assert run.status == StepStatus.FAILED
 
     def step_two_ok(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"two": True}
 
     resume_steps = [
@@ -103,9 +109,11 @@ def test_resume_blocked_when_original_run_has_no_workflow_hash() -> None:
     tool_registry = ToolRegistry()
 
     def step_one(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         return {"one": True}
 
     def step_two_fail(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
         raise ValueError("boom")
 
     steps = [

@@ -10,6 +10,7 @@ from agent_runtime.state import RuntimeState
 
 
 def test_diff_paths_nested_changes() -> None:
+    """Function implementation."""
     before = {
         "inputs": {"issue": "x"},
         "steps": {"plan": {"draft_message": "hello"}},
@@ -35,6 +36,7 @@ def test_diff_paths_nested_changes() -> None:
 
 
 def test_diff_paths_list_index_level_changes() -> None:
+    """Function implementation."""
     before = {
         "steps": {
             "plan": {
@@ -62,6 +64,7 @@ def test_diff_paths_list_index_level_changes() -> None:
 
 
 def test_diff_paths_list_index_removals() -> None:
+    """Function implementation."""
     before = {"steps": {"items": [1, 2, 3]}}
     after = {"steps": {"items": [1]}}
 

@@ -11,11 +11,13 @@ def _wrap(store: dict) -> dict:
 
 
 def test_initial_read_empty() -> None:
+    """Function implementation."""
     mem = ProceduralMemory()
     assert mem.read({}) == {}
 
 
 def test_write_then_read() -> None:
+    """Function implementation."""
     mem = ProceduralMemory()
     mem.write(_wrap({"rule": "always retry on 503", "confidence": 0.9}))
     result = mem.read({})
@@ -23,6 +25,7 @@ def test_write_then_read() -> None:
 
 
 def test_write_merges_previous() -> None:
+    """Function implementation."""
     mem = ProceduralMemory()
     mem.write(_wrap({"a": 1}))
     mem.write(_wrap({"b": 2}))
