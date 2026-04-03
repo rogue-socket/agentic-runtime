@@ -2,7 +2,8 @@
 
 # Usage
 
-This guide is command-first and scenario-oriented. If you are brand new, start with [Getting Started](getting-started.md) and then return here.
+This guide is command-first and scenario-oriented. If you are brand new, start with [Getting Started](getting-started.md) and then return here. For a full list of commands and flags, see the [CLI Reference](cli-reference.md).
+
 
 ## 1. Prerequisites
 

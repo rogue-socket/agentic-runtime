@@ -68,4 +68,4 @@ The runtime records every detail of the execution.
    ai docs
    ```
 
-Next, read the [Manual](manual.md) for a deep dive into schemas and advanced features.
+Next, read the [CLI Reference](cli-reference.md) for a full list of commands or the [Usage Guide](usage.md) for common scenarios.
