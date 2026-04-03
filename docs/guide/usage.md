@@ -9,9 +9,10 @@ This guide is command-first and scenario-oriented. If you are brand new, start w
 Use the shared conda environment and install the CLI in editable mode so `ai` is on your PATH:
 
 ```bash
-conda activate agentic-runtime
+conda activate agent_runtime
 pip install -r requirements.txt
 pip install -e .
+
 ```
 
 ## 2. Create a new agent project
@@ -26,13 +27,8 @@ ai quickstart
 
 `ai quickstart` initializes the project (if needed), configures an LLM provider, writes `.env`, and runs a starter workflow.
 
-No API key yet? Use:
+This keeps the same onboarding flow and guarantees a first successful run without external credentials. Supported samples: `starter`, `branching`, `research`, `pipeline`.
 
-```bash
-ai quickstart --sample branching
-```
-
-This keeps the same onboarding flow and guarantees a first successful run without external credentials.
 
 Advanced alternatives (optional):
 
@@ -87,7 +83,11 @@ inputs:
     default: "medium"
 ```
 
-The `inputs:` block declares what the workflow expects from the caller. Inputs can specify `description`, `required` (default `true`), and `default`. A shorthand list form is also supported: `inputs: [issue, priority]` (all required, no defaults).
+The `inputs:` block declares what the workflow expects from the caller. Inputs can specify `description`, `required` (default `true`), and `default`.
+
+**Shorthand Syntax**:
+A list form is also supported: `inputs: [issue, priority]`. This implies all listed fields are `required: true` with no defaults.
+
 
 Workflows without an `inputs:` block still work — the runtime infers available inputs from step references (backward compatible).
 
@@ -292,14 +292,23 @@ When this step runs, the runtime:
 
 ### Writing an agent definition
 
-An agent definition describes an LLM-backed reasoning unit. It lives in `agents/` as a YAML file. The model is resolved from `default_model` in `runtime.yaml`.
+An agent definition describes an LLM-backed reasoning unit. It lives in `agents/` as a YAML file.
+
+### Model Resolution Hierarchy
+The runtime resolves the model for an agent step in this order:
+1.  **CLI Flag**: `--model <id>` (passed to `ai run`)
+2.  **Agent YAML**: `model: <id>` (defined in `agents/*.yaml`)
+3.  **Runtime Config**: `default_model: <id>` (defined in `runtime.yaml`)
+4.  **Provider Default**: (e.g., `gpt-4o`)
 
 ```yaml
 # agents/reviewer.yaml
 agent:
   id: reviewer
   version: v1
+  model: gpt-4o-mini             # Optional: overrides default_model
   system: "You are a senior code reviewer."
+
   output_key: review              # downstream steps read via steps.review.review
   strategy:
     type: react
@@ -528,7 +537,27 @@ ai visualize <run_id> --html
 ## 15. List agents
 
 ```bash
-ai list
+Lists all agent definitions found in `agents/` with their id and version.
+
+## 16. Aggregate Metrics
+
+```bash
+ai metrics
 ```
 
-Lists all agent definitions found in `agents/` with their id and version.
+Shows health statistics across all runs in your database:
+- **Success Rate**: % of runs that reached `RUN_COMPLETE`.
+- **Latency (p95)**: The 95th percentile duration for successful runs.
+- **Top Errors**: Frequency table of the most common `STEP_ERROR` causes.
+- **Trend**: Health change over the last `--window-days` (default 7).
+
+## 17. Documentation Management
+
+```bash
+ai docs
+```
+
+The `ai docs` command is the engine behind the automated documentation site.
+- **Workflow Reference**: Automatically generates `docs/guide/workflow-reference-generated.md` by scanning your `workflows/` directory.
+- **Search Index**: Rebuilds `docs/content.js` and `docs/docs-manifest.json` for the web UI.
+

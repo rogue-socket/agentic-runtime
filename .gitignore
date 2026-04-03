@@ -38,3 +38,6 @@ runtime.db
 
 # Logs
 *.log
+
+# Testing Agent
+agent-test-one/

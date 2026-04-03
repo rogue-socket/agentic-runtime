@@ -1,11 +1,199 @@
 (() => {
+  const GITHUB_REPO = "rogue-socket/agentic-runtime";
+  const GITHUB_BRANCH = "main";
   const DEFAULT_DOC = "guide/getting-started.md";
+
   const docContent = document.getElementById("doc-content");
   const docTitle = document.getElementById("doc-title");
   const rawLink = document.getElementById("raw-link");
   const search = document.getElementById("search");
   const clear = document.getElementById("clear");
-  const navItems = Array.from(document.querySelectorAll(".nav-item"));
+  const nav = document.getElementById("nav");
+  let navItems = [];
+
+  // Local fallback or dynamically populated from GitHub
+  if (!window.DOCS) window.DOCS = {};
+
+  const buildNav = () => {
+    const sections = {};
+    Object.keys(window.DOCS).forEach(path => {
+      const parts = path.split("/");
+      if (!path.endsWith(".md")) return;
+      const sectionName = parts.length > 1 ? parts[0] : "Other";
+      if (!sections[sectionName]) sections[sectionName] = [];
+      
+      let title = parts[parts.length - 1].replace(".md", "").replace(/-/g, " ");
+      title = title.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+      if (title.toUpperCase() === "README") {
+         title = sectionName.charAt(0).toUpperCase() + sectionName.slice(1);
+      }
+
+      sections[sectionName].push({ path, title });
+    });
+
+    const order = ["guide", "about", "changelog"];
+    const sortedSections = Object.keys(sections).sort((a, b) => {
+      const ia = order.indexOf(a.toLowerCase());
+      const ib = order.indexOf(b.toLowerCase());
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      if (ia !== -1) return -1;
+      if (ib !== -1) return 1;
+      return a.localeCompare(b);
+    });
+
+    nav.innerHTML = "";
+    sortedSections.forEach(sName => {
+      const sectionDiv = document.createElement("div");
+      sectionDiv.className = "nav-section";
+      const titleDiv = document.createElement("div");
+      titleDiv.className = "nav-title";
+      titleDiv.textContent = sName.charAt(0).toUpperCase() + sName.slice(1);
+      sectionDiv.appendChild(titleDiv);
+
+      sections[sName].sort((a, b) => a.title.localeCompare(b.title)).forEach(item => {
+        const btn = document.createElement("button");
+        btn.className = "nav-item";
+        btn.dataset.doc = item.path;
+        btn.dataset.title = item.title;
+        btn.textContent = item.title;
+        sectionDiv.appendChild(btn);
+      });
+      nav.appendChild(sectionDiv);
+    });
+    navItems = Array.from(document.querySelectorAll(".nav-item"));
+    rebindNav();
+  };
+
+  const discoverViaGitHub = async () => {
+    // Only try GitHub API if not running locally on file://
+    if (window.location.protocol === "file:") return;
+    
+    console.log("Discovering docs via GitHub API...");
+    try {
+      // First, get the root docs folder to find valid directories
+      const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/docs`);
+      if (!res.ok) return;
+      const rootItems = await res.json();
+      
+      const folders = rootItems
+        .filter(item => item.type === "dir" && !item.name.startsWith("."))
+        .map(item => item.name);
+
+      for (const dir of folders) {
+        // Skip 'site' as it contains the UI code, not content
+        if (dir === "site") continue;
+
+        const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/docs/${dir}`);
+        if (!res.ok) continue;
+        const files = await res.json();
+        files.forEach(f => {
+          if (f.name.endsWith(".md")) {
+            const relPath = `${dir}/${f.name}`;
+            if (!window.DOCS[relPath]) {
+              window.DOCS[relPath] = null; // Discovered but not loaded
+            }
+          }
+        });
+      }
+      buildNav();
+    } catch (e) {
+      console.warn("GitHub API discovery failed. Using static index.", e);
+    }
+  };
+
+
+  const rebindNav = () => {
+    navItems.forEach((item) => {
+      const tip = item.dataset.title || item.dataset.doc || "Open doc";
+      item.setAttribute("data-tip", tip);
+      item.onclick = () => {
+        loadDoc(item.dataset.doc, item.dataset.title);
+        if (window.innerWidth <= 960) setSidebarState(false);
+      };
+    });
+  };
+
+  const loadDoc = async (docPath, title) => {
+    let content = window.DOCS[docPath];
+    
+    if (!content && window.location.protocol !== "file:") {
+      docContent.innerHTML = `<p class="loading">Loading <code>${docPath}</code> from GitHub...</p>`;
+      try {
+        const res = await fetch(`https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/docs/${docPath}`);
+        if (res.ok) {
+          content = await res.text();
+          window.DOCS[docPath] = content; // Cache locally
+        }
+      } catch (e) {
+        console.error("Failed to fetch doc content", e);
+      }
+    }
+
+    if (!content) {
+      docContent.innerHTML = `<p>Unable to find <code>${docPath}</code>. If this is a new file, it may take a moment to sync.</p>`;
+      docTitle.textContent = title || "Document";
+      rawLink.href = `./${docPath}`;
+      setActive(docPath);
+      return;
+    }
+
+    docContent.innerHTML = renderMarkdown(content, docPath);
+    
+    if (window.mermaid) {
+      docContent.querySelectorAll('.mermaid-container').forEach((el, index) => {
+        const code = el.getAttribute('data-mermaid');
+        const id = `mermaid-svg-${Date.now()}-${index}`;
+        mermaid.render(id, code)
+          .then(({ svg }) => { el.innerHTML = svg; })
+          .catch(e => {
+            console.error("Mermaid render failed", e);
+            el.innerHTML = `<pre class="code-shell">${escapeHtml(code)}</pre>`;
+          });
+      });
+    }
+
+    docTitle.textContent = title || docPath;
+    rawLink.href = `./${docPath}`;
+    setActive(docPath);
+    
+    // In-page doc link handling
+    docContent.querySelectorAll("[data-doc-link]").forEach((link) => {
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        const target = link.getAttribute("data-doc-link");
+        if (target) {
+          const navItem = navItems.find((item) => item.dataset.doc === target);
+          loadDoc(target, navItem ? navItem.dataset.title : target);
+        }
+      });
+    });
+
+    // Tab handling
+    docContent.querySelectorAll(".tabs-container").forEach((container) => {
+      const buttons = container.querySelectorAll(".tab-button");
+      const panes = container.querySelectorAll(".tab-pane");
+      buttons.forEach(btn => {
+        btn.addEventListener("click", () => {
+          const tabId = btn.getAttribute("data-tab-id");
+          buttons.forEach(b => b.classList.toggle("active", b === btn));
+          panes.forEach(p => p.classList.toggle("active", p.getAttribute("data-tab-id") === tabId));
+        });
+      });
+    });
+  };
+
+  const init = async () => {
+    buildNav();
+    await discoverViaGitHub();
+    
+    const initialItem = navItems.find((item) => item.dataset.doc === DEFAULT_DOC) || navItems[0];
+    if (initialItem) {
+      loadDoc(initialItem.dataset.doc, initialItem.dataset.title);
+    }
+  };
+
+  init();
+
   const collapseButtons = [
     document.getElementById("collapse"),
     document.getElementById("collapse-main"),
@@ -95,15 +283,10 @@
       });
     };
 
-    // Comments
     protect(/(^|[^\S\r\n])#.*$/gm, "comment");
     protect(/\/\/.*$/gm, "comment");
-
-    // Strings
     protect(/"(?:[^"\\]|\\.)*"/g, "string");
     protect(/'(?:[^'\\]|\\.)*'/g, "string");
-
-    // Numbers
     protect(/\b\d+(?:\.\d+)?\b/g, "number");
 
     if (lang === "yaml" || lang === "yml") {
@@ -131,7 +314,6 @@
       const marker = tokenId(i);
       output = output.split(marker).join(placeholders[i]);
     }
-
     return output;
   };
 
@@ -150,17 +332,13 @@
     let blockquoteBuffer = [];
 
     const flushParagraph = () => {
-      if (!paragraph.length) {
-        return;
-      }
+      if (!paragraph.length) return;
       html += `<p>${formatInline(paragraph.join(" "), currentDoc)}</p>`;
       paragraph = [];
     };
 
     const closeList = () => {
-      if (!listType) {
-        return;
-      }
+      if (!listType) return;
       html += `</${listType}>`;
       listType = null;
     };
@@ -175,7 +353,7 @@
           if (idx === 0) {
             html += `<thead><tr>${cols.map(c => `<th>${formatInline(c, currentDoc)}</th>`).join('')}</tr></thead><tbody>`;
           } else if (idx === 1 && /^[-\s:]+$/.test(row.replace(/\|/g, ''))) {
-            // separator
+            // divider
           } else {
             html += `<tr>${cols.map(c => `<td>${formatInline(c, currentDoc)}</td>`).join('')}</tr>`;
           }
@@ -190,19 +368,10 @@
       if (!blockquoteBuffer.length) return;
       const firstLine = blockquoteBuffer[0];
       const ghCallout = firstLine.match(/^\[!(Tip|Note|Idea|Warning|Caution)\]\s*$/i);
-      const classicCallout = firstLine.match(/^(\*\*?)?(Tip|Note|Idea|Warning|Caution)\**?:?\s*(.*)$/i);
       if (ghCallout) {
-        const raw = ghCallout[1];
-        const label = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+        const label = ghCallout[1].charAt(0).toUpperCase() + ghCallout[1].slice(1).toLowerCase();
         const text = blockquoteBuffer.slice(1).join(" ");
-        const cls = `callout callout-${label.toLowerCase()}`;
-        html += `<blockquote class="${cls}"><strong>${label}:</strong> ${formatInline(text, currentDoc)}</blockquote>`;
-      } else if (classicCallout) {
-        const label = classicCallout[2];
-        const restOfFirst = classicCallout[3] || "";
-        const text = [restOfFirst, ...blockquoteBuffer.slice(1)].filter(Boolean).join(" ");
-        const cls = `callout callout-${label.toLowerCase()}`;
-        html += `<blockquote class="${cls}"><strong>${label}:</strong> ${formatInline(text, currentDoc)}</blockquote>`;
+        html += `<blockquote class="callout callout-${label.toLowerCase()}"><strong>${label}:</strong> ${formatInline(text, currentDoc)}</blockquote>`;
       } else {
         const text = blockquoteBuffer.join(" ");
         html += `<blockquote class="callout callout-note">${formatInline(text, currentDoc)}</blockquote>`;
@@ -265,15 +434,11 @@
       if (line.trim().startsWith("```")) {
         if (inCode) {
           const rawCode = codeBuffer.join("\n");
-          const lang = codeLang || "text";
-          if (lang === "mermaid") {
+          if (codeLang === "mermaid") {
             html += `<div class="mermaid-container" data-mermaid="${escapeHtml(rawCode)}"></div>`;
           } else {
             const highlighted = highlightCode(rawCode, codeLang);
-            html += `<div class="code-shell">` +
-                    `<div class="code-head"><span class="code-lang">${escapeHtml(lang)}</span></div>` +
-                    `<pre><code class="lang-${escapeHtml(lang)}">${highlighted}</code></pre>` +
-                    `</div>`;
+            html += `<div class="code-shell"><div class="code-head"><span class="code-lang">${escapeHtml(codeLang || "text")}</span></div><pre><code>${highlighted}</code></pre></div>`;
           }
           inCode = false;
           codeBuffer = [];
@@ -304,22 +469,11 @@
         continue;
       }
 
-      if (/^-{3,}$/.test(line.trim()) || /^\*{3,}$/.test(line.trim()) || /^_{3,}$/.test(line.trim())) {
-        flushAll();
-        html += `<hr />`;
-        continue;
-      }
-
       if (line.startsWith(">")) {
         flushParagraph();
         closeList();
-        flushTable();
-        const quote = line.replace(/^>\s?/, "");
-        blockquoteBuffer.push(quote);
+        blockquoteBuffer.push(line.replace(/^>\s?/, ""));
         continue;
-      }
-      if (blockquoteBuffer.length) {
-        flushBlockquote();
       }
 
       const ul = line.match(/^\s*[-*]\s+(.*)$/);
@@ -327,9 +481,7 @@
       if (ul || ol) {
         flushParagraph();
         const nextType = ul ? "ul" : "ol";
-        if (listType && listType !== nextType) {
-          closeList();
-        }
+        if (listType && listType !== nextType) closeList();
         if (!listType) {
           html += `<${nextType}>`;
           listType = nextType;
@@ -342,16 +494,6 @@
     }
 
     flushAll();
-    if (inCode) {
-      const rawCode = codeBuffer.join("\n");
-      const lang = codeLang || "text";
-      const highlighted = highlightCode(rawCode, codeLang);
-      html += `<div class="code-shell">` +
-              `<div class="code-head"><span class="code-lang">${escapeHtml(lang)}</span></div>` +
-              `<pre><code class="lang-${escapeHtml(lang)}">${highlighted}</code></pre>` +
-              `</div>`;
-    }
-
     return html;
   };
 
@@ -360,68 +502,6 @@
       item.classList.toggle("active", item.dataset.doc === docPath);
     });
   };
-
-  const loadDoc = (docPath, title) => {
-    const content = window.DOCS && window.DOCS[docPath];
-    if (!content) {
-      docContent.innerHTML = `<p>Unable to find <code>${docPath}</code> in the doc index.</p>`;
-      docTitle.textContent = title || "Document";
-      rawLink.href = `./${docPath}`;
-      setActive(docPath);
-      return;
-    }
-    docContent.innerHTML = renderMarkdown(content, docPath);
-    
-    if (window.mermaid) {
-      docContent.querySelectorAll('.mermaid-container').forEach((el, index) => {
-        const code = el.getAttribute('data-mermaid');
-        const id = `mermaid-svg-${Date.now()}-${index}`;
-        mermaid.render(id, code)
-          .then(({ svg }) => { el.innerHTML = svg; })
-          .catch(e => {
-            console.error("Mermaid render failed", e);
-            el.innerHTML = `<pre class="code-shell">${escapeHtml(code)}</pre>`;
-          });
-      });
-    }
-
-    docTitle.textContent = title || docPath;
-    rawLink.href = `./${docPath}`;
-    setActive(docPath);
-    docContent.querySelectorAll("[data-doc-link]").forEach((link) => {
-      link.addEventListener("click", (event) => {
-        event.preventDefault();
-        const target = link.getAttribute("data-doc-link");
-        if (target) {
-          const navItem = navItems.find((item) => item.dataset.doc === target);
-          loadDoc(target, navItem ? navItem.dataset.title : target);
-        }
-      });
-    });
-
-    docContent.querySelectorAll(".tabs-container").forEach((container) => {
-      const buttons = container.querySelectorAll(".tab-button");
-      const panes = container.querySelectorAll(".tab-pane");
-      buttons.forEach(btn => {
-        btn.addEventListener("click", () => {
-          const tabId = btn.getAttribute("data-tab-id");
-          buttons.forEach(b => b.classList.toggle("active", b === btn));
-          panes.forEach(p => p.classList.toggle("active", p.getAttribute("data-tab-id") === tabId));
-        });
-      });
-    });
-  };
-
-  navItems.forEach((item) => {
-    const tip = item.dataset.title || item.dataset.doc || "Open doc";
-    item.setAttribute("data-tip", tip);
-    item.addEventListener("click", () => {
-      loadDoc(item.dataset.doc, item.dataset.title);
-      if (window.innerWidth <= 960) {
-        setSidebarState(false);
-      }
-    });
-  });
 
   const filterNav = () => {
     const term = search.value.trim().toLowerCase();
@@ -438,14 +518,6 @@
     filterNav();
   });
 
-  const initialItem = navItems.find((item) => item.dataset.doc === DEFAULT_DOC) || navItems[0];
-  if (initialItem) {
-    loadDoc(initialItem.dataset.doc, initialItem.dataset.title);
-  }
-
-  const shouldOpen = window.innerWidth > 960;
-  setSidebarState(shouldOpen);
-
   collapseButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
       const open = document.body.classList.contains("sidebar-open");
@@ -454,10 +526,7 @@
   });
 
   window.addEventListener("resize", () => {
-    if (window.innerWidth > 960) {
-      setSidebarState(true);
-    } else if (!document.body.classList.contains("sidebar-open")) {
-      setSidebarState(false);
-    }
+    if (window.innerWidth > 960) setSidebarState(true);
+    else if (!document.body.classList.contains("sidebar-open")) setSidebarState(false);
   });
 })();

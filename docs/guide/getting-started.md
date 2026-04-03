@@ -1,90 +1,71 @@
-**Getting Started**
+# Getting Started
+Welcome! This guide is the "golden path" to your first successful run with Agentic Runtime.
 
-Welcome! This guide is intentionally beginner-friendly. It will get you from zero to a successful run, then show the smallest possible change you can make to feel real progress.
+## Step 1: Prepare Environment
+We recommend using Conda to manage your Python environment.
 
-**Install**
-
-::::tabs
-:::tab Conda (recommended)
 ```bash
+# Create or activate the environment
 conda activate agent_runtime
+
+# Install dependencies and the CLI in editable mode
 pip install -r requirements.txt
 pip install -e .
 ```
-:::tab venv
-```bash
-python -m venv .venv
 
-# macOS/Linux:
-source .venv/bin/activate
-
-# Windows:
-.venv\Scripts\activate
-
-pip install -r requirements.txt
-pip install -e .
-```
-::::
-
-**Quickstart (0 -> 1, recommended golden path)**
+## Step 2: Initialize Your Project
+Create a new directory for your agent and initialize the structure.
 
 ```bash
-mkdir my-agent
-cd my-agent
+mkdir my-first-agent
+cd my-first-agent
+
+# Scaffold the project (workflows, agents, functions, tools)
 ai quickstart
 ```
 
-`ai quickstart` does three things:
-1. Initializes a project scaffold (`workflows/`, `agents/`, `functions/`, `tools/`, `runtime.yaml`).
-2. Writes example files: a workflow definition (`workflows/example.yaml`), agent definitions (`agents/summarizer.yaml`, `agents/fixer.yaml`), example functions (`functions/`), and example tools (`tools/example_tool.py`).
-3. Runs the setup flow to configure an LLM provider and optional API key, then executes the workflow so you see a successful run immediately.
+## Step 3: Configure LLM Keys
+The `ai quickstart` command (or `ai setup`) will prompt you to configure your provider.
 
-If you do not have an API key yet, use:
+1. **Select Provider**: Choose `openai`, `anthropic`, or `gemini`.
+2. **Set API Key**: Enter your key when prompted. The runtime will offer to save it to a `.env` file (which is gitignored).
+3. **Set Default Model**: Choose a model (e.g., `gpt-4o`, `claude-3-opus`).
 
+If you don't have an API key yet, you can still see a successful run using a deterministic sample:
 ```bash
 ai quickstart --sample branching
 ```
 
-That path still initializes the project and runs a deterministic sample workflow successfully.
-
-**Run Again With Different Input**
-
-```bash
-ai run workflows/example.yaml -i issue="Login API fails for invalid token"
-```
-
-What is `issue`? It is the workflow input named `issue`. In `workflows/example.yaml`, the workflow declares an input called `issue`, and `-i issue="..."` supplies its value at run time. You can replace the text with any problem description you want the workflow to process.
-
-To see full structured logs (LLM calls, token usage), add `-v`:
+## Step 4: Your First Run
+If you used the default `ai quickstart`, it already ran a sample workflow for you. To run it again with different input:
 
 ```bash
-ai run workflows/example.yaml -v -i issue="Login API fails for invalid token"
+ai run workflows/example.yaml -i issue="The login page is returning 401 errors"
 ```
 
-**Inspect And Visualize**
+## Step 5: Observe and Debug
+The runtime records every detail of the execution.
 
-```bash
-ai inspect <run_id> --steps
-ai visualize <run_id> --html
-```
+- **Check Results**: View the summary of recent runs.
+  ```bash
+  ai runs
+  ```
+- **Inspect Step Details**: See exactly what happened at each step.
+  ```bash
+  ai inspect latest --steps
+  ```
+- **Visualize the Flow**: Open a beautiful HTML dashboard of the run.
+  ```bash
+  ai visualize latest --html
+  ```
 
-**Make Your First Change (1 → 2)**
+## Step 6: Make it Yours
+1. **Define a new Agent**: Add a YAML file to `agents/`.
+2. **Add a Python function**: Add a script to `functions/`.
+3. **Update the Workflow**: Edit `workflows/example.yaml` to use your new components.
+4. **Refresh Docs**: Rebuild the doc index if you add new documentation files.
+   ```bash
+   ai docs
+   ```
 
-```bash
-cp workflows/example.yaml workflows/my_workflow.yaml
-```
-
-Edit `workflows/my_workflow.yaml` to add a new step or swap an agent reference, then run it:
-
-```bash
-ai run workflows/my_workflow.yaml
-```
-
-The three step types you can use in workflows:
-- `type: agent` — calls an LLM agent defined in `agents/`. The agent's `output_key` field controls the key name in the output dict (e.g., `output_key: summary` means downstream steps read `steps.<step_id>.summary`).
-- `type: function` — calls a Python function from `functions/`. The function's return dict keys become the output.
-- `type: tool` — calls a tool class from `tools/`. The `ToolResult.output` dict keys become the output.
-
-If you want the full walkthrough, read [`docs/guide/manual.md`](manual.md) next.
-
-If you prefer a visual navigator, open [`docs/index.html`](../index.html) in a browser.
+Next, read the [Manual](manual.md) for a deep dive into schemas and advanced features.

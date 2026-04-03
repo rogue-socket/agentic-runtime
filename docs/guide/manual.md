@@ -28,9 +28,15 @@ my-agent/
 
 The `runtime.yaml` file is the central nervous system for your environment. Notably, it defines `default_model`, allowing your agent definitions to remain completely provider-agnostic.
 
-**Model Resolution (Expected vs Actual)**
-- **Expected (What you want)**: The agent runs automatically on a globally configured model without you needing to specify it in every agent YAML.
-- **Actual (What happens under the hood)**: When building the runtime context, if an agent lacks a `model` key, it falls back to the `default_model` in `runtime.yaml`. This guarantees consistent execution and simplifies switching models later.
+**Model Resolution & Precedence**
+The runtime resolves which LLM model to use for an agent step following this hierarchy:
+1. **CLI Flag**: `--model <id>` passed during `ai run` (highest precedence).
+2. **Agent YAML**: `model: <id>` defined in the specific agent's `.yaml` file.
+3. **Runtime Config**: `default_model: <id>` defined in `runtime.yaml`.
+4. **Provider Default**: The fallback model for the selected provider (e.g., `gpt-4o` for OpenAI).
+
+This ensures that agent definitions can remain provider-agnostic while still allowing for surgical overrides during development.
+
 
 
 **Functions (Function Steps)**
@@ -129,6 +135,23 @@ ai resume <run_id>
 ai replay <run_id> --verify-state
 ```
 
+**Listing And Metrics**
+
+```bash
+ai list                # List discovered agents in agents/
+ai runs                # List latest 20 runs (summary)
+ai runs --html         # Generate and open a dashboard of all runs
+ai metrics             # Show aggregate health, latency (p95), and trend metrics
+```
+
+**Documentation Management**
+
+```bash
+ai docs                # Rebuild workflow reference and search index
+```
+
+
+
 
 
 **Memory System**
@@ -138,7 +161,7 @@ The runtime includes a four-tier memory system that enriches execution context:
 - **Working memory** — ephemeral per-run scratch store and sliding context window. Stores key-value pairs with byte budget enforcement, context entries from step outputs, and an active task tracker. Resets at run end.
 - **Episodic memory** — SQLite-backed historical run records. Each completed run stores a condensed episode (workflow id, status, inputs summary, outputs summary). On the next run, the runtime hydrates state with past episodes for the same workflow.
 - **Semantic memory** — long-term knowledge facts stored in SQLite with FTS5 full-text search. Supports exact key lookup, tag-based queries, and BM25-ranked text search.
-- **Procedural memory** — stub (planned: pattern mining from episodic history, rule extraction with confidence scoring).
+- **Procedural memory** — (Stub) Planned tier for automated pattern mining from episodic history and rule extraction. Currently a placeholder for future feature parity with cognitive architectures.
 
 Memory is hydrated before step execution and persisted after run completion. Each tier’s output is namespaced under `runtime.memory.<tier>` in state.
 

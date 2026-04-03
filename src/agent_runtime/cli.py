@@ -686,7 +686,10 @@ def _init_project(target_dir: str) -> None:
 
 
 def _build_docs_index(docs_root: Path) -> int:
-    """Build content.js index for markdown files under docs_root."""
+    """Build content.js index for markdown files under docs_root.
+
+    Also generates a standalone JSON manifest for site discovery.
+    """
     skip = {"content.js", "app.js", "styles.css", "build-content.py", "mermaid.min.js"}
     docs: Dict[str, str] = {}
     for path in sorted(docs_root.rglob("*.md")):
@@ -695,9 +698,19 @@ def _build_docs_index(docs_root: Path) -> int:
         rel = path.relative_to(docs_root).as_posix()
         docs[rel] = path.read_text(encoding="utf-8")
 
+    # Generate content.js for static file:// usage
     out_path = docs_root / "content.js"
     out_path.write_text("window.DOCS = " + json.dumps(docs) + ";\n", encoding="utf-8")
+    
+    # Generate docs-manifest.json for dynamic server-side discovery
+    manifest_path = docs_root / "docs-manifest.json"
+    manifest_path.write_text(json.dumps(docs), encoding="utf-8")
+    
     return len(docs)
+
+
+
+
 
 
 def _normalize_workflow_inputs(raw_inputs: Any) -> List[Dict[str, Any]]:
@@ -1965,6 +1978,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         help="Skip rebuilding docs/site/content.js",
     )
 
+
+
     def _add_llm_control_args(cmd_parser: argparse.ArgumentParser) -> None:
         cmd_parser.add_argument(
             "--llm-rate-limit-rpm",
@@ -2172,7 +2187,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             generated_reference = _generate_workflow_reference(project_root)
 
         count = _build_docs_index(docs_root)
-        print(f"Built {docs_root / 'content.js'} with {count} docs")
+        print(f"Built {docs_root / 'content.js'} and {docs_root / 'docs-manifest.json'} with {count} docs")
 
         site_root = docs_root / "site"
         if site_root.is_dir() and not args.no_site_index:
@@ -2182,7 +2197,10 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         if generated_reference is not None:
             print(f"Generated {generated_reference}")
 
+
+
         return 0
+
 
     _load_dotenv()
 
