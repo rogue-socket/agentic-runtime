@@ -26,8 +26,8 @@ Side Effects:
 
 TODO(ux): ICP is solo dev / small team building an agent. The CLI
   experience should optimize for that persona:
-  - `ai init` should scaffold a working LLM-powered agent out of the box,
-    not just empty directories. Include a sample that calls a real LLM.
+    - `ai init` should scaffold only the base project skeleton (dirs + config),
+        while quickstart commands can layer opinionated examples on top.
   - `ai run` output should show a concise progress summary by default
     (step name + status + duration), not just silence until completion.
   - Add `ai quickstart` command that creates a minimal agent, runs it,
@@ -739,11 +739,10 @@ agent:
 #   the full project structure — workflows/, tools/, agents/, functions/, runtime.yaml.
 #   No more copy-pasting from the last project with its bugs.
 def _init_project(target_dir: str) -> None:
-    """Create workflow scaffold files in target directory.
+    """Create minimal project scaffold in target directory.
 
-    The scaffolded example workflow includes an ``agent`` step that makes
-    a real LLM call (summarizer), so ``ai quickstart`` produces a live
-    end-to-end run out of the box once a provider API key is configured.
+    This intentionally creates only the base structure needed to start coding:
+    directories, ``runtime.yaml``, ``.env``, and ``runtime.db``.
     """
     workflows_dir = os.path.join(target_dir, "workflows")
     tools_dir = os.path.join(target_dir, "tools")
@@ -755,25 +754,35 @@ def _init_project(target_dir: str) -> None:
     os.makedirs(agents_dir, exist_ok=True)
     os.makedirs(functions_dir, exist_ok=True)
 
-    example_workflow_path = os.path.join(workflows_dir, "example.yaml")
-    if not os.path.exists(example_workflow_path):
-        with open(example_workflow_path, "w", encoding="utf-8") as f:
-            f.write(EXAMPLE_WORKFLOW)
-
-    example_function_path = os.path.join(functions_dir, "stubs.py")
-    if not os.path.exists(example_function_path):
-        with open(example_function_path, "w", encoding="utf-8") as f:
-            f.write(EXAMPLE_FUNCTION)
-
-    example_tool_path = os.path.join(tools_dir, "example_tool.py")
-    if not os.path.exists(example_tool_path):
-        with open(example_tool_path, "w", encoding="utf-8") as f:
-            f.write(EXAMPLE_TOOL)
-
     runtime_yaml_path = os.path.join(target_dir, "runtime.yaml")
     if not os.path.exists(runtime_yaml_path):
         with open(runtime_yaml_path, "w", encoding="utf-8") as f:
             f.write(RUNTIME_YAML_TEMPLATE)
+
+    env_path = os.path.join(target_dir, ".env")
+    if not os.path.exists(env_path):
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.write("")
+
+    runtime_db_path = os.path.join(target_dir, "runtime.db")
+    if not os.path.exists(runtime_db_path):
+        with open(runtime_db_path, "a", encoding="utf-8"):
+            pass
+
+
+def _scaffold_starter_files(target_dir: str) -> None:
+    """Create starter workflow/function/tool files used by quickstart."""
+    workflows_dir = os.path.join(target_dir, "workflows")
+    tools_dir = os.path.join(target_dir, "tools")
+    functions_dir = os.path.join(target_dir, "functions")
+
+    os.makedirs(workflows_dir, exist_ok=True)
+    os.makedirs(tools_dir, exist_ok=True)
+    os.makedirs(functions_dir, exist_ok=True)
+
+    _scaffold_file(os.path.join(workflows_dir, "example.yaml"), EXAMPLE_WORKFLOW)
+    _scaffold_file(os.path.join(functions_dir, "stubs.py"), EXAMPLE_FUNCTION)
+    _scaffold_file(os.path.join(tools_dir, "example_tool.py"), EXAMPLE_TOOL)
 
     _scaffold_quickstart_samples(target_dir)
 
@@ -1313,7 +1322,7 @@ steps:
 _QS_RESEARCH_WORKFLOW = """\
 # Quickstart 3: Multi-Agent Research
 # Demonstrates: two LLM agents collaborating, react strategy, agent-function-tool chain.
-# Requires: LLM provider configured (run `ai setup` first).
+# Requires: LLM provider configured (run `ai config` first).
 # Run: ai quickstart --sample research
 #   or: ai run workflows/research.yaml
 #   or: ai run workflows/research.yaml -i topic="Microservices vs monoliths"
@@ -1922,15 +1931,12 @@ def _normalize_quickstart_sample(sample: str) -> str:
         "branching": "branching",
         "branching-triage": "branching",
         "triage": "branching",
-        "quickstart2": "branching",
         "research": "research",
         "multi-agent": "research",
         "multi-agent-research": "research",
-        "quickstart3": "research",
         "pipeline": "pipeline",
         "data": "pipeline",
         "data-pipeline": "pipeline",
-        "quickstart4": "pipeline",
     }
     if normalized not in aliases:
         raise SystemExit(
@@ -1976,14 +1982,14 @@ def _run_quickstart(project_root: str, *, sample: str = "starter") -> int:
         raise SystemExit(f"Project path does not exist: {project_root}")
 
     runtime_path = os.path.join(project_root, "runtime.yaml")
-    example_workflow = os.path.join(project_root, "workflows", "example.yaml")
-    needs_init = (not os.path.exists(runtime_path)) or (not os.path.exists(example_workflow))
-
+    needs_init = not os.path.exists(runtime_path)
+    _init_project(project_root)
     if needs_init:
-        _init_project(project_root)
         print(f"Initialized project at {project_root}")
-    else:
-        _scaffold_quickstart_samples(project_root)
+
+    _scaffold_starter_files(project_root)
+
+    example_workflow = os.path.join(project_root, "workflows", "example.yaml")
 
     _load_dotenv(os.path.join(project_root, ".env"))
 
@@ -2057,6 +2063,14 @@ def _run_quickstart_sample(
     if not os.path.isdir(project_root):
         raise SystemExit(f"Project path does not exist: {project_root}")
 
+    runtime_path = os.path.join(project_root, "runtime.yaml")
+    needs_init = not os.path.exists(runtime_path)
+    _init_project(project_root)
+    if needs_init:
+        print(f"Initialized project at {project_root}")
+
+    _scaffold_quickstart_samples(project_root)
+
     _load_dotenv(os.path.join(project_root, ".env"))
 
     if needs_llm:
@@ -2066,13 +2080,6 @@ def _run_quickstart_sample(
             base_url=None, temperature=None, max_tokens=None,
             no_dotenv=False, no_default=False,
         )
-
-    runtime_path = os.path.join(project_root, "runtime.yaml")
-    if not os.path.exists(runtime_path):
-        _init_project(project_root)
-        print(f"Initialized project at {project_root}")
-    else:
-        _scaffold_quickstart_samples(project_root)
 
     workflow_path = os.path.join(project_root, "workflows", workflow_name)
     if not os.path.exists(workflow_path):
@@ -2153,36 +2160,21 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         ),
     )
 
-    qs2_parser = subparsers.add_parser(
-        "quickstart2",
-        help=argparse.SUPPRESS,
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Configure API keys and runtime settings",
     )
-    qs2_parser.add_argument("--path", default=".", help="Project root")
-
-    qs3_parser = subparsers.add_parser(
-        "quickstart3",
-        help=argparse.SUPPRESS,
-    )
-    qs3_parser.add_argument("--path", default=".", help="Project root")
-
-    qs4_parser = subparsers.add_parser(
-        "quickstart4",
-        help=argparse.SUPPRESS,
-    )
-    qs4_parser.add_argument("--path", default=".", help="Project root")
-
-    setup_parser = subparsers.add_parser("setup", help="Configure API keys and runtime settings")
-    setup_parser.add_argument("--path", default=".", help="Project root (contains runtime.yaml)")
-    setup_parser.add_argument("--provider", choices=["openai", "anthropic", "gemini", "local"], help="LLM provider")
-    setup_parser.add_argument("--api-key-env", help="Env var name to use for the API key")
-    setup_parser.add_argument("--api-key", help="API key value (optional)")
-    setup_parser.add_argument("--model", help="Model id to add to runtime.yaml")
-    setup_parser.add_argument("--base-url", help="Base URL (mainly for local/proxy providers)")
-    setup_parser.add_argument("--temperature", type=float, help="Model temperature")
-    setup_parser.add_argument("--max-tokens", type=int, help="Model max_tokens")
-    setup_parser.add_argument("--no-dotenv", action="store_true", help="Do not write .env")
-    setup_parser.add_argument("--no-default", action="store_true", help="Do not set default provider")
-    setup_parser.add_argument("--check", action="store_true", help="Verify configured providers and API keys")
+    config_parser.add_argument("--path", default=".", help="Project root (contains runtime.yaml)")
+    config_parser.add_argument("--provider", choices=["openai", "anthropic", "gemini", "local"], help="LLM provider")
+    config_parser.add_argument("--api-key-env", help="Env var name to use for the API key")
+    config_parser.add_argument("--api-key", help="API key value (optional)")
+    config_parser.add_argument("--model", help="Model id to add to runtime.yaml")
+    config_parser.add_argument("--base-url", help="Base URL (mainly for local/proxy providers)")
+    config_parser.add_argument("--temperature", type=float, help="Model temperature")
+    config_parser.add_argument("--max-tokens", type=int, help="Model max_tokens")
+    config_parser.add_argument("--no-dotenv", action="store_true", help="Do not write .env")
+    config_parser.add_argument("--no-default", action="store_true", help="Do not set default provider")
+    config_parser.add_argument("--check", action="store_true", help="Verify configured providers and API keys")
 
     onboard_parser = subparsers.add_parser(
         "onboard",
@@ -2366,22 +2358,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         project_root = os.path.abspath(args.path)
         return _run_quickstart(project_root, sample=args.sample)
 
-    if args.command == "quickstart2":
-        project_root = os.path.abspath(args.path)
-        print("Warning: ai quickstart2 is deprecated. Use: ai quickstart --sample branching")
-        return _run_quickstart(project_root, sample="quickstart2")
-
-    if args.command == "quickstart3":
-        project_root = os.path.abspath(args.path)
-        print("Warning: ai quickstart3 is deprecated. Use: ai quickstart --sample research")
-        return _run_quickstart(project_root, sample="quickstart3")
-
-    if args.command == "quickstart4":
-        project_root = os.path.abspath(args.path)
-        print("Warning: ai quickstart4 is deprecated. Use: ai quickstart --sample pipeline")
-        return _run_quickstart(project_root, sample="quickstart4")
-
-    if args.command == "setup":
+    if args.command == "config":
         project_root = os.path.abspath(args.path)
 
         if not os.path.isdir(project_root):
@@ -2429,7 +2406,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             no_dotenv=args.no_dotenv,
             no_default=args.no_default,
         )
-        print("Setup complete. You can now run `ai run ...`.")
+        print("Config complete. You can now run `ai run ...`.")
         return 0
 
     if args.command == "onboard":
