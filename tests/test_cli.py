@@ -19,6 +19,7 @@ from agent_runtime.cli import (
     _parse_env_line,
     _redact,
     _init_project,
+    _load_workflow_for_run,
     run_cli,
 )
 from conftest import make_storage
@@ -722,6 +723,41 @@ class TestRunCLITestCommand:
             code = run_cli(["test", "functions", "--path", d])
             assert code == 1
             assert "mismatch_case" in capsys.readouterr().out
+
+
+class TestWorkflowResolution:
+    def test_registry_workflow_resolution_binds_function_callables(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            workflows_dir = os.path.join(d, "workflows")
+            functions_dir = os.path.join(d, "functions")
+            os.makedirs(workflows_dir, exist_ok=True)
+            os.makedirs(functions_dir, exist_ok=True)
+
+            workflow_yaml = """schema_version: v1
+workflow:
+  id: sample_workflow
+  version: v1
+steps:
+  - id: transform
+    type: function
+    function: wf_sample_bind.transform
+"""
+            with open(os.path.join(workflows_dir, "sample.yaml"), "w", encoding="utf-8") as f:
+                f.write(workflow_yaml)
+
+            with open(os.path.join(functions_dir, "wf_sample_bind.py"), "w", encoding="utf-8") as f:
+                f.write(
+                    "def transform(inputs: dict) -> dict:\n"
+                    "    return {'ok': True}\n"
+                )
+
+            resolved = _load_workflow_for_run(
+                "sample_workflow",
+                workflows_dir=workflows_dir,
+                functions_dir=functions_dir,
+            )
+            steps_by_id = {step.step_id: step for step in resolved["steps"]}
+            assert callable(steps_by_id["transform"].function_callable)
 
     def test_quickstart_branching_sample_first_success(self) -> None:
         """Function implementation."""
