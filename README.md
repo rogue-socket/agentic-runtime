@@ -111,7 +111,7 @@ ai quickstart --sample branching
 
 Setup commands at a glance:
 
-- `ai init`: base scaffold only (`agents/`, `functions/`, `tools/`, `workflows/`, `.env`, `runtime.db`, `runtime.yaml`)
+- `ai init`: base scaffold only (`agents/`, `functions/`, `tools/`, `workflows/`, per-folder `tests/`, `.env`, `runtime.db`, `runtime.yaml`)
 - `ai config`: provider/model/key setup only
 - `ai quickstart`: `init` + `config` + first run (recommended)
 - `ai onboard` / `ai start`: guided interactive wizard
@@ -156,10 +156,84 @@ ai visualize <run_id> --ascii           # terminal-friendly graph
 ai resume <run_id>                      # resume a failed run from failure point
 ai replay <run_id> --verify-state       # deterministic replay with state verification
 
+# Test your project artifacts
+ai test all                              # run all project-authored tests
+ai test workflows                        # run all workflow tests (workflows/tests)
+ai test workflows checkout               # run tests matching "checkout"
+ai test agents                           # run all agent tests (agents/tests)
+ai test functions                        # run all function tests (functions/tests)
+ai test tools                            # run all tool tests (tools/tests)
+
 # Manage
 ai list                                 # list available agents
 ai runs                                 # list recent runs
 ```
+
+### Tool Test Specs
+
+`ai test tools` supports deterministic YAML test specs in `tools/tests/`.
+
+- Supported file names: `tool_tests.yaml`, `tool_tests.yml`, `*.tooltest.yaml`, `*.tooltest.yml`
+- A spec can define either `tool_tests: [...]` or a single `tool_test: {...}`
+- Assertions support exactly one operator per entry: `equals`, `contains`, or `exists`
+- Assertion paths are dotted paths over `{ success, output, error, metadata }`
+
+Example:
+
+```yaml
+schema_version: v1
+tool_tests:
+  - id: priority_marks_critical
+    tool: tools.priority_heuristic
+    input:
+      issue: "API is down with 500 errors"
+    assert:
+      - path: success
+        equals: true
+      - path: output.priority
+        equals: "P0 (critical)"
+```
+
+Run targeted tool cases with filters:
+
+```bash
+ai test tools priority
+```
+
+Target filters match test file path, case id, and tool name
+
+### Function Test Specs
+
+`ai test functions` supports deterministic YAML test specs in `functions/tests/`.
+
+- Supported file names: `function_tests.yaml`, `function_tests.yml`, `*.functest.yaml`, `*.functest.yml`
+- A spec can define either `function_tests: [...]` or a single `function_test: {...}`
+- Assertions support exactly one operator per entry: `equals`, `contains`, or `exists`
+- Assertion paths are dotted paths over `{ success, output, error, metadata }`
+
+Example:
+
+```yaml
+schema_version: v1
+function_tests:
+  - id: classify_high
+    function: stubs.classify_severity
+    input:
+      issue: "Login fails with 500 errors"
+    assert:
+      - path: success
+        equals: true
+      - path: output.severity
+        equals: high
+```
+
+Run targeted function cases with filters:
+
+```bash
+ai test functions classify
+```
+
+Target filters match test file path, case id, and function reference
 
 ---
 
