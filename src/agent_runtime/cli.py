@@ -2255,7 +2255,17 @@ def _load_workflow_for_run(
 
     ref = parse_workflow_reference(workflow_ref)
     registry = WorkflowRegistry.from_directory(workflows_dir)
-    return registry.get(ref.workflow_id, ref.version)
+    workflow = registry.get(ref.workflow_id, ref.version)
+
+    # Workflows resolved by id/version come from registry parsing that does not
+    # bind function callables. Re-parse stored YAML with functions_dir so
+    # function steps have resolved callables like file-path runs do.
+    if functions_dir:
+        raw_yaml = workflow.get("workflow_yaml")
+        if isinstance(raw_yaml, str) and raw_yaml.strip():
+            return load_workflow_from_text(raw_yaml, functions_dir=functions_dir)
+
+    return workflow
 
 
 def _coerce_value(raw: str) -> Any:
