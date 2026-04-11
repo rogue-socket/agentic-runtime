@@ -109,6 +109,13 @@ No API key yet? Use a deterministic first run with:
 ai quickstart --sample branching
 ```
 
+Setup commands at a glance:
+
+- `ai init`: base scaffold only (`agents/`, `functions/`, `tools/`, `workflows/`, `.env`, `runtime.db`, `runtime.yaml`)
+- `ai config`: provider/model/key setup only
+- `ai quickstart`: `init` + `config` + first run (recommended)
+- `ai onboard` / `ai start`: guided interactive wizard
+
 Already have a project? Just cd into it and run ai run workflows/example.yaml.
 
 ---
@@ -119,6 +126,12 @@ Already have a project? Just cd into it and run ai run workflows/example.yaml.
 # Golden path onboarding
 ai quickstart
 ai quickstart --sample branching          # first success without API key
+
+# Explicit setup flow
+ai init                                   # base scaffold only
+ai config                                 # provider/model/key config
+ai config --check                         # verify key availability
+ai onboard                                # guided setup wizard (alias: ai start)
 
 # Run
 ai run workflows/example.yaml             # run by file path

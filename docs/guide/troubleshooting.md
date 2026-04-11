@@ -87,7 +87,7 @@ Common causes:
 
 - Keys are resolved from environment variables at call time.
 - Ensure your `.env` file has the correct variable (e.g., `GEMINI_API_KEY=...`).
-- Run `ai setup --check` to verify which provider keys are available.
+- Run `ai config --check` to verify which provider keys are available.
 - The key env var name is configured in `runtime.yaml` under `llm.providers.<name>.api_key_env`.
 
 **Step output contract violation**
