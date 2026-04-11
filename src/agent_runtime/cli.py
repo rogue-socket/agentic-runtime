@@ -35,10 +35,12 @@ TODO(ux): ICP is solo dev / small team building an agent. The CLI
 """
 
 import argparse
+import asyncio
 import io
 import getpass
 import json
 import os
+import subprocess
 import tarfile
 import time
 from pathlib import Path
@@ -63,6 +65,8 @@ from .tools.http import HttpTool
 from .tools.file import FileTool
 from .tools.shell import ShellTool
 from .tools.discovery import register_discovered_tools
+from .tools.base import RuntimeContext
+from .function_resolver import resolve_function
 from .errors import (
     RunNotFoundError,
     WorkflowValidationError,
@@ -100,6 +104,64 @@ _DEFAULT_PROVIDER_MODEL = {
 _DEFAULT_PROVIDER_BASE_URL = {
     "local": "http://localhost:8080/v1",
 }
+
+_TEST_SCOPE_DIRS = {
+    "workflows": ["workflows/tests"],
+    "agents": ["agents/tests"],
+    "functions": ["functions/tests"],
+    "tools": ["tools/tests"],
+    "all": ["workflows/tests", "agents/tests", "functions/tests", "tools/tests"],
+}
+
+_TEST_README_TEMPLATE = """# {domain} tests
+
+Place project tests for `{domain}/` in this folder.
+
+Suggested naming:
+- Test files: `test_<name>.py`
+- Test cases: `test_<behavior>()`
+
+Run tests with:
+- `ai test {domain}`
+- `ai test {domain} <target>`
+"""
+
+_TOOL_TEST_TEMPLATE = """schema_version: v1
+tool_tests: []
+
+# Example:
+# tool_tests:
+#   - id: priority_marks_critical
+#     tool: tools.priority_heuristic
+#     input:
+#       issue: "API is down with 500 errors"
+#     assert:
+#       - path: success
+#         equals: true
+#       - path: output.priority
+#         equals: "P0 (critical)"
+"""
+
+_FUNCTION_TEST_TEMPLATE = """schema_version: v1
+function_tests: []
+
+# Example:
+# function_tests:
+#   - id: classify_high
+#     function: stubs.classify_severity
+#     input:
+#       issue: "Login fails with 500 errors"
+#     assert:
+#       - path: success
+#         equals: true
+#       - path: output.severity
+#         equals: high
+"""
+
+_TOOL_TEST_SPEC_FILENAMES = {"tool_tests.yaml", "tool_tests.yml"}
+_TOOL_TEST_SPEC_SUFFIXES = (".tooltest.yaml", ".tooltest.yml")
+_FUNCTION_TEST_SPEC_FILENAMES = {"function_tests.yaml", "function_tests.yml"}
+_FUNCTION_TEST_SPEC_SUFFIXES = (".functest.yaml", ".functest.yml")
 
 
 # [Pain Point Solved] #N11 .env File in the Repo: Secrets are redacted in all
@@ -753,6 +815,7 @@ def _init_project(target_dir: str) -> None:
     os.makedirs(tools_dir, exist_ok=True)
     os.makedirs(agents_dir, exist_ok=True)
     os.makedirs(functions_dir, exist_ok=True)
+    _scaffold_test_layout(target_dir)
 
     runtime_yaml_path = os.path.join(target_dir, "runtime.yaml")
     if not os.path.exists(runtime_yaml_path):
@@ -768,6 +831,613 @@ def _init_project(target_dir: str) -> None:
     if not os.path.exists(runtime_db_path):
         with open(runtime_db_path, "a", encoding="utf-8"):
             pass
+
+
+def _scaffold_test_layout(target_dir: str) -> None:
+    """Create per-domain test folders and lightweight readmes."""
+    for scope, rel_dirs in _TEST_SCOPE_DIRS.items():
+        if scope == "all":
+            continue
+        for rel_dir in rel_dirs:
+            abs_dir = os.path.join(target_dir, rel_dir)
+            os.makedirs(abs_dir, exist_ok=True)
+            readme_path = os.path.join(abs_dir, "README.md")
+            if not os.path.exists(readme_path):
+                with open(readme_path, "w", encoding="utf-8") as f:
+                    f.write(_TEST_README_TEMPLATE.format(domain=scope))
+
+    tools_spec = os.path.join(target_dir, "tools", "tests", "tool_tests.yaml")
+    if not os.path.exists(tools_spec):
+        with open(tools_spec, "w", encoding="utf-8") as f:
+            f.write(_TOOL_TEST_TEMPLATE)
+
+    functions_spec = os.path.join(target_dir, "functions", "tests", "function_tests.yaml")
+    if not os.path.exists(functions_spec):
+        with open(functions_spec, "w", encoding="utf-8") as f:
+            f.write(_FUNCTION_TEST_TEMPLATE)
+
+
+def _collect_test_files(project_root: str, scope: str) -> List[str]:
+    """Collect test_*.py files for the requested test scope."""
+    files: List[str] = []
+    for rel_dir in _TEST_SCOPE_DIRS[scope]:
+        abs_dir = os.path.join(project_root, rel_dir)
+        if not os.path.isdir(abs_dir):
+            continue
+        for root, _, names in os.walk(abs_dir):
+            for name in sorted(names):
+                if name.startswith("test_") and name.endswith(".py"):
+                    files.append(os.path.join(root, name))
+    return sorted(files)
+
+
+def _filter_test_files(test_files: List[str], project_root: str, targets: List[str]) -> List[str]:
+    """Filter test files by target tokens against file name/path."""
+    if not targets:
+        return list(test_files)
+    tokens = [t.strip().lower() for t in targets if t.strip()]
+    if not tokens:
+        return list(test_files)
+
+    matched: List[str] = []
+    for file_path in test_files:
+        rel = os.path.relpath(file_path, project_root).lower()
+        stem = os.path.splitext(os.path.basename(file_path))[0].lower()
+        if any(token in rel or token in stem for token in tokens):
+            matched.append(file_path)
+    return matched
+
+
+def _run_project_tests(
+    project_root: str,
+    *,
+    scope: str,
+    targets: List[str],
+    pytest_args: Optional[List[str]] = None,
+) -> int:
+    """Run scoped project tests via pytest."""
+    if not os.path.isdir(project_root):
+        raise SystemExit(f"Project path does not exist: {project_root}")
+
+    discovered = _collect_test_files(project_root, scope)
+    selected = _filter_test_files(discovered, project_root, targets)
+    run_tool_specs = scope in ("tools", "all")
+    run_function_specs = scope in ("functions", "all")
+    tool_summary = {
+        "spec_files": 0,
+        "total_cases": 0,
+        "selected_cases": 0,
+        "failed_cases": 0,
+        "parse_errors": 0,
+    }
+    function_summary = {
+        "spec_files": 0,
+        "total_cases": 0,
+        "selected_cases": 0,
+        "failed_cases": 0,
+        "parse_errors": 0,
+    }
+
+    if run_tool_specs:
+        tools_dir = _resolve_tools_dir_for_testing(project_root)
+        tool_summary = _run_tool_spec_tests(project_root, tools_dir=tools_dir, targets=targets)
+
+    if run_function_specs:
+        functions_dir = _resolve_functions_dir_for_testing(project_root)
+        function_summary = _run_function_spec_tests(
+            project_root,
+            functions_dir=functions_dir,
+            targets=targets,
+        )
+
+    if targets and not selected and tool_summary["selected_cases"] == 0 and function_summary["selected_cases"] == 0:
+        joined = ", ".join(targets)
+        print(f"No test files, tool test cases, or function test cases matched targets: {joined}")
+        return 1
+
+    if not discovered and tool_summary["spec_files"] == 0 and function_summary["spec_files"] == 0:
+        print(f"No test files found for scope '{scope}'.")
+        return 0
+
+    code = 1 if (
+        tool_summary["failed_cases"] > 0
+        or tool_summary["parse_errors"] > 0
+        or function_summary["failed_cases"] > 0
+        or function_summary["parse_errors"] > 0
+    ) else 0
+    if selected:
+        code = max(code, _run_pytest_files(project_root, scope=scope, rel_files=[os.path.relpath(path, project_root) for path in selected], pytest_args=pytest_args))
+
+    return code
+
+
+def _run_pytest_files(
+    project_root: str,
+    *,
+    scope: str,
+    rel_files: List[str],
+    pytest_args: Optional[List[str]] = None,
+) -> int:
+    """Run a set of relative test files through pytest."""
+    cmd = [sys.executable, "-m", "pytest", *rel_files]
+    if pytest_args:
+        cmd.extend(pytest_args)
+
+    print(f"Running {len(rel_files)} test file(s) in scope '{scope}'")
+    result = subprocess.run(cmd, cwd=project_root, check=False)
+    return int(result.returncode)
+
+
+def _resolve_tools_dir_for_testing(project_root: str) -> str:
+    """Resolve tools_dir from runtime config when available; fallback to tools/."""
+    runtime_path = os.path.join(project_root, "runtime.yaml")
+    if not os.path.exists(runtime_path):
+        return os.path.join(project_root, "tools")
+
+    try:
+        cfg = load_config(runtime_path)
+    except Exception:
+        return os.path.join(project_root, "tools")
+
+    return _resolve_project_path(project_root, cfg.tools_dir)
+
+
+def _collect_tool_test_spec_files(project_root: str) -> List[str]:
+    """Collect YAML tool-test specification files from tools/tests."""
+    tests_dir = os.path.join(project_root, "tools", "tests")
+    if not os.path.isdir(tests_dir):
+        return []
+
+    files: List[str] = []
+    for root, _, names in os.walk(tests_dir):
+        for name in sorted(names):
+            lower_name = name.lower()
+            if lower_name in _TOOL_TEST_SPEC_FILENAMES or lower_name.endswith(_TOOL_TEST_SPEC_SUFFIXES):
+                files.append(os.path.join(root, name))
+    return sorted(files)
+
+
+def _collect_function_test_spec_files(project_root: str) -> List[str]:
+    """Collect YAML function-test specification files from functions/tests."""
+    tests_dir = os.path.join(project_root, "functions", "tests")
+    if not os.path.isdir(tests_dir):
+        return []
+
+    files: List[str] = []
+    for root, _, names in os.walk(tests_dir):
+        for name in sorted(names):
+            lower_name = name.lower()
+            if lower_name in _FUNCTION_TEST_SPEC_FILENAMES or lower_name.endswith(_FUNCTION_TEST_SPEC_SUFFIXES):
+                files.append(os.path.join(root, name))
+    return sorted(files)
+
+
+def _load_tool_test_cases(spec_path: str) -> List[Dict[str, Any]]:
+    """Parse a tool-test spec file and return normalized case dictionaries."""
+    with open(spec_path, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+
+    if not isinstance(raw, dict):
+        raise ValueError("spec root must be a mapping")
+
+    if "tool_tests" in raw:
+        raw_cases = raw["tool_tests"]
+        if not isinstance(raw_cases, list):
+            raise ValueError("tool_tests must be a list")
+    elif "tool_test" in raw:
+        raw_cases = [raw["tool_test"]]
+    else:
+        return []
+
+    cases: List[Dict[str, Any]] = []
+    for idx, raw_case in enumerate(raw_cases, start=1):
+        if not isinstance(raw_case, dict):
+            raise ValueError(f"case #{idx} must be a mapping")
+
+        case_id = raw_case.get("id")
+        tool_name = raw_case.get("tool")
+        case_input = raw_case.get("input", {})
+        assertions = raw_case.get("assert", [])
+
+        if not isinstance(case_id, str) or not case_id.strip():
+            raise ValueError(f"case #{idx} requires a non-empty string id")
+        if not isinstance(tool_name, str) or not tool_name.strip():
+            raise ValueError(f"case '{case_id}' requires a non-empty string tool")
+        if not isinstance(case_input, dict):
+            raise ValueError(f"case '{case_id}' field 'input' must be a mapping")
+        if not isinstance(assertions, list):
+            raise ValueError(f"case '{case_id}' field 'assert' must be a list")
+
+        cases.append({
+            "id": case_id,
+            "tool": tool_name,
+            "input": case_input,
+            "assert": assertions,
+        })
+
+    return cases
+
+
+def _load_function_test_cases(spec_path: str) -> List[Dict[str, Any]]:
+    """Parse a function-test spec file and return normalized case dictionaries."""
+    with open(spec_path, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+
+    if not isinstance(raw, dict):
+        raise ValueError("spec root must be a mapping")
+
+    if "function_tests" in raw:
+        raw_cases = raw["function_tests"]
+        if not isinstance(raw_cases, list):
+            raise ValueError("function_tests must be a list")
+    elif "function_test" in raw:
+        raw_cases = [raw["function_test"]]
+    else:
+        return []
+
+    cases: List[Dict[str, Any]] = []
+    for idx, raw_case in enumerate(raw_cases, start=1):
+        if not isinstance(raw_case, dict):
+            raise ValueError(f"case #{idx} must be a mapping")
+
+        case_id = raw_case.get("id")
+        function_ref = raw_case.get("function")
+        case_input = raw_case.get("input", {})
+        assertions = raw_case.get("assert", [])
+
+        if not isinstance(case_id, str) or not case_id.strip():
+            raise ValueError(f"case #{idx} requires a non-empty string id")
+        if not isinstance(function_ref, str) or not function_ref.strip():
+            raise ValueError(f"case '{case_id}' requires a non-empty string function")
+        if not isinstance(case_input, dict):
+            raise ValueError(f"case '{case_id}' field 'input' must be a mapping")
+        if not isinstance(assertions, list):
+            raise ValueError(f"case '{case_id}' field 'assert' must be a list")
+
+        cases.append({
+            "id": case_id,
+            "function": function_ref,
+            "input": case_input,
+            "assert": assertions,
+        })
+
+    return cases
+
+
+def _value_contains(actual: Any, expected: Any) -> bool:
+    """Return True when expected is contained in actual for supported types."""
+    if isinstance(actual, dict) and isinstance(expected, dict):
+        for key, value in expected.items():
+            if key not in actual:
+                return False
+            if not _value_contains(actual[key], value):
+                return False
+        return True
+
+    if isinstance(actual, list):
+        if isinstance(expected, list):
+            return all(item in actual for item in expected)
+        return expected in actual
+
+    if isinstance(actual, str) and isinstance(expected, str):
+        return expected in actual
+
+    return actual == expected
+
+
+def _resolve_assert_path(payload: Dict[str, Any], path: str) -> tuple[bool, Any]:
+    """Resolve dotted assertion path from a result payload."""
+    if not path:
+        return False, None
+
+    current: Any = payload
+    for part in path.split("."):
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+            continue
+        return False, None
+
+    return True, current
+
+
+def _evaluate_case_assertions(payload: Dict[str, Any], assertions: List[Dict[str, Any]]) -> List[str]:
+    """Evaluate deterministic assertions and return human-readable failures."""
+    failures: List[str] = []
+    if not assertions:
+        assertions = [{"path": "success", "equals": True}]
+
+    for idx, raw_assert in enumerate(assertions, start=1):
+        if not isinstance(raw_assert, dict):
+            failures.append(f"assert[{idx}] must be a mapping")
+            continue
+
+        path = raw_assert.get("path")
+        if not isinstance(path, str) or not path.strip():
+            failures.append(f"assert[{idx}] requires a non-empty string path")
+            continue
+
+        operations = [op for op in ("equals", "contains", "exists") if op in raw_assert]
+        if len(operations) != 1:
+            failures.append(
+                f"assert[{idx}] path '{path}' must define exactly one of equals/contains/exists"
+            )
+            continue
+
+        op = operations[0]
+        exists, value = _resolve_assert_path(payload, path)
+        expected = raw_assert[op]
+
+        if op == "exists":
+            if not isinstance(expected, bool):
+                failures.append(f"assert[{idx}] path '{path}' exists must be boolean")
+                continue
+            if exists != expected:
+                failures.append(
+                    f"assert[{idx}] path '{path}' expected exists={expected}, got exists={exists}"
+                )
+            continue
+
+        if not exists:
+            failures.append(f"assert[{idx}] path '{path}' not found")
+            continue
+
+        if op == "equals" and value != expected:
+            failures.append(
+                f"assert[{idx}] path '{path}' expected {expected!r}, got {value!r}"
+            )
+            continue
+
+        if op == "contains" and not _value_contains(value, expected):
+            failures.append(
+                f"assert[{idx}] path '{path}' expected to contain {expected!r}, got {value!r}"
+            )
+
+    return failures
+
+
+def _resolve_functions_dir_for_testing(project_root: str) -> str:
+    """Resolve functions_dir from runtime config when available; fallback to functions/."""
+    runtime_path = os.path.join(project_root, "runtime.yaml")
+    if not os.path.exists(runtime_path):
+        return os.path.join(project_root, "functions")
+
+    try:
+        cfg = load_config(runtime_path)
+    except Exception:
+        return os.path.join(project_root, "functions")
+
+    return _resolve_project_path(project_root, cfg.functions_dir)
+
+
+def _build_tool_test_registry(project_root: str, tools_dir: str) -> ToolRegistry:
+    """Build a deterministic tool registry for tool-test execution."""
+    registry = ToolRegistry()
+    registry.register(EchoTool())
+    registry.register(FileTool(root=project_root))
+    register_discovered_tools(registry, tools_dir)
+    return registry
+
+
+def _matches_tool_case_targets(rel_path: str, case_id: str, tool_name: str, targets: List[str]) -> bool:
+    """Return True when a tool test case matches any target token."""
+    if not targets:
+        return True
+    haystacks = (rel_path.lower(), case_id.lower(), tool_name.lower())
+    tokens = [token.strip().lower() for token in targets if token.strip()]
+    return any(any(token in hay for hay in haystacks) for token in tokens)
+
+
+def _run_tool_spec_tests(project_root: str, *, tools_dir: str, targets: List[str]) -> Dict[str, int]:
+    """Execute YAML tool-test specs and return summary counters."""
+    spec_files = _collect_tool_test_spec_files(project_root)
+    if not spec_files:
+        return {
+            "spec_files": 0,
+            "total_cases": 0,
+            "selected_cases": 0,
+            "failed_cases": 0,
+            "parse_errors": 0,
+        }
+
+    registry = _build_tool_test_registry(project_root, tools_dir)
+
+    total_cases = 0
+    selected_cases = 0
+    failed_cases = 0
+    parse_errors = 0
+
+    print(f"Discovered {len(spec_files)} tool test spec file(s)")
+
+    for spec_path in spec_files:
+        rel_spec_path = os.path.relpath(spec_path, project_root)
+        try:
+            cases = _load_tool_test_cases(spec_path)
+        except Exception as exc:
+            print(f"  ✗ {rel_spec_path}: failed to parse ({exc})")
+            parse_errors += 1
+            continue
+
+        if not cases:
+            continue
+
+        for case in cases:
+            total_cases += 1
+            case_id = case["id"]
+            tool_name = case["tool"]
+
+            if not _matches_tool_case_targets(rel_spec_path, case_id, tool_name, targets):
+                continue
+
+            selected_cases += 1
+            input_payload = case["input"]
+            assertions = case["assert"]
+
+            try:
+                tool = registry.get(tool_name)
+            except Exception as exc:
+                failed_cases += 1
+                print(f"  ✗ {case_id}: tool lookup failed for '{tool_name}' ({exc})")
+                continue
+
+            context = RuntimeContext(
+                run_id="tool-test",
+                step_id=case_id,
+                state={"inputs": input_payload},
+                logger=None,
+            )
+
+            try:
+                result = asyncio.run(tool.execute(input_payload, context))
+            except Exception as exc:
+                failed_cases += 1
+                print(f"  ✗ {case_id}: tool execution raised {exc}")
+                continue
+
+            payload = {
+                "success": getattr(result, "success", None),
+                "output": getattr(result, "output", None),
+                "error": getattr(result, "error", None),
+                "metadata": getattr(result, "metadata", None),
+            }
+            failures = _evaluate_case_assertions(payload, assertions)
+            if failures:
+                failed_cases += 1
+                print(f"  ✗ {case_id}: {len(failures)} assertion failure(s)")
+                for failure in failures:
+                    print(f"    - {failure}")
+                continue
+
+            print(f"  ✓ {case_id}")
+
+    print(
+        "Tool spec summary: "
+        f"selected={selected_cases} "
+        f"failed={failed_cases} "
+        f"parse_errors={parse_errors}"
+    )
+
+    return {
+        "spec_files": len(spec_files),
+        "total_cases": total_cases,
+        "selected_cases": selected_cases,
+        "failed_cases": failed_cases,
+        "parse_errors": parse_errors,
+    }
+
+
+def _matches_function_case_targets(rel_path: str, case_id: str, function_ref: str, targets: List[str]) -> bool:
+    """Return True when a function test case matches any target token."""
+    if not targets:
+        return True
+    haystacks = (rel_path.lower(), case_id.lower(), function_ref.lower())
+    tokens = [token.strip().lower() for token in targets if token.strip()]
+    return any(any(token in hay for hay in haystacks) for token in tokens)
+
+
+def _clear_function_module_cache() -> None:
+    """Clear cached runtime function modules to avoid stale imports between runs."""
+    prefix = "_runtime_functions."
+    to_remove = [name for name in sys.modules if name.startswith(prefix)]
+    for name in to_remove:
+        del sys.modules[name]
+
+
+def _run_function_spec_tests(project_root: str, *, functions_dir: str, targets: List[str]) -> Dict[str, int]:
+    """Execute YAML function-test specs and return summary counters."""
+    spec_files = _collect_function_test_spec_files(project_root)
+    if not spec_files:
+        return {
+            "spec_files": 0,
+            "total_cases": 0,
+            "selected_cases": 0,
+            "failed_cases": 0,
+            "parse_errors": 0,
+        }
+
+    total_cases = 0
+    selected_cases = 0
+    failed_cases = 0
+    parse_errors = 0
+
+    # Function resolver caches discovered modules; clear cache for deterministic
+    # test execution when files may change between invocations.
+    _clear_function_module_cache()
+
+    print(f"Discovered {len(spec_files)} function test spec file(s)")
+
+    for spec_path in spec_files:
+        rel_spec_path = os.path.relpath(spec_path, project_root)
+        try:
+            cases = _load_function_test_cases(spec_path)
+        except Exception as exc:
+            print(f"  ✗ {rel_spec_path}: failed to parse ({exc})")
+            parse_errors += 1
+            continue
+
+        if not cases:
+            continue
+
+        for case in cases:
+            total_cases += 1
+            case_id = case["id"]
+            function_ref = case["function"]
+
+            if not _matches_function_case_targets(rel_spec_path, case_id, function_ref, targets):
+                continue
+
+            selected_cases += 1
+            input_payload = case["input"]
+            assertions = case["assert"]
+
+            try:
+                function_callable = resolve_function(function_ref, functions_dir)
+            except Exception as exc:
+                failed_cases += 1
+                print(f"  ✗ {case_id}: function lookup failed for '{function_ref}' ({exc})")
+                continue
+
+            try:
+                output = function_callable(input_payload)
+                if asyncio.iscoroutine(output):
+                    output = asyncio.run(output)
+                payload = {
+                    "success": True,
+                    "output": output,
+                    "error": None,
+                    "metadata": None,
+                }
+            except Exception as exc:
+                payload = {
+                    "success": False,
+                    "output": None,
+                    "error": str(exc),
+                    "metadata": None,
+                }
+
+            failures = _evaluate_case_assertions(payload, assertions)
+            if failures:
+                failed_cases += 1
+                print(f"  ✗ {case_id}: {len(failures)} assertion failure(s)")
+                for failure in failures:
+                    print(f"    - {failure}")
+                continue
+
+            print(f"  ✓ {case_id}")
+
+    print(
+        "Function spec summary: "
+        f"selected={selected_cases} "
+        f"failed={failed_cases} "
+        f"parse_errors={parse_errors}"
+    )
+
+    return {
+        "spec_files": len(spec_files),
+        "total_cases": total_cases,
+        "selected_cases": selected_cases,
+        "failed_cases": failed_cases,
+        "parse_errors": parse_errors,
+    }
 
 
 def _scaffold_starter_files(target_dir: str) -> None:
@@ -2347,6 +3017,12 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
     metrics_parser.add_argument("--latency-target-ms", type=int, default=5000, help="Target p95 latency for successful runs")
     metrics_parser.add_argument("--json", action="store_true", help="Print full report as JSON")
 
+    test_parser = subparsers.add_parser("test", help="Run project-authored tests")
+    test_parser.add_argument("scope", nargs="?", default="all", choices=["all", "workflows", "agents", "functions", "tools"], help="Test scope to run")
+    test_parser.add_argument("targets", nargs="*", help="Optional target filters, e.g. workflow or agent names")
+    test_parser.add_argument("--path", default=".", help="Project root containing agents/, workflows/, functions/, tools/")
+    test_parser.add_argument("--pytest-args", nargs=argparse.REMAINDER, default=[], help="Extra pytest args appended at the end")
+
     args = parser.parse_args(argv)
 
     if args.command == "init":
@@ -2452,6 +3128,15 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             args.bundle,
             target_dir=target_dir,
             run_workflow=args.run_workflow,
+        )
+
+    if args.command == "test":
+        project_root = os.path.abspath(args.path)
+        return _run_project_tests(
+            project_root,
+            scope=args.scope,
+            targets=args.targets,
+            pytest_args=args.pytest_args,
         )
 
 

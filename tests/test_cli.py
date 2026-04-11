@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import subprocess
+import sys
 import tempfile
 from unittest.mock import patch
 
@@ -197,6 +199,12 @@ class TestInitProject:
             assert os.path.isdir(os.path.join(d, "tools"))
             assert os.path.isdir(os.path.join(d, "agents"))
             assert os.path.isdir(os.path.join(d, "functions"))
+            assert os.path.isdir(os.path.join(d, "workflows", "tests"))
+            assert os.path.isdir(os.path.join(d, "agents", "tests"))
+            assert os.path.isdir(os.path.join(d, "functions", "tests"))
+            assert os.path.isdir(os.path.join(d, "tools", "tests"))
+            assert os.path.isfile(os.path.join(d, "tools", "tests", "tool_tests.yaml"))
+            assert os.path.isfile(os.path.join(d, "functions", "tests", "function_tests.yaml"))
             assert os.path.isfile(os.path.join(d, "runtime.yaml"))
             assert os.path.isfile(os.path.join(d, ".env"))
             assert os.path.isfile(os.path.join(d, "runtime.db"))
@@ -437,6 +445,283 @@ class TestRunCLIQuickstart:
                 conn.close()
 
             assert "COMPLETED" in statuses
+
+
+class TestRunCLITestCommand:
+    def test_test_workflows_runs_scoped_pytest(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            test_dir = os.path.join(d, "workflows", "tests")
+            os.makedirs(test_dir, exist_ok=True)
+            test_file = os.path.join(test_dir, "test_checkout.py")
+            with open(test_file, "w", encoding="utf-8") as f:
+                f.write("def test_checkout_flow():\n    assert True\n")
+
+            with patch("agent_runtime.cli.subprocess.run") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+                code = run_cli(["test", "workflows", "--path", d])
+
+            assert code == 0
+            mock_run.assert_called_once()
+            args, kwargs = mock_run.call_args
+            assert args[0][:3] == [sys.executable, "-m", "pytest"]
+            assert "workflows/tests/test_checkout.py" in args[0]
+            assert kwargs["cwd"] == d
+
+    def test_test_scope_with_target_filters_files(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            test_dir = os.path.join(d, "workflows", "tests")
+            os.makedirs(test_dir, exist_ok=True)
+            with open(os.path.join(test_dir, "test_checkout.py"), "w", encoding="utf-8") as f:
+                f.write("def test_checkout_flow():\n    assert True\n")
+            with open(os.path.join(test_dir, "test_billing.py"), "w", encoding="utf-8") as f:
+                f.write("def test_billing_flow():\n    assert True\n")
+
+            with patch("agent_runtime.cli.subprocess.run") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0)
+                code = run_cli(["test", "workflows", "checkout", "--path", d])
+
+            assert code == 0
+            args, _ = mock_run.call_args
+            command = args[0]
+            assert "workflows/tests/test_checkout.py" in command
+            assert "workflows/tests/test_billing.py" not in command
+
+    def test_test_no_matches_returns_one(self, capsys) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            test_dir = os.path.join(d, "agents", "tests")
+            os.makedirs(test_dir, exist_ok=True)
+            with open(os.path.join(test_dir, "test_advisor.py"), "w", encoding="utf-8") as f:
+                f.write("def test_advisor_agent():\n    assert True\n")
+
+            code = run_cli(["test", "agents", "missing", "--path", d])
+            assert code == 1
+            assert "No test files, tool test cases, or function test cases matched targets" in capsys.readouterr().out
+
+    def test_test_no_files_returns_zero(self, capsys) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "tools", "tests"), exist_ok=True)
+            code = run_cli(["test", "tools", "--path", d])
+            assert code == 0
+            assert "No test files found for scope 'tools'" in capsys.readouterr().out
+
+    def test_tool_specs_run_without_pytest_files(self, capsys) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            tools_dir = os.path.join(d, "tools")
+            tests_dir = os.path.join(tools_dir, "tests")
+            os.makedirs(tests_dir, exist_ok=True)
+
+            with open(os.path.join(tools_dir, "sample_tool.py"), "w", encoding="utf-8") as f:
+                f.write(
+                    "from agent_runtime.tools.base import RuntimeContext, ToolResult\n"
+                    "\n"
+                    "class SampleTool:\n"
+                    "    name = 'tools.sample'\n"
+                    "    description = 'sample deterministic tool'\n"
+                    "    input_schema = {'type': 'object', 'properties': {'value': {'type': 'integer'}}}\n"
+                    "    timeout = None\n"
+                    "    retries = None\n"
+                    "\n"
+                    "    async def execute(self, input, context: RuntimeContext):\n"
+                    "        v = int(input.get('value', 0))\n"
+                    "        return ToolResult(success=True, output={'double': v * 2}, error=None, metadata=None)\n"
+                )
+
+            with open(os.path.join(tests_dir, "tool_tests.yaml"), "w", encoding="utf-8") as f:
+                f.write(
+                    "schema_version: v1\n"
+                    "tool_tests:\n"
+                    "  - id: doubles_number\n"
+                    "    tool: tools.sample\n"
+                    "    input:\n"
+                    "      value: 4\n"
+                    "    assert:\n"
+                    "      - path: success\n"
+                    "        equals: true\n"
+                    "      - path: output.double\n"
+                    "        equals: 8\n"
+                )
+
+            code = run_cli(["test", "tools", "--path", d])
+            assert code == 0
+            out = capsys.readouterr().out
+            assert "doubles_number" in out
+            assert "Tool spec summary: selected=1 failed=0 parse_errors=0" in out
+
+    def test_tool_specs_filter_by_target(self, capsys) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            tools_dir = os.path.join(d, "tools")
+            tests_dir = os.path.join(tools_dir, "tests")
+            os.makedirs(tests_dir, exist_ok=True)
+
+            with open(os.path.join(tools_dir, "sample_tool.py"), "w", encoding="utf-8") as f:
+                f.write(
+                    "from agent_runtime.tools.base import RuntimeContext, ToolResult\n"
+                    "\n"
+                    "class SampleTool:\n"
+                    "    name = 'tools.sample'\n"
+                    "    description = 'sample deterministic tool'\n"
+                    "    input_schema = {'type': 'object'}\n"
+                    "    timeout = None\n"
+                    "    retries = None\n"
+                    "\n"
+                    "    async def execute(self, input, context: RuntimeContext):\n"
+                    "        return ToolResult(success=True, output={'kind': input.get('kind')}, error=None, metadata=None)\n"
+                )
+
+            with open(os.path.join(tests_dir, "tool_tests.yaml"), "w", encoding="utf-8") as f:
+                f.write(
+                    "tool_tests:\n"
+                    "  - id: checkout_case\n"
+                    "    tool: tools.sample\n"
+                    "    input: {kind: checkout}\n"
+                    "    assert:\n"
+                    "      - path: output.kind\n"
+                    "        equals: checkout\n"
+                    "  - id: billing_case\n"
+                    "    tool: tools.sample\n"
+                    "    input: {kind: billing}\n"
+                    "    assert:\n"
+                    "      - path: output.kind\n"
+                    "        equals: billing\n"
+                )
+
+            code = run_cli(["test", "tools", "checkout", "--path", d])
+            assert code == 0
+            out = capsys.readouterr().out
+            assert "checkout_case" in out
+            assert "billing_case" not in out
+
+    def test_tool_specs_assertion_failure_returns_one(self, capsys) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            tools_dir = os.path.join(d, "tools")
+            tests_dir = os.path.join(tools_dir, "tests")
+            os.makedirs(tests_dir, exist_ok=True)
+
+            with open(os.path.join(tools_dir, "sample_tool.py"), "w", encoding="utf-8") as f:
+                f.write(
+                    "from agent_runtime.tools.base import RuntimeContext, ToolResult\n"
+                    "\n"
+                    "class SampleTool:\n"
+                    "    name = 'tools.sample'\n"
+                    "    description = 'sample deterministic tool'\n"
+                    "    input_schema = {'type': 'object'}\n"
+                    "    timeout = None\n"
+                    "    retries = None\n"
+                    "\n"
+                    "    async def execute(self, input, context: RuntimeContext):\n"
+                    "        return ToolResult(success=True, output={'value': 1}, error=None, metadata=None)\n"
+                )
+
+            with open(os.path.join(tests_dir, "tool_tests.yaml"), "w", encoding="utf-8") as f:
+                f.write(
+                    "tool_tests:\n"
+                    "  - id: mismatch_case\n"
+                    "    tool: tools.sample\n"
+                    "    input: {}\n"
+                    "    assert:\n"
+                    "      - path: output.value\n"
+                    "        equals: 2\n"
+                )
+
+            code = run_cli(["test", "tools", "--path", d])
+            assert code == 1
+            assert "mismatch_case" in capsys.readouterr().out
+
+    def test_function_specs_run_without_pytest_files(self, capsys) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            functions_dir = os.path.join(d, "functions")
+            tests_dir = os.path.join(functions_dir, "tests")
+            os.makedirs(tests_dir, exist_ok=True)
+
+            with open(os.path.join(functions_dir, "sample.py"), "w", encoding="utf-8") as f:
+                f.write(
+                    "def double_value(inputs: dict) -> dict:\n"
+                    "    value = int(inputs.get('value', 0))\n"
+                    "    return {'double': value * 2}\n"
+                )
+
+            with open(os.path.join(tests_dir, "function_tests.yaml"), "w", encoding="utf-8") as f:
+                f.write(
+                    "schema_version: v1\n"
+                    "function_tests:\n"
+                    "  - id: doubles_number\n"
+                    "    function: sample.double_value\n"
+                    "    input:\n"
+                    "      value: 4\n"
+                    "    assert:\n"
+                    "      - path: success\n"
+                    "        equals: true\n"
+                    "      - path: output.double\n"
+                    "        equals: 8\n"
+                )
+
+            code = run_cli(["test", "functions", "--path", d])
+            assert code == 0
+            out = capsys.readouterr().out
+            assert "doubles_number" in out
+            assert "Function spec summary: selected=1 failed=0 parse_errors=0" in out
+
+    def test_function_specs_filter_by_target(self, capsys) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            functions_dir = os.path.join(d, "functions")
+            tests_dir = os.path.join(functions_dir, "tests")
+            os.makedirs(tests_dir, exist_ok=True)
+
+            with open(os.path.join(functions_dir, "sample.py"), "w", encoding="utf-8") as f:
+                f.write(
+                    "def get_label(inputs: dict) -> dict:\n"
+                    "    return {'label': inputs.get('label')}\n"
+                )
+
+            with open(os.path.join(tests_dir, "function_tests.yaml"), "w", encoding="utf-8") as f:
+                f.write(
+                    "function_tests:\n"
+                    "  - id: checkout_case\n"
+                    "    function: sample.get_label\n"
+                    "    input: {label: checkout}\n"
+                    "    assert:\n"
+                    "      - path: output.label\n"
+                    "        equals: checkout\n"
+                    "  - id: billing_case\n"
+                    "    function: sample.get_label\n"
+                    "    input: {label: billing}\n"
+                    "    assert:\n"
+                    "      - path: output.label\n"
+                    "        equals: billing\n"
+                )
+
+            code = run_cli(["test", "functions", "checkout", "--path", d])
+            assert code == 0
+            out = capsys.readouterr().out
+            assert "checkout_case" in out
+            assert "billing_case" not in out
+
+    def test_function_specs_assertion_failure_returns_one(self, capsys) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            functions_dir = os.path.join(d, "functions")
+            tests_dir = os.path.join(functions_dir, "tests")
+            os.makedirs(tests_dir, exist_ok=True)
+
+            with open(os.path.join(functions_dir, "sample.py"), "w", encoding="utf-8") as f:
+                f.write(
+                    "def returns_one(inputs: dict) -> dict:\n"
+                    "    return {'value': 1}\n"
+                )
+
+            with open(os.path.join(tests_dir, "function_tests.yaml"), "w", encoding="utf-8") as f:
+                f.write(
+                    "function_tests:\n"
+                    "  - id: mismatch_case\n"
+                    "    function: sample.returns_one\n"
+                    "    input: {}\n"
+                    "    assert:\n"
+                    "      - path: output.value\n"
+                    "        equals: 2\n"
+                )
+
+            code = run_cli(["test", "functions", "--path", d])
+            assert code == 1
+            assert "mismatch_case" in capsys.readouterr().out
 
     def test_quickstart_branching_sample_first_success(self) -> None:
         """Function implementation."""
