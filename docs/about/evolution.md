@@ -267,7 +267,7 @@ The runtime now emits structured lifecycle events at five points: `RUN_START`, `
 Per-step timing captures both total step duration and call-specific latency (`handler_duration_ms` for model steps, `tool_duration_ms` for tool steps). Agent steps capture reasoning traces (iterations, tool calls, token usage) in `StepExecution.agent_trace`.
 
 The CLI has primary commands covering the full operate→debug→recover loop:
-- **Run**: `ai run`, `ai quickstart`, `ai onboard`, `ai setup`
+- **Run**: `ai run`, `ai quickstart`, `ai onboard`, `ai config`
 - **Observe**: `ai inspect`, `ai state-diff`, `ai visualize`
 - **Recover**: `ai resume`, `ai replay`
 - **Discover**: `ai list`, `ai runs`

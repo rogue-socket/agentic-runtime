@@ -70,4 +70,4 @@ Across 14 source files, tagged with categories:
   Added `ai` (no args) and `ai onboard` guided setup, plus a reusable onboarding script.
 
 - **Setup enhancements** (`cli.py`):
-  Added `ai setup --check` for provider/key verification and `.env` auto-loading.
+  Added `ai config --check` for provider/key verification and `.env` auto-loading.
