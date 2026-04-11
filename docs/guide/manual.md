@@ -14,6 +14,13 @@ ai quickstart
 
 This creates the project structure, configures your LLM provider, and runs the starter workflow.
 
+If you want explicit setup steps instead of the golden path:
+
+```bash
+ai init     # base scaffold only
+ai config   # provider/model/key setup
+```
+
 **Project Structure & Configuration**
 
 ```

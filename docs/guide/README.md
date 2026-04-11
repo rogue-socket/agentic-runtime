@@ -2,7 +2,7 @@
 
 Use these documents to get started quickly and operate the runtime day to day.
 
-- [Getting Started](getting-started.md) — zero-to-first-run quickstart
+- [Getting Started](getting-started.md) — clear setup command map (`init`, `config`, `quickstart`, `onboard`)
 - [Knowledge Base](knowledge-base.md) — conceptual overview and building blocks
 - [Manual](manual.md) — complete reference in one place
 - [Usage](usage.md) — CLI reference and scenario cookbook

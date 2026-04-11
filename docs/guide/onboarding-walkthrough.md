@@ -6,6 +6,13 @@ quickstart wizard with optional manual steps for folks who prefer scripts.
 
 ## Quickstart (Golden Path)
 
+Setup command chooser:
+
+- `ai quickstart`: recommended default (`init` + `config` + first run)
+- `ai init`: base scaffold only
+- `ai config`: provider/model/key config only
+- `ai onboard` (alias `ai start`): interactive guided wizard
+
 If you do not have a project folder yet, create one first:
 
 ```bash
@@ -29,6 +36,8 @@ Optional guided mode is still available with:
 
 ```bash
 ai onboard
+# or
+ai start
 ```
 
 The wizard and quickstart both initialize project structure and walk provider setup.
