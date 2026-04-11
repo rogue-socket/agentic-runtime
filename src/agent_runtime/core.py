@@ -31,6 +31,7 @@ import copy
 import uuid
 import time
 import asyncio
+import traceback
 
 from .errors import BranchResolutionError, StepExecutionError, WorkflowIntegrityError
 from .logging import StructuredLogger
@@ -51,6 +52,22 @@ from .agent.strategies import AgentContext
 # Lifecycle event callback signature.
 # Receives an event name (e.g. "STEP_START") and a payload dict.
 EventCallback = Callable[[str, Dict[str, Any]], None]
+
+
+def _format_step_error(exc: Exception, *, include_trace: bool = False) -> str:
+    """Format step errors with optional traceback context for debugging."""
+    base = f"{type(exc).__name__}: {exc}"
+    if not include_trace:
+        return base
+
+    trace_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).strip()
+    if not trace_text:
+        return base
+
+    lines = trace_text.splitlines()
+    if len(lines) > 40:
+        trace_text = "\n".join(lines[-40:])
+    return f"{base}\n{trace_text}"
 
 
 class StepStatus(str):
@@ -838,7 +855,10 @@ class Executor:
                         break
                     except Exception as exc:  # noqa: BLE001
                         last_error = exc
-                        execution.last_error = f"{type(exc).__name__}: {exc}"
+                        execution.last_error = _format_step_error(
+                            exc,
+                            include_trace=step_def.step_type in {"function", "tool"},
+                        )
                         if step_def.step_type in {"agent", "tool"}:
                             self._emit_step_progress(
                                 run_id=run.run_id,
@@ -938,7 +958,8 @@ class Executor:
                     })
             except Exception as exc:  # noqa: BLE001
                 execution.status = StepStatus.FAILED
-                execution.error = f"{type(exc).__name__}: {exc}"
+                include_trace = step_def.step_type in {"function", "tool"}
+                execution.error = execution.last_error or _format_step_error(exc, include_trace=include_trace)
                 if execution.last_error is None:
                     execution.last_error = execution.error
                 had_errors = True
