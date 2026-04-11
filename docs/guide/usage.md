@@ -30,6 +30,13 @@ ai quickstart
 
 This keeps the same onboarding flow and guarantees a first successful run without external credentials. Supported samples: `starter`, `branching`, `research`, `pipeline`.
 
+Setup command guide:
+
+- `ai init`: base scaffold only (folders + `.env` + `runtime.db` + `runtime.yaml`)
+- `ai config`: provider/model/key configuration only
+- `ai quickstart`: `init` + `config` + first run
+- `ai onboard` (alias `ai start`): interactive guided setup
+
 
 Advanced alternatives (optional):
 
@@ -43,9 +50,9 @@ Run the wizard from another directory:
 ai onboard --path my-project
 ```
 
-When run with no args, `ai` opens a home screen with common actions (setup, run sample, inspect, visualize).
+When run with no args, `ai` opens a home screen with common actions (guided setup, run sample, inspect, visualize).
 
-Creates a project structure:
+`ai quickstart` scaffolds starter files so you can run immediately. Typical structure after quickstart:
 
 ```
 ├── workflows/
@@ -59,6 +66,8 @@ Creates a project structure:
 │   └── example_tool.py        # example tool implementation
 └── runtime.yaml               # runtime configuration
 ```
+
+`ai init` alone creates the same top-level folders and runtime files, but does not add starter files inside `workflows/`, `agents/`, `functions/`, or `tools/`.
 
 - `workflows/` — YAML workflow definitions (orchestrate agents, functions, and tools)
 - `agents/` — YAML agent definitions (LLM model, strategy, pipeline)
@@ -480,7 +489,7 @@ functions_dir: functions
 #   format: json
 ```
 
-Tip: `ai setup` can scaffold this config and write `.env`, and `ai setup --check` validates which provider keys are available.
+Tip: `ai config` can scaffold this config and write `.env`, and `ai config --check` validates which provider keys are available.
 
 Precedence: `--db-path` flag > `runtime.yaml` value > built-in default (`runtime.db`).
 

@@ -14,10 +14,33 @@ These options can be applied to any command that supports them (notably `run`, `
 
 ## 1. Project Initialization
 
+Setup command map:
+
+| Command | What it does |
+|---|---|
+| `ai init` | Base scaffold only (folders + `.env` + `runtime.db` + `runtime.yaml`) |
+| `ai config` | Configure provider/model/key settings |
+| `ai quickstart` | `init` + `config` + first run |
+| `ai onboard` / `ai start` | Interactive guided setup wizard |
+| `ai` (no args) | Opens home screen with setup/run/inspect/visualize actions |
+
 ### `ai init`
 Initialize a new, empty workflow project.
 
 - **`--path <path>`**: Target directory (default: `.`).
+
+Creates these folders:
+- `agents/`
+- `functions/`
+- `tools/`
+- `workflows/`
+
+Creates these files:
+- `.env`
+- `runtime.db`
+- `runtime.yaml`
+
+`ai init` intentionally does not create starter files inside those folders.
 
 ### `ai quickstart`
 The "Golden Path": initialize, configure, and run a starter workflow in one go.
@@ -30,20 +53,46 @@ Guided setup wizard for a new or existing project.
 
 - **`--path <path>`**: Project root.
 
+Alias: `ai start`
+
 ---
 
 ## 2. Configuration
 
-### `ai setup`
+### `ai config`
 Configure LLM providers, API keys, and model settings.
 
+- **`--path <path>`**: Project root containing `runtime.yaml` (default: `.`).
 - **`--provider <name>`**: Choose from `openai`, `anthropic`, `gemini`, `local`.
 - **`--api-key-env <name>`**: Environment variable name for the API key (e.g., `OPENAI_API_KEY`).
 - **`--api-key <value>`**: Directly provide the API key value (written to `.env`).
 - **`--model <id>`**: Default model ID for this provider.
+- **`--base-url <url>`**: Base URL for local/proxy providers.
 - **`--temperature <float>`**: Model temperature.
 - **`--max-tokens <int>`**: Model max tokens.
+- **`--no-dotenv`**: Do not write API key values into `.env`.
+- **`--no-default`**: Do not update default provider/model fields.
 - **`--check`**: Validate current credentials and provider availability.
+
+Common setup recipes:
+
+```bash
+# New project, explicit setup flow
+ai init
+ai config
+ai config --check
+
+# Fastest first run
+ai quickstart
+
+# Deterministic no-key first run
+ai quickstart --sample branching
+
+# Guided wizard
+ai onboard
+# or
+ai start
+```
 
 ---
 
