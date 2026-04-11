@@ -198,33 +198,32 @@ class TestInitProject:
             assert os.path.isdir(os.path.join(d, "agents"))
             assert os.path.isdir(os.path.join(d, "functions"))
             assert os.path.isfile(os.path.join(d, "runtime.yaml"))
-            assert os.path.isfile(os.path.join(d, "workflows", "example.yaml"))
-            assert os.path.isfile(os.path.join(d, "tools", "example_tool.py"))
-            assert os.path.isfile(os.path.join(d, "functions", "stubs.py"))
-            assert os.path.isfile(os.path.join(d, "agents", "summarizer.yaml"))
-            assert os.path.isfile(os.path.join(d, "agents", "fixer.yaml"))
+            assert os.path.isfile(os.path.join(d, ".env"))
+            assert os.path.isfile(os.path.join(d, "runtime.db"))
+            assert not os.path.exists(os.path.join(d, "workflows", "example.yaml"))
+            assert not os.path.exists(os.path.join(d, "tools", "example_tool.py"))
+            assert not os.path.exists(os.path.join(d, "functions", "stubs.py"))
+            assert not os.path.exists(os.path.join(d, "agents", "summarizer.yaml"))
+            assert not os.path.exists(os.path.join(d, "agents", "fixer.yaml"))
 
     def test_idempotent(self) -> None:
         """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
             _init_project(d)
             # Overwrite one file to confirm it's not clobbered
-            marker = os.path.join(d, "workflows", "example.yaml")
+            marker = os.path.join(d, "runtime.yaml")
             with open(marker, "w") as f:
                 f.write("custom")
             _init_project(d)
             with open(marker) as f:
                 assert f.read() == "custom"
 
-    def test_model_not_in_agent_yaml(self) -> None:
-        """Agent definitions should not contain a model field — model comes from runtime config."""
+    def test_does_not_create_sample_agent_files(self) -> None:
+        """Init should create skeleton only, without sample agent definitions."""
         with tempfile.TemporaryDirectory() as d:
             _init_project(d)
-            for name in ("summarizer.yaml", "fixer.yaml"):
-                path = os.path.join(d, "agents", name)
-                with open(path) as f:
-                    content = f.read()
-                assert "model:" not in content
+            assert not os.path.exists(os.path.join(d, "agents", "summarizer.yaml"))
+            assert not os.path.exists(os.path.join(d, "agents", "fixer.yaml"))
 
 
 # ── run_cli dispatch ───────────────────────────────────────────────
@@ -237,6 +236,31 @@ class TestRunCLIInit:
             code = run_cli(["init", "--path", d])
             assert code == 0
             assert os.path.isdir(os.path.join(d, "workflows"))
+            assert os.path.isfile(os.path.join(d, ".env"))
+            assert os.path.isfile(os.path.join(d, "runtime.db"))
+
+
+class TestRunCLIConfig:
+    def test_config_invokes_setup_flow(self) -> None:
+        """Function implementation."""
+        with tempfile.TemporaryDirectory() as d:
+            with patch("agent_runtime.cli._run_setup_flow") as mock_setup:
+                code = run_cli([
+                    "config",
+                    "--path",
+                    d,
+                    "--provider",
+                    "openai",
+                    "--api-key-env",
+                    "OPENAI_API_KEY",
+                    "--api-key",
+                    "test-key",
+                    "--model",
+                    "gpt-4o",
+                    "--no-dotenv",
+                ])
+            assert code == 0
+            mock_setup.assert_called_once()
 
 
 class TestRunCLIList:
@@ -399,7 +423,7 @@ class TestRunCLIQuickstart:
                 code = run_cli(["quickstart", "--path", d])
 
             assert code == 0
-            mock_setup.assert_not_called()
+            mock_setup.assert_called_once()
             db_path = os.path.join(d, "runtime.db")
             assert os.path.isfile(db_path)
 
@@ -429,14 +453,5 @@ class TestRunCLIQuickstart:
                 conn.close()
 
             assert "COMPLETED" in statuses
-
-    def test_quickstart2_alias_warns_and_still_runs(self, capsys) -> None:
-        """Function implementation."""
-        with tempfile.TemporaryDirectory() as d:
-            code = run_cli(["quickstart2", "--path", d])
-            assert code == 0
-            out = capsys.readouterr().out
-            assert "deprecated" in out.lower()
-            assert "ai quickstart --sample branching" in out
 
 
