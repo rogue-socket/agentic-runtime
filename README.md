@@ -2,7 +2,7 @@
 
 <br/>
 
-<img src="docs/banner.svg" alt="ForrestRun — deterministic agentic runtime" width="860" />
+<img src="documentation/banner.svg" alt="ForrestRun — deterministic agentic runtime" width="860" />
 
 ### Build AI agent workflows that are **deterministic**, **resumable**, and **observable** — by design.
 
@@ -291,15 +291,15 @@ Schema-bearing components use one shared baseline and one versioning policy:
 
 | What you need | Where to look |
 |---|---|
-| First run, zero to running | [Getting Started](docs/guide/getting-started.md) |
-| Full CLI + config reference | [Usage Guide](docs/guide/usage.md) |
-| Writing workflows | [Workflows](docs/guide/workflows.md) |
-| Writing LLM agents | [Writing Agents](docs/guide/writing-agents.md) |
-| Writing Python functions | [Writing Functions](docs/guide/writing-functions.md) |
-| Writing custom tools | [Writing Tools](docs/guide/writing-tools.md) |
-| System design & internals | [Architecture](docs/about/architecture.md) |
-| Local docs UI with search | [docs/index.html](docs/index.html) |
-| Change history | [Changelog](docs/changelog/README.md) |
+| First run, zero to running | [Getting Started](documentation/guide/getting-started.md) |
+| Full CLI + config reference | [Usage Guide](documentation/guide/usage.md) |
+| Writing workflows | [Workflows](documentation/guide/workflows.md) |
+| Writing LLM agents | [Writing Agents](documentation/guide/writing-agents.md) |
+| Writing Python functions | [Writing Functions](documentation/guide/writing-functions.md) |
+| Writing custom tools | [Writing Tools](documentation/guide/writing-tools.md) |
+| System design & internals | [Architecture](documentation/about/architecture.md) |
+| Local docs UI with search | [documentation/index.html](documentation/index.html) |
+| Change history | [Changelog](documentation/changelog/README.md) |
 
 ---
 

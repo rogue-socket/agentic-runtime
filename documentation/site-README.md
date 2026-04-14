@@ -1,6 +1,6 @@
 **Docs UI**
 
-Open [`docs/index.html`](index.html) in a browser to browse the documentation with search and in-page rendering.
+Open [`documentation/index.html`](index.html) in a browser to browse the documentation with search and in-page rendering.
 
 **Updating the Index**
 

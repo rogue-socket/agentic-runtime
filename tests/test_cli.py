@@ -291,7 +291,7 @@ class TestRunCLIDocs:
     def test_docs_builds_index_and_workflow_reference(self) -> None:
         """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
-            docs_guide = os.path.join(d, "docs", "guide")
+            docs_guide = os.path.join(d, "documentation", "guide")
             workflows_dir = os.path.join(d, "workflows")
             os.makedirs(docs_guide, exist_ok=True)
             os.makedirs(workflows_dir, exist_ok=True)
@@ -318,8 +318,8 @@ steps:
             code = run_cli(["docs", "--path", d])
             assert code == 0
 
-            content_js = os.path.join(d, "docs", "content.js")
-            generated_md = os.path.join(d, "docs", "guide", "workflow-reference-generated.md")
+            content_js = os.path.join(d, "documentation", "content.js")
+            generated_md = os.path.join(d, "documentation", "guide", "workflow-reference-generated.md")
             assert os.path.isfile(content_js)
             assert os.path.isfile(generated_md)
 
@@ -335,7 +335,7 @@ steps:
     def test_docs_builds_site_index_when_present(self) -> None:
         """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
-            docs_site = os.path.join(d, "docs", "site")
+            docs_site = os.path.join(d, "documentation", "site")
             os.makedirs(docs_site, exist_ok=True)
 
             with open(os.path.join(docs_site, "readme.md"), "w", encoding="utf-8") as f:
@@ -343,7 +343,7 @@ steps:
 
             code = run_cli(["docs", "--path", d, "--no-workflow-reference"])
             assert code == 0
-            assert os.path.isfile(os.path.join(d, "docs", "site", "content.js"))
+            assert os.path.isfile(os.path.join(d, "documentation", "site", "content.js"))
 
 
 class TestRunCLIMetrics:

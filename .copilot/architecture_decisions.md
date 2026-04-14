@@ -446,7 +446,7 @@ The `EventCallback` mechanism already fires at the right lifecycle points. An Op
 **Status:** Accepted
 
 ### Decision
-Inline TODO comments in source should use categorized tags and follow the repo taxonomy from `vision/todos.md`: `roadmap`, `pain-point`, `ux`, `security`, and `eng` (with optional milestone tags such as `0.2.0` for release-gated work).
+Inline TODO comments in source should use categorized tags and follow the repo taxonomy from `planning/vision/todos.md`: `roadmap`, `pain-point`, `ux`, `security`, and `eng` (with optional milestone tags such as `0.2.0` for release-gated work).
 
 When an implementation intentionally takes a simplified or partial path, authors should leave a categorized TODO at the decision point documenting what was deferred and why.
 
@@ -462,5 +462,5 @@ Standardized TODO tags create a reliable bridge between code-level tradeoffs and
 
 ### Implications
 - New TODO comments should use `TODO(<category>): ...` format.
-- `vision/todos.md` remains the canonical aggregate view for TODO planning.
+- `planning/vision/todos.md` remains the canonical aggregate view for TODO planning.
 - Session/bootstrap prompts should remind contributors to add categorized TODOs when deferring important work.

@@ -20,7 +20,7 @@ Include:
 - key files currently being edited
 - related tests or dependencies
 
-3. Ensure TODO tracking stays consistent with repo taxonomy in `vision/todos.md`.
+3. Ensure TODO tracking stays consistent with repo taxonomy in `planning/vision/todos.md`.
 Include any newly introduced TODOs in categorized form (`roadmap`, `pain-point`, `ux`, `security`, `eng`, or explicit milestone tag).
 
 4. Generate a short resume prompt for the next chat session.
@@ -29,7 +29,7 @@ The resume prompt must instruct the next chat to read:
 - .copilot/project_context.md
 - .copilot/session_state.md
 - .copilot/working_set.md
-- vision/todos.md
+- planning/vision/todos.md
 
 Output format:
 

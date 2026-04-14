@@ -3,7 +3,7 @@
 When assisting with this repo:
 
 - Follow architecture and status in `.copilot/project_context.md` first.
-- Use these docs as source of truth: `docs/about/architecture.md`, `docs/about/gaps_2026-03-17.md`, `docs/changelog/CHANGELOG_2026-03-23.md`, and `vision/todos.md`.
+- Use these docs as source of truth: `documentation/about/architecture.md`, `documentation/about/gaps_2026-03-17.md`, `documentation/changelog/CHANGELOG_2026-03-23.md`, and `planning/vision/todos.md`.
 - Prefer modifying existing modules over creating new files.
 - Keep dependency footprint minimal. HTTP adapters use stdlib `urllib`; do not add `requests`/`httpx` unless explicitly approved.
 - Preferred Python environment is conda env `agent_runtime`; activate it before running tests/CLI commands.

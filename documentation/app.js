@@ -73,7 +73,7 @@
     console.log("Discovering docs via GitHub API...");
     try {
       // First, get the root docs folder to find valid directories
-      const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/docs`);
+      const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/documentation`);
       if (!res.ok) return;
       const rootItems = await res.json();
       
@@ -85,7 +85,7 @@
         // Skip 'site' as it contains the UI code, not content
         if (dir === "site") continue;
 
-        const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/docs/${dir}`);
+        const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/documentation/${dir}`);
         if (!res.ok) continue;
         const files = await res.json();
         files.forEach(f => {
@@ -123,7 +123,7 @@
     if (!content && window.location.protocol !== "file:") {
       docContent.innerHTML = `<p class="loading">Loading <code>${docPath}</code> from GitHub...</p>`;
       try {
-        const res = await fetch(`https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/docs/${docPath}`);
+        const res = await fetch(`https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/documentation/${docPath}`);
         if (res.ok) {
           content = await res.text();
           window.DOCS[docPath] = content; // Cache locally
@@ -238,8 +238,8 @@
 
   // Automatically added function comment.
   const resolveDocPath = (currentDoc, href) => {
-    if (href.startsWith("docs/")) {
-      return href.slice("docs/".length);
+    if (href.startsWith("documentation/")) {
+      return href.slice("documentation/".length);
     }
     if (href.startsWith("/")) {
       return href.replace(/^\/+/, "");

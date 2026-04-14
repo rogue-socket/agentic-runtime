@@ -29,9 +29,9 @@ Keep assistant/session scaffolding current with live runtime architecture and en
 
 ## Key Context Docs
 - `README.md`
-- `vision/todos.md`
-- `docs/about/architecture.md`
-- `docs/changelog/CHANGELOG_2026-03-23.md`
+- `planning/vision/todos.md`
+- `documentation/about/architecture.md`
+- `documentation/changelog/CHANGELOG_2026-03-23.md`
 
 ## TODO Category Standard (Reference)
 - `roadmap`

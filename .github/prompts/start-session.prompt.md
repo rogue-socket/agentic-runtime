@@ -9,12 +9,12 @@ Steps:
    - .copilot/session_state.md
    - .copilot/working_set.md
    - .copilot/architecture_decisions.md
-   - vision/todos.md
+   - planning/vision/todos.md
 
 2. Optionally skim for recent changes:
-   - docs/changelog/CHANGELOG_2026-03-23.md (latest)
-   - docs/changelog/CHANGELOG_2026-03-20.md
-   - docs/about/gaps_2026-03-17.md
+   - documentation/changelog/CHANGELOG_2026-03-23.md (latest)
+   - documentation/changelog/CHANGELOG_2026-03-20.md
+   - documentation/about/gaps_2026-03-17.md
 
 3. Build a concise understanding of:
    - overall project architecture
@@ -45,4 +45,4 @@ Rules:
 - Primary step types are `agent`, `function`, and `tool`; `model` is deprecated compatibility only.
 - All tools implement the Tool protocol.
 - Memory tiers hydrate under runtime.memory.<tier> — never mutate inputs/steps from memory.
-- If proposing deferred or partial implementation work, require inline TODOs using repo categories from vision/todos.md: `roadmap`, `pain-point`, `ux`, `security`, `eng`.
+- If proposing deferred or partial implementation work, require inline TODOs using repo categories from planning/vision/todos.md: `roadmap`, `pain-point`, `ux`, `security`, `eng`.

@@ -1674,9 +1674,9 @@ def _normalize_workflow_inputs(raw_inputs: Any) -> List[Dict[str, Any]]:
 
 
 def _generate_workflow_reference(project_root: Path) -> Path:
-    """Generate docs/guide/workflow-reference-generated.md from workflow YAML."""
+    """Generate documentation/guide/workflow-reference-generated.md from workflow YAML."""
     workflows_root = project_root / "workflows"
-    output_path = project_root / "docs" / "guide" / "workflow-reference-generated.md"
+    output_path = project_root / "documentation" / "guide" / "workflow-reference-generated.md"
     os.makedirs(output_path.parent, exist_ok=True)
 
     sections: List[str] = [
@@ -2867,16 +2867,16 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         "docs",
         help="Generate workflow reference docs and rebuild docs indexes",
     )
-    docs_parser.add_argument("--path", default=".", help="Project root (contains docs/ and workflows/)")
+    docs_parser.add_argument("--path", default=".", help="Project root (contains documentation/ and workflows/)")
     docs_parser.add_argument(
         "--no-workflow-reference",
         action="store_true",
-        help="Skip generating docs/guide/workflow-reference-generated.md",
+        help="Skip generating documentation/guide/workflow-reference-generated.md",
     )
     docs_parser.add_argument(
         "--no-site-index",
         action="store_true",
-        help="Skip rebuilding docs/site/content.js",
+        help="Skip rebuilding documentation/site/content.js",
     )
 
     export_parser = subparsers.add_parser(
@@ -3101,9 +3101,9 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "docs":
         project_root = Path(os.path.abspath(args.path))
-        docs_root = project_root / "docs"
+        docs_root = project_root / "documentation"
         if not docs_root.is_dir():
-            raise SystemExit(f"docs directory not found: {docs_root}")
+            raise SystemExit(f"documentation directory not found: {docs_root}")
 
         generated_reference: Optional[Path] = None
         if not args.no_workflow_reference:

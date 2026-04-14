@@ -5,7 +5,7 @@ Refresh stale workspace guidance in `.copilot/` and `.github/prompts/` so future
 
 ## Progress Completed
 - Audited all files in `.copilot/` and `.github/prompts/`.
-- Reconciled guidance against current source/docs (`README.md`, `vision/todos.md`, latest changelog).
+- Reconciled guidance against current source/docs (`README.md`, `planning/vision/todos.md`, latest changelog).
 - Updated instruction/context files for workflow-first architecture (`agent`/`function`/`tool`) and deprecated `model` step compatibility.
 - Added explicit TODO policy requiring categorized TODO tags from repo taxonomy.
 - Appended ADR documenting categorized TODO governance.
@@ -22,7 +22,7 @@ Refresh stale workspace guidance in `.copilot/` and `.github/prompts/` so future
 - `.github/prompts/wrap-session.prompt.md`
 
 ## Key Implementation Details
-- Source-of-truth references now target `docs/about/*`, `docs/changelog/*`, and `vision/todos.md`.
+- Source-of-truth references now target `documentation/about/*`, `documentation/changelog/*`, and `planning/vision/todos.md`.
 - Canonical local Python environment is conda env `agent_runtime`.
 - TODO governance standardized to:
 	- `TODO(roadmap): ...`

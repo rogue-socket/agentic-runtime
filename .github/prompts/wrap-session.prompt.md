@@ -25,7 +25,7 @@ Each decision should include:
 - reasoning
 - implications
 
-4. Capture TODO follow-ups using repo taxonomy from `vision/todos.md`.
+4. Capture TODO follow-ups using repo taxonomy from `planning/vision/todos.md`.
 For any deferred work from this session, require categorized TODO format in notes/code:
 - `TODO(roadmap): ...`
 - `TODO(pain-point): ...`

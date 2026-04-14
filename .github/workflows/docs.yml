@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'docs/**'
+      - 'documentation/**'
       - 'workflows/**'
       - 'src/agent_runtime/**'
 
@@ -35,5 +35,5 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add docs/content.js docs/docs-manifest.json docs/guide/workflow-reference-generated.md
+          git add documentation/content.js documentation/docs-manifest.json documentation/guide/workflow-reference-generated.md
           git diff --quiet && git diff --staged --quiet || (git commit -m "docs: auto-update docs index and reference" && git push)

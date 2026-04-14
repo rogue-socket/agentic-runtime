@@ -55,7 +55,7 @@ State contract remains:
 - `src/agent_runtime/visualization/`: graph/timeline loaders and renderers
 - `workflows/`: canonical workflow examples/samples
 - `tests/`: broad runtime test coverage (README reports 448 passing)
-- `vision/todos.md`: categorized TODO index for planning
+- `planning/vision/todos.md`: categorized TODO index for planning
 
 ## Current Conventions
 - Registry-based extensibility for tools, workflows, LLM providers, and agents.
@@ -76,7 +76,7 @@ Inline TODOs in source use:
 Optional milestone tags (for explicit release gates):
 - `TODO(0.2.0): ...`
 
-Primary source for category inventory and current backlog: `vision/todos.md`.
+Primary source for category inventory and current backlog: `planning/vision/todos.md`.
 
 ## Suggested Verification Commands
 ```bash

@@ -6,8 +6,8 @@ Before coding, read in this order:
 1. `.copilot/project_context.md`
 2. `.copilot/session_state.md`
 3. `.copilot/working_set.md`
-4. `vision/todos.md`
-5. `docs/changelog/CHANGELOG_2026-03-23.md`
+4. `planning/vision/todos.md`
+5. `documentation/changelog/CHANGELOG_2026-03-23.md`
 
 Execution model reminder:
 - Workflows orchestrate `agent`, `function`, and `tool` steps.
