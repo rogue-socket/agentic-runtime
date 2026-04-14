@@ -464,3 +464,28 @@ Standardized TODO tags create a reliable bridge between code-level tradeoffs and
 - New TODO comments should use `TODO(<category>): ...` format.
 - `planning/vision/todos.md` remains the canonical aggregate view for TODO planning.
 - Session/bootstrap prompts should remind contributors to add categorized TODOs when deferring important work.
+
+---
+
+## ADR-015: Prompt-Driven Copilot Context Refresh
+
+**Date:** 2026-04-14
+**Status:** Accepted
+
+### Decision
+Maintain `.copilot` context artifacts through a dedicated runnable prompt in `.github/prompts/` so session-state refreshes can be executed consistently at handoff boundaries.
+
+### Context
+`.copilot` files are useful operational memory, but they drift over time when updates are manual and inconsistent across sessions.
+
+### Reasoning
+A standard prompt creates repeatable behavior for context refreshes and reduces variance in what gets captured (`session_state`, `working_set`, and resume bootstrap guidance).
+
+### Alternatives Considered
+- **Manual updates without a template:** flexible but inconsistent.
+- **CI-generated context only:** consistent but can miss nuanced task rationale from active development sessions.
+
+### Implications
+- Contributors can run one prompt to refresh `.copilot` content in a structured way.
+- Session handoffs become faster and more reliable.
+- Prompt text should be updated when repository conventions or doc anchors change.

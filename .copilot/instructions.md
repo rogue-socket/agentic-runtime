@@ -1,47 +1,59 @@
 # Copilot Instructions
 
-When assisting with this repo:
+When assisting with this repository:
 
-- Follow architecture and status in `.copilot/project_context.md` first.
-- Use these docs as source of truth: `documentation/about/architecture.md`, `documentation/about/gaps_2026-03-17.md`, `documentation/changelog/CHANGELOG_2026-03-23.md`, and `planning/vision/todos.md`.
-- Prefer modifying existing modules over creating new files.
-- Keep dependency footprint minimal. HTTP adapters use stdlib `urllib`; do not add `requests`/`httpx` unless explicitly approved.
-- Preferred Python environment is conda env `agent_runtime`; activate it before running tests/CLI commands.
-- `pyproject.toml` is canonical package metadata. Keep `requirements.txt` as a convenience mirror.
-- Runtime state is namespaced: `inputs.*`, `steps.*`, `runtime.*`. Route state access through `RuntimeState` helpers.
-- Keep step model aligned with current runtime:
-	- `type: agent` for LLM reasoning via `agent/` definitions.
-	- `type: function` for deterministic Python callables in `functions/`.
-	- `type: tool` for Tool protocol implementations in `tools/`.
-- Respect registry patterns (`ToolRegistry`, `LLMRegistry`, `WorkflowRegistry`, `AgentRegistry`).
-- Tools must implement Tool protocol (`name`, `description`, `input_schema`, `execute`).
-- Persist through `Storage` abstractions only; do not perform ad hoc SQLite access outside storage modules.
-- Use `safe_eval()` for branch expressions; never introduce raw `eval`/`exec`.
-- Use `StructuredLogger`; avoid `print()` in runtime paths.
-- Internals are async-first with sync wrappers; avoid nested `asyncio.run()` patterns.
-- Security-sensitive areas: `tools/file.py`, `tools/shell.py`, `agent/packaging.py`, `utils.py`, and branch expression validation.
-- Memory hydration must remain namespaced under `runtime.memory.<tier>` with deep-merge semantics.
-- Lifecycle events (`RUN_START`, `STEP_START`, `STEP_COMPLETE`, `STEP_ERROR`, `RUN_COMPLETE`) should remain stable unless intentionally versioned.
+- Read in this order before major edits:
+	1. `.copilot/project_context.md`
+	2. `.copilot/session_state.md`
+	3. `.copilot/working_set.md`
+	4. `planning/vision/todos.md`
+- Use these source-of-truth docs first:
+	- `documentation/about/architecture.md`
+	- `documentation/about/status_2026-03-17.md`
+	- `documentation/about/gaps_2026-03-17.md`
+	- `documentation/changelog/CHANGELOG_2026-03-31.md`
+	- `planning/vision/todos.md`
+- Prefer editing existing modules over creating new files unless a new file is clearly warranted.
+- Keep dependencies minimal. LLM adapters should continue using stdlib `urllib`.
+- Runtime state contract is namespaced and strict: `inputs.*`, `steps.*`, `runtime.*`.
+- Primary workflow step types are `agent`, `function`, `tool`.
+- Agent pipeline step types are separate (`model`, `tool`) and should not be conflated with workflow step types.
+- Preserve registry-first architecture:
+	- `AgentRegistry`
+	- `ToolRegistry`
+	- `LLMRegistry`
+	- `WorkflowRegistry`
+- Keep tool implementations aligned with the Tool protocol (`name`, `description`, `input_schema`, `execute`).
+- Persist via storage abstractions only; avoid direct SQLite calls outside storage modules.
+- Keep branch conditions sandboxed through `safe_eval()`; never introduce raw `eval`/`exec`.
+- Maintain async-first internals with sync wrappers; avoid nested event-loop anti-patterns.
+- Preserve memory hydration namespacing under `runtime.memory.<tier>` using deep-merge semantics.
+- Keep lifecycle event names stable unless intentionally versioned:
+	- `RUN_START`
+	- `STEP_START`
+	- `STEP_COMPLETE`
+	- `STEP_ERROR`
+	- `RUN_COMPLETE`
 
-## TODO Policy (Important)
+## Environment Notes
 
-- When intentionally taking a short-term or partial implementation path, add a TODO immediately at the decision point.
-- Use required format: `TODO(<category>): <summary>`.
-- Allowed categories (from the codebase):
+- If available locally, prefer conda env `wa-data` for command execution in this workspace.
+- Repository docs may still reference `agent_runtime`; treat that as project-default guidance.
+
+## TODO Policy
+
+- For intentional deferrals or partial implementations, add a TODO at the decision point.
+- Required format: `TODO(<category>): <summary>`.
+- Allowed categories:
 	- `roadmap`
 	- `pain-point`
 	- `ux`
 	- `security`
 	- `eng`
-- Milestone tags like `TODO(0.2.0): ...` are allowed only for explicit release-gated work.
-- TODOs must explain:
-	- what was intentionally left incomplete,
-	- why it was deferred,
-	- and the expected follow-up direction.
-- Do not add uncategorized TODO comments.
+- Milestone tags like `TODO(0.2.0): ...` are allowed for explicit release-gated work.
+- Avoid uncategorized TODOs.
 
-## Validation
+## Validation Expectations
 
-- Environment setup: `conda activate agent_runtime`.
-- Run tests from repo root: `pytest -q` (or targeted tests for touched modules).
-- If tests cannot run, call that out explicitly in the session summary.
+- Run targeted tests for changed behavior when practical.
+- If tests are skipped or cannot run, explicitly note that in session summary.

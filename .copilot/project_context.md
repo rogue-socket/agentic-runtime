@@ -1,40 +1,44 @@
 # Project Context
 
+Last refreshed: 2026-04-14
+
 ## Project Overview
-`agentic-runtime` is a deterministic local-first execution runtime for AI workflows. Workflows are YAML-defined, persisted to SQLite, resumable after failure, replayable without side effects, and observable through inspect/state-diff/visualization tooling.
+`agentic-runtime` is a workflow-first execution runtime for deterministic AI pipelines with:
+- durable SQLite-backed run/state persistence
+- resume after failure
+- deterministic replay
+- branch-aware state transitions
+- CLI-first observability (`inspect`, `state-diff`, `visualize`)
 
-The active authoring model is workflow-first with three primary step types:
-- `agent` (LLM reasoning via agent definitions)
-- `function` (deterministic Python transforms)
-- `tool` (external actions)
+Primary workflow step model:
+- `type: agent` for LLM-backed reasoning from `agents/*.yaml`
+- `type: function` for deterministic Python callables in `functions/*.py`
+- `type: tool` for tool protocol implementations in `tools/*.py`
 
-## Tech Stack
-- Language: Python 3.10+
-- Local environment: conda env `agent_runtime`
-- Persistence: SQLite (`runs`, `steps`, `state_versions`)
-- Workflow format: YAML
-- HTTP adapters: stdlib `urllib`
-- CLI: `argparse` (`ai` entry point from `pyproject.toml`)
-- Packaging: setuptools backend
-- Core dependencies: `PyYAML`, `typing-extensions`
-- Test stack: `pytest`, `pytest-asyncio`
+## Repository Layout
+- Runtime framework code: `src/agent_runtime/`
+- Docs and product narrative: `documentation/`
+- Planning and backlog: `planning/`
+- Example runnable project: `examples/reference_project/`
+- Additional sample projects: `agent-test-one/`, `essay_writer/`
+- Test suite: `tests/`
 
 ## Architecture Snapshot
 ```
-CLI (cli.py)
-  -> Config (config.py)
+CLI (src/agent_runtime/cli.py)
+  -> Config + runtime bootstrap
   -> Registries (workflow/agent/tool/llm)
-  -> Workflow parser (workflow.py)
+  -> Workflow parser/validator (workflow.py)
   -> Executor (core.py)
-      -> agent steps (agent/ + llm/)
-      -> function steps (function_resolver.py + functions/)
-      -> tool steps (tools/)
+      -> agent execution (agent/ + llm/)
+      -> function dispatch (function_resolver.py)
+      -> tool dispatch (tools/)
       -> memory hydration/persist (memory/)
-      -> lifecycle events + timing telemetry
-  -> Storage (storage/sqlite.py)
+      -> lifecycle events + telemetry
+  -> Storage abstractions (storage/) backed by sqlite.py
 ```
 
-State contract remains:
+State contract:
 ```
 {
   "inputs": {},
@@ -43,44 +47,43 @@ State contract remains:
 }
 ```
 
-## Key Directories
-- `src/agent_runtime/core.py`: main executor loop, retries, branching, resume/replay hooks
-- `src/agent_runtime/workflow.py`: parsing, validation, contracts, deprecated model-step compatibility
-- `src/agent_runtime/cli.py`: command surface (`run`, `inspect`, `resume`, `replay`, `visualize`, etc.)
-- `src/agent_runtime/agent/`: agent definitions, strategies, executor, registry, packaging
-- `src/agent_runtime/llm/`: provider registry, adapters, client
-- `src/agent_runtime/tools/`: tool protocol, registry, built-ins, discovery, validation
-- `src/agent_runtime/memory/`: working/episodic/semantic/procedural tiers + manager
-- `src/agent_runtime/storage/`: storage abstractions + SQLite implementation
-- `src/agent_runtime/visualization/`: graph/timeline loaders and renderers
-- `workflows/`: canonical workflow examples/samples
-- `tests/`: broad runtime test coverage (README reports 448 passing)
-- `planning/vision/todos.md`: categorized TODO index for planning
+## Key Modules
+- `src/agent_runtime/core.py`: executor loop, retries, branching, resume hooks
+- `src/agent_runtime/workflow.py`: workflow schema parsing and contracts
+- `src/agent_runtime/cli.py`: user-facing command surface
+- `src/agent_runtime/agent/`: agent definitions, strategy runtime, execution
+- `src/agent_runtime/llm/`: provider adapters + request controls
+- `src/agent_runtime/tools/`: built-ins, discovery, validation, protocol
+- `src/agent_runtime/memory/`: working/episodic/semantic/procedural tiers
+- `src/agent_runtime/storage/`: base interface and SQLite persistence
+- `src/agent_runtime/visualization/`: timeline/graph rendering
 
-## Current Conventions
-- Registry-based extensibility for tools, workflows, LLM providers, and agents.
-- Namespaced state only; no ad hoc global dict mutation.
-- Resume safety via workflow hashing.
-- Branch expressions validated through `safe_eval` constraints.
-- Structured logging and lifecycle callback events.
-- Minimal dependency philosophy (no heavy HTTP SDK dependencies).
+## Source-of-Truth Docs
+- `documentation/about/architecture.md`
+- `documentation/about/status_2026-03-17.md`
+- `documentation/about/gaps_2026-03-17.md`
+- `documentation/changelog/CHANGELOG_2026-03-31.md`
+- `planning/vision/todos.md`
 
-## TODO Taxonomy (Repo Standard)
-Inline TODOs in source use:
+## Current Engineering Conventions
+- Registry-based extensibility for agents, tools, workflows, and LLM providers.
+- Namespaced runtime state with explicit step output ownership.
+- Resume safety based on workflow hashing.
+- Branch conditions must stay within `safe_eval` constraints.
+- Structured logging over ad hoc prints.
+- Minimal dependency philosophy (stdlib HTTP via `urllib`).
+
+## TODO Taxonomy
+Use categorized TODOs:
 - `TODO(roadmap): ...`
 - `TODO(pain-point): ...`
 - `TODO(ux): ...`
 - `TODO(security): ...`
 - `TODO(eng): ...`
 
-Optional milestone tags (for explicit release gates):
-- `TODO(0.2.0): ...`
+Allowed for release-gated work:
+- `TODO(<milestone>): ...` (example: `TODO(0.2.0): ...`)
 
-Primary source for category inventory and current backlog: `planning/vision/todos.md`.
-
-## Suggested Verification Commands
-```bash
-conda activate agent_runtime
-pip install -r requirements.txt
-pytest -q
-```
+## Environment Guidance
+- Preferred local environment for this workspace: conda env `wa-data` (if present)
+- Project docs often reference: conda env `agent_runtime`

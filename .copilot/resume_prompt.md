@@ -1,28 +1,29 @@
 # Resume Prompt
 
-Project: `agentic-runtime` (deterministic runtime for workflow-based AI execution).
+Project: `agentic-runtime`
 
-Before coding, read in this order:
+Before writing code, read in this order:
 1. `.copilot/project_context.md`
 2. `.copilot/session_state.md`
 3. `.copilot/working_set.md`
 4. `planning/vision/todos.md`
-5. `documentation/changelog/CHANGELOG_2026-03-23.md`
+5. `documentation/changelog/CHANGELOG_2026-03-31.md`
 
-Execution model reminder:
-- Workflows orchestrate `agent`, `function`, and `tool` steps.
-- State is namespaced (`inputs`, `steps`, `runtime`) and persisted per step.
-- Resume/replay determinism depends on storage integrity and workflow hashing.
+Execution reminders:
+- Workflow steps use `agent`, `function`, and `tool`.
+- Runtime state remains namespaced as `inputs`, `steps`, `runtime`.
+- Replay/resume guarantees depend on workflow hash checks and durable storage writes.
 
-Environment reminder:
-- Activate conda env before running commands: `conda activate agent_runtime`.
+Environment reminders:
+- Prefer `conda activate wa-data` in this workspace if available.
+- If unavailable, use repository-default docs guidance (`agent_runtime`).
 
-TODO convention reminder:
+TODO reminders:
 - Use categorized TODOs only: `roadmap`, `pain-point`, `ux`, `security`, `eng`.
-- If an implementation is intentionally partial or simplified, add an inline categorized TODO at the decision point.
+- For intentional partial implementations, add an inline categorized TODO at the decision point.
 
 Session objective template:
-- Confirm current task and touched modules from `.copilot/session_state.md`.
-- Implement scoped changes in `src/agent_runtime/...`.
-- Validate with targeted tests (or full `pytest -q` when feasible).
+- Confirm current objective from `.copilot/session_state.md`.
+- Implement minimal, scoped changes.
+- Validate behavior with targeted tests when practical.
 - Update `.copilot/session_state.md` and `.copilot/working_set.md` before ending.
