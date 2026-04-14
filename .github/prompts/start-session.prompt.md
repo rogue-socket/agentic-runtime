@@ -12,7 +12,7 @@ Steps:
    - planning/vision/todos.md
 
 2. Optionally skim for recent changes:
-   - documentation/changelog/CHANGELOG_2026-03-23.md (latest)
+   - documentation/changelog/CHANGELOG_2026-03-31.md (latest)
    - documentation/changelog/CHANGELOG_2026-03-20.md
    - documentation/about/gaps_2026-03-17.md
 
@@ -38,7 +38,7 @@ Next Step
 Rules:
 - Do NOT implement code yet.
 - Do NOT assume architecture not described in the context files.
-- Assume conda env `agent_runtime` is the canonical local Python environment.
+- Prefer conda env `wa-data` if present locally; otherwise use project-default `agent_runtime`.
 - The runtime uses Python 3.10+, async-first internals with sync CLI wrappers.
 - All state goes through RuntimeState with namespaced paths (inputs.*/steps.*/runtime.*).
 - All persistence goes through the Storage ABC — never access SQLite directly.

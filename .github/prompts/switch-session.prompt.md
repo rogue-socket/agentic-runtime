@@ -30,6 +30,7 @@ The resume prompt must instruct the next chat to read:
 - .copilot/session_state.md
 - .copilot/working_set.md
 - planning/vision/todos.md
+- documentation/changelog/CHANGELOG_2026-03-31.md
 
 Output format:
 
@@ -38,3 +39,6 @@ SECTION 2 — Updated working_set.md
 SECTION 3 — Resume prompt for next chat
 
 Keep the output structured.
+
+Environment note:
+- Prefer `wa-data` if available in this workspace; otherwise use `agent_runtime`.

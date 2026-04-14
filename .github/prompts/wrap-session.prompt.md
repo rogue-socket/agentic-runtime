@@ -36,6 +36,14 @@ For any deferred work from this session, require categorized TODO format in note
 
 5. Generate a short "next session bootstrap prompt" that can be pasted into a new Copilot chat.
 
+Include these references in your checkpoint context:
+- `documentation/changelog/CHANGELOG_2026-03-31.md`
+- `documentation/about/architecture.md`
+- `planning/vision/todos.md`
+
+Environment context:
+- Prefer `wa-data` in this workspace when available; fallback to `agent_runtime`.
+
 Output format:
 
 SECTION 1 — Updated session_state.md  
