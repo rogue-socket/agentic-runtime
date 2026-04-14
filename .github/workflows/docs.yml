@@ -5,7 +5,7 @@ on:
     branches: [ main ]
     paths:
       - 'documentation/**'
-      - 'workflows/**'
+      - 'examples/reference_project/workflows/**'
       - 'src/agent_runtime/**'
 
 jobs:

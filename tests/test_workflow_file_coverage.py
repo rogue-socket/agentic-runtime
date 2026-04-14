@@ -12,9 +12,10 @@ from agent_runtime.workflow import load_workflow
 from conftest import make_memory_manager, make_storage
 
 ROOT = Path(__file__).resolve().parents[1]
+REFERENCE_ROOT = ROOT / "examples" / "reference_project"
 
 WORKFLOW_SOURCES = (
-    (ROOT / "workflows", ROOT / "functions", ROOT / "agents"),
+    (REFERENCE_ROOT / "workflows", REFERENCE_ROOT / "functions", REFERENCE_ROOT / "agents"),
 )
 
 
@@ -68,8 +69,8 @@ def test_all_workflow_files_parse_and_agent_refs_resolve(
 
 def test_agent_function_sample_maps_text_into_summarizer_issue() -> None:
     """Keep sample 07 input wiring aligned with summarizer prompt contract."""
-    workflow_path = ROOT / "workflows" / "samples" / "07_agent_and_function.yaml"
-    workflow = load_workflow(str(workflow_path), functions_dir=str(ROOT / "functions"))
+    workflow_path = REFERENCE_ROOT / "workflows" / "samples" / "07_agent_and_function.yaml"
+    workflow = load_workflow(str(workflow_path), functions_dir=str(REFERENCE_ROOT / "functions"))
 
     summarize = next(step for step in workflow["steps"] if step.step_id == "summarize")
     assert summarize.input_spec == {"issue": "inputs.text"}
@@ -98,8 +99,8 @@ def test_no_llm_workflows_execute(
     expected_status: str,
 ) -> None:
     """Function implementation."""
-    workflow_path = ROOT / workflow_rel_path
-    functions_dir = ROOT / "functions"
+    workflow_path = REFERENCE_ROOT / workflow_rel_path
+    functions_dir = REFERENCE_ROOT / "functions"
 
     workflow = load_workflow(str(workflow_path), functions_dir=str(functions_dir))
 

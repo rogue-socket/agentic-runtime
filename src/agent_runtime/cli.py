@@ -1676,6 +1676,12 @@ def _normalize_workflow_inputs(raw_inputs: Any) -> List[Dict[str, Any]]:
 def _generate_workflow_reference(project_root: Path) -> Path:
     """Generate documentation/guide/workflow-reference-generated.md from workflow YAML."""
     workflows_root = project_root / "workflows"
+    if not workflows_root.is_dir():
+        # Repository-local fallback: keep docs generation working after moving
+        # bundled sample project files under examples/reference_project.
+        fallback = project_root / "examples" / "reference_project" / "workflows"
+        if fallback.is_dir():
+            workflows_root = fallback
     output_path = project_root / "documentation" / "guide" / "workflow-reference-generated.md"
     os.makedirs(output_path.parent, exist_ok=True)
 

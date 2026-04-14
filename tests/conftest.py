@@ -34,8 +34,13 @@ def make_memory_manager() -> MemoryManager:
 
 
 def functions_dir() -> str:
-    """Return the absolute path to the project's functions/ directory."""
-    return str(Path(__file__).resolve().parents[1] / "functions")
+    """Return the absolute path to the bundled sample project's functions/ directory."""
+    return str(
+        Path(__file__).resolve().parents[1]
+        / "examples"
+        / "reference_project"
+        / "functions"
+    )
 
 
 # [Pain Point Solved] #N10 Non-Deterministic Testing Paralysis: FakeLLMClient,

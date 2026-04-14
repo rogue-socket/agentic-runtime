@@ -25,6 +25,17 @@ Running AI agents in production is a mess. LLM calls fail mid-workflow. State ge
 
 **ForrestRun fixes all of that.**
 
+## Repository Layout Note
+
+This repository is framework-first:
+
+- Runtime engine code lives under `src/agent_runtime/`.
+- Bundled runnable example project content lives under `examples/reference_project/`.
+
+When users run `ai init` or `ai quickstart` in their own project folder,
+the runtime scaffolds `agents/`, `functions/`, `tools/`, `workflows/`, and
+`prompts/` in that target folder.
+
 ---
 
 ## What It Does
