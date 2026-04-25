@@ -2,7 +2,7 @@ from __future__ import annotations
 
 """LLM client that routes requests through provider adapters."""
 
-from collections import deque
+from collections import OrderedDict, deque
 import threading
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -54,7 +54,7 @@ class LLMClient:
 
         self._lock = threading.Lock()
         self._request_timestamps: deque[float] = deque()
-        self._run_usage: Dict[str, Dict[str, float]] = {}
+        self._run_usage: OrderedDict[str, Dict[str, float]] = OrderedDict()
         self._max_tracked_runs = 500  # LRU eviction threshold
 
     def clear_run_usage(self, run_id: str) -> None:
@@ -69,7 +69,7 @@ class LLMClient:
         prompt: str,
         provider: Optional[str] = None,
         system: Optional[str] = None,
-        history: Optional[List[Dict[str, str]]] = None,
+        history: Optional[List[Dict[str, Any]]] = None,
         params: Optional[Dict[str, Any]] = None,
         context: Optional[Dict[str, Any]] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
@@ -198,14 +198,15 @@ class LLMClient:
                 time.sleep(sleep_for)
 
     def _get_or_create_usage(self, run_id: str) -> Dict[str, float]:
-        """Load or initialize usage counters for a run id."""
+        """Load or initialize usage counters for a run id (LRU eviction)."""
         usage = self._run_usage.get(run_id)
         if usage is not None:
+            # Move to end so recently-used runs survive eviction.
+            self._run_usage.move_to_end(run_id)
             return usage
-        # Evict oldest entries if we've exceeded the tracking threshold
+        # Evict least-recently-used entry when at capacity.
         if len(self._run_usage) >= self._max_tracked_runs:
-            oldest_key = next(iter(self._run_usage))
-            del self._run_usage[oldest_key]
+            self._run_usage.popitem(last=False)
         usage = {
             "requests": 0.0,
             "input_tokens": 0.0,

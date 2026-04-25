@@ -116,7 +116,7 @@ def _urlopen_with_retry(
             raise
         except urllib.error.URLError:
             raise
-    raise last_exc  # type: ignore[misc]  # unreachable in practice
+    raise AssertionError("unreachable: retry loop always returns or raises")
 
 
 # ---------------------------------------------------------------------------
@@ -454,7 +454,7 @@ class AnthropicAdapter:
         body: Dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "max_tokens": params.pop("max_tokens", 4096),
+            "max_tokens": params.get("max_tokens", 4096),
         }
         if system:
             body["system"] = system

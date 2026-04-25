@@ -9,10 +9,9 @@ from typing import Any, Dict, List, Optional
 # ---------------------------------------------------------------------------
 # Native function-calling types
 # ---------------------------------------------------------------------------
-# [DONE — Phase 1] Data model is complete. Adapters in adapters.py are
-# responsible for populating LLMResponse.tool_calls when the model responds
-# via native function calling rather than text markdown blocks.
-# See adapters.py (Phase 2) and strategies.py (Phase 3) for pending work.
+# [DONE — All phases complete] Data model, adapters, and strategies all
+# support native function calling. OpenAI, Anthropic, and Gemini adapters
+# populate LLMResponse.tool_calls via their native APIs.
 # ---------------------------------------------------------------------------
 
 
@@ -20,9 +19,8 @@ from typing import Any, Dict, List, Optional
 class ToolCallRequest:
     """A single native tool-call emitted by the LLM (function-calling API).
 
-    Populated by adapters that support native function calling
+    Populated by all three adapters via native function calling
     (OpenAI ``tool_calls``, Anthropic ``tool_use``, Gemini ``functionCall``).
-    Currently always empty — text-based parsing is the live path.
 
     Fields:
         id         -- Provider-assigned call ID (used to correlate the result
