@@ -6,9 +6,11 @@ code, and headers.  Uses stdlib ``urllib`` — no additional dependencies.
 
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import json
 import socket
+import ssl
 import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional
@@ -57,6 +59,11 @@ def _resolve_host_addresses(hostname: str) -> list[ipaddress.IPv4Address | ipadd
     return addrs
 
 
+def _is_private_address(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return True if a resolved IP address falls within a blocked network."""
+    return any(addr in net for net in _BLOCKED_NETWORKS)
+
+
 def _is_private_host(hostname: str) -> bool:
     """Resolve *hostname* and return True if any address is private/blocked.
 
@@ -66,9 +73,74 @@ def _is_private_host(hostname: str) -> bool:
     if not addrs:
         return True  # DNS failure — fail closed
     for addr in addrs:
-        if any(addr in net for net in _BLOCKED_NETWORKS):
+        if _is_private_address(addr):
             return True
     return False
+
+
+class _SSRFSafeConnection(http.client.HTTPConnection):
+    """HTTPConnection subclass that validates resolved IPs at connect time.
+
+    Prevents DNS rebinding SSRF by checking every resolved address against
+    the blocked-network list inside the actual socket.connect() call —
+    eliminating the TOCTOU gap between a pre-check DNS lookup and urllib's
+    internal DNS lookup.
+    """
+
+    def connect(self) -> None:
+        """Connect to the host, validating resolved IPs against blocklist."""
+        infos = socket.getaddrinfo(
+            self.host, self.port, socket.AF_UNSPEC, socket.SOCK_STREAM,
+        )
+        if not infos:
+            raise urllib.error.URLError("DNS resolution failed")
+
+        for family, socktype, proto, _canon, sockaddr in infos:
+            addr = ipaddress.ip_address(sockaddr[0])
+            if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+                addr = addr.ipv4_mapped
+            if _is_private_address(addr):
+                raise urllib.error.URLError(
+                    "Requests to private or internal network addresses are blocked."
+                )
+
+        # All addresses passed — proceed with normal connection.
+        super().connect()
+
+
+class _SSRFSafeHTTPSConnection(_SSRFSafeConnection, http.client.HTTPSConnection):
+    """HTTPS variant of SSRF-safe connection."""
+
+    pass
+
+
+class _SSRFSafeHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
+        return self.do_open(_SSRFSafeConnection, req)  # type: ignore[return-value]
+
+
+class _SSRFSafeHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req: urllib.request.Request) -> http.client.HTTPResponse:
+        return self.do_open(_SSRFSafeHTTPSConnection, req)  # type: ignore[return-value]
+
+
+def _build_ssrf_safe_opener() -> urllib.request.OpenerDirector:
+    """Build a urllib opener that validates resolved IPs at connect time."""
+    return urllib.request.build_opener(
+        _SSRFSafeHTTPHandler, _SSRFSafeHTTPSHandler,
+    )
+
+
+_ssrf_opener = _build_ssrf_safe_opener()
+
+
+def _ssrf_safe_urlopen(req: urllib.request.Request, *, timeout: float = 30):
+    """Open a URL request using the SSRF-safe opener.
+
+    This is the single callsite for HTTP requests — tests can patch this
+    function instead of ``urllib.request.urlopen``.
+    """
+    return _ssrf_opener.open(req, timeout=timeout)
 
 
 class HttpTool:
@@ -120,7 +192,9 @@ class HttpTool:
                 metadata=None,
             )
 
-        # SSRF protection: block private / loopback / link-local targets
+        # SSRF protection: pre-flight check blocks obvious private targets.
+        # The SSRF-safe opener below also validates at connect time to prevent
+        # DNS rebinding attacks.
         if parsed.hostname and _is_private_host(parsed.hostname):
             return ToolResult(
                 success=False,
@@ -138,9 +212,10 @@ class HttpTool:
             data = input["body"].encode("utf-8")
 
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        effective_timeout = self.timeout if self.timeout is not None else 30
 
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout or 30) as resp:
+            with _ssrf_safe_urlopen(req, timeout=effective_timeout) as resp:
                 body_bytes = resp.read(_MAX_RESPONSE_BYTES)
                 body_text = body_bytes.decode("utf-8", errors="replace")
                 resp_headers = {k: v for k, v in resp.getheaders()}
