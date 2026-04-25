@@ -266,6 +266,58 @@ class Run:
         self._frozen = False
         self.state.unfreeze()
 
+    # --- SDK accessor methods ---
+
+    def get_output(self, step_id: str) -> Optional[Dict[str, Any]]:
+        """Get the output of a completed step by ID.
+
+        Returns ``None`` if the step has not run or produced no output.
+        """
+        return self.state.data.get("steps", {}).get(step_id)
+
+    def get_input(self, key: str, default: Any = None) -> Any:
+        """Get a workflow input value by key."""
+        return self.state.data.get("inputs", {}).get(key, default)
+
+    @property
+    def succeeded(self) -> bool:
+        """``True`` if the run completed successfully."""
+        return self.status == StepStatus.COMPLETED
+
+    @property
+    def failed(self) -> bool:
+        """``True`` if the run ended in failure."""
+        return self.status == StepStatus.FAILED
+
+    @property
+    def outputs(self) -> Dict[str, Any]:
+        """All step outputs as ``{step_id: output_dict}``."""
+        return dict(self.state.data.get("steps", {}))
+
+    @property
+    def step_names(self) -> List[str]:
+        """Ordered list of step IDs that executed."""
+        return [s.step_id for s in self._steps]
+
+    @property
+    def total_duration_ms(self) -> Optional[int]:
+        """Total run duration in milliseconds, or ``None`` if not yet complete."""
+        if self.started_at and self.completed_at:
+            from datetime import datetime
+            start = datetime.fromisoformat(self.started_at)
+            end = datetime.fromisoformat(self.completed_at)
+            return int((end - start).total_seconds() * 1000)
+        return None
+
+    @property
+    def total_tokens(self) -> int:
+        """Sum of all token usage across all steps."""
+        total = 0
+        for step in self._steps:
+            if step.token_usage:
+                total += step.token_usage.get("total_tokens", 0)
+        return total
+
 
 # [Pain Point Solved] #10 Rebuild Same Infra Every Project: The Executor handles
 #   orchestration, persistence, retries, branching, state management, and event
@@ -322,8 +374,10 @@ class Executor:
 
 
     # -- Step dispatch helpers ------------------------------------------------
-    # Each dispatch method returns (output_dict, handler_duration_ms, tool_duration_ms)
-    # and may mutate `execution` to set metadata (token_usage, model_name, trace).
+    # Each dispatch method returns (output_dict, handler_duration_ms, tool_duration_ms).
+    # Agent/function return (output, handler_ms, None); tool returns (output, None, tool_ms).
+    # The two duration slots are mutually exclusive.
+    # May mutate `execution` to set metadata (token_usage, model_name, trace).
 
     async def _run_with_timeout_and_heartbeat(
         self,
@@ -455,7 +509,12 @@ class Executor:
         step_input: Any,
         snapshot: StateDict,
     ) -> tuple[Dict[str, Any], Optional[int], None]:
-        """Dispatch a function step — returns (output, handler_duration_ms, None)."""
+        """Dispatch a function step — returns (output, handler_duration_ms, None).
+
+        Note: timeout_ms is not enforced for function steps since they run
+        synchronously in-process. Consider wrapping in asyncio.wait_for if
+        timeout support is needed.
+        """
         if step_def.function_callable is None:
             raise StepExecutionError("Function step missing resolved callable.")
         func_input = step_input if step_def.input_spec is not None else snapshot
@@ -551,7 +610,7 @@ class Executor:
         }
         if elapsed_ms is not None:
             payload["elapsed_ms"] = elapsed_ms
-        if error:
+        if error is not None:
             payload["error"] = error
         self._emit("STEP_PROGRESS", payload)
 
@@ -804,7 +863,10 @@ class Executor:
                 tool_duration_ms: Optional[int] = None
                 for attempt in range(1, max_attempts + 1):
                     snapshot = run.state.snapshot()
-                    execution.state_before = copy.deepcopy(snapshot)
+                    # Only capture state_before on the first attempt so replay/diff
+                    # features see the original pre-step state, not a post-failure snapshot.
+                    if attempt == 1:
+                        execution.state_before = copy.deepcopy(snapshot)
                     self.memory_manager.hydrate_state(snapshot)
                     if step_def.input_spec is not None:
                         step_input = build_step_input(step_def.input_spec, snapshot)
@@ -1173,7 +1235,7 @@ class Executor:
                         )
                     raise
 
-        raise StepExecutionError(f"Tool execution failed: {last_error}")
+        raise AssertionError("unreachable: retry loop always returns or raises")
 
     @staticmethod
     def _ensure_no_running_loop(async_entrypoint: str) -> None:
