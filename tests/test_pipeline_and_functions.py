@@ -1,4 +1,4 @@
-"""Tests for Phase 2: pipeline, function resolver, workflow step types.
+"""Tests for agent pipelines, function resolution, and workflow step validation.
 
 Covers:
 - PipelineStep validation and parsing

@@ -1,4 +1,4 @@
-"""Tests for Tier-1 gap fixes: cost reporting, episodic memory depth, output schema."""
+"""Tests for cost reporting, episodic memory depth, and output schema validation."""
 
 from __future__ import annotations
 

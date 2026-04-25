@@ -1,4 +1,4 @@
-"""Shared test fixtures for agentic-runtime tests."""
+"""Shared test fixtures for ForrestRun tests."""
 
 from __future__ import annotations
 

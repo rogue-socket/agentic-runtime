@@ -1,4 +1,4 @@
-"""Tests for Tier 2 fixes: config overlay, latency budget, golden snapshot testing."""
+"""Tests for config overlay, latency budget enforcement, and golden snapshot replay."""
 
 from __future__ import annotations
 

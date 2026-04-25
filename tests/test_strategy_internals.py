@@ -1,4 +1,4 @@
-"""Tests for strategies.py bug fixes."""
+"""Tests for agent strategy internals: tool call parsing, pipeline input resolution, LLM client resource management."""
 import pytest
 
 

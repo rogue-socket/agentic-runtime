@@ -58,7 +58,7 @@ class TestHttpTool:
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("urllib.request.urlopen", return_value=mock_resp), \
+        with patch("agent_runtime.tools.http._ssrf_safe_urlopen", return_value=mock_resp), \
              patch("agent_runtime.tools.http._is_private_host", return_value=False):
             result = _run(tool.execute({"url": "https://api.example.com/data"}, _ctx()))
 
@@ -76,7 +76,7 @@ class TestHttpTool:
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch("urllib.request.urlopen", return_value=mock_resp) as mock_open, \
+        with patch("agent_runtime.tools.http._ssrf_safe_urlopen", return_value=mock_resp) as mock_open, \
              patch("agent_runtime.tools.http._is_private_host", return_value=False):
             result = _run(tool.execute({
                 "url": "https://api.example.com/items",
@@ -100,7 +100,7 @@ class TestHttpTool:
         exc.fp = MagicMock()
         exc.fp = None
 
-        with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError(
+        with patch("agent_runtime.tools.http._ssrf_safe_urlopen", side_effect=urllib.error.HTTPError(
             "https://api.example.com", 404, "Not Found", {}, None
         )), \
              patch("agent_runtime.tools.http._is_private_host", return_value=False):
