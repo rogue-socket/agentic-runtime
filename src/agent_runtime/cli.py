@@ -51,7 +51,7 @@ from typing import Any, Dict, List, Optional
 import webbrowser
 import yaml
 
-from .core import Executor, StepStatus
+from .core import Executor
 from .config import RuntimeConfig, load_config, apply_cli_overrides
 from .logging import StructuredLogger
 from .memory import EpisodicMemory, MemoryManager, ProceduralMemory, SemanticMemory, WorkingMemory
@@ -639,7 +639,7 @@ class PriorityHeuristicTool:
         )
 '''
 
-RUNTIME_YAML_TEMPLATE = """# Runtime configuration for agentic-runtime.
+RUNTIME_YAML_TEMPLATE = """# Runtime configuration for ForrestRun.
 # CLI flags override values set here.
 # Uncomment and edit sections as needed.
 
@@ -2194,60 +2194,13 @@ def _scaffold_quickstart_samples(target_dir: str) -> None:
     _scaffold_file(os.path.join(workflows_dir, "data_pipeline.yaml"), _QS_PIPELINE_WORKFLOW)
 
 
-def _default_tool_registry(
-    tools_dir: str = "tools",
-    shell_allowlist: Optional[list] = None,
-    shell_denylist: Optional[list] = None,
-) -> ToolRegistry:
-    """Create a tool registry with built-in tools + discovered tools."""
-    registry = ToolRegistry()
-
-    # Built-in tools (always available)
-    registry.register(EchoTool())
-    registry.register(HttpTool())
-    registry.register(FileTool())
-    registry.register(ShellTool(
-        allowlist=shell_allowlist or None,
-        denylist=shell_denylist or None,
-    ))
-
-    # Discover tools from tools/ directory
-    register_discovered_tools(registry, tools_dir)
-
-    return registry
-
-
-def _default_memory_manager(
-    db_path: str = "runtime.db",
-    max_entries: int = 50,
-    max_scratch_bytes: int = 256_000,
-) -> MemoryManager:
-    """Build memory-manager with SQLite-backed episodic and semantic tiers."""
-    return MemoryManager(
-        working=WorkingMemory(max_entries=max_entries, max_scratch_bytes=max_scratch_bytes),
-        episodic=EpisodicMemory(db_path=db_path),
-        semantic=SemanticMemory(db_path=db_path),
-        procedural=ProceduralMemory(db_path=db_path),
-    )
-
-def _default_llm_client(cfg: RuntimeConfig, logger: Optional[StructuredLogger] = None) -> LLMClient:
-    """Create an LLM client using the configured registry."""
-    return LLMClient(
-        registry=cfg.llm_registry,
-        logger=logger,
-        rate_limit_rpm=cfg.llm_rate_limit_rpm,
-        max_requests_per_run=cfg.llm_max_requests_per_run,
-        max_total_tokens_per_run=cfg.llm_max_total_tokens_per_run,
-        max_cost_usd_per_run=cfg.llm_max_cost_usd_per_run,
-        pricing_usd_per_1k_tokens=cfg.llm_pricing_usd_per_1k_tokens,
-    )
-
-
-def _default_agent_registry(agents_dir: str = "agents") -> AgentRegistry:
-    """Build an agent registry by scanning the agents directory."""
-    if os.path.isdir(agents_dir):
-        return AgentRegistry.from_directory(agents_dir)
-    return AgentRegistry()
+# Factory functions — public API lives in defaults.py; aliased here for CLI use.
+from .defaults import (
+    default_tool_registry as _default_tool_registry,
+    default_memory_manager as _default_memory_manager,
+    default_llm_client as _default_llm_client,
+    default_agent_registry as _default_agent_registry,
+)
 
 
 def _load_workflow_for_run(
@@ -2555,7 +2508,7 @@ def _run_setup_flow(
 
 def _run_onboard_flow(project_root: str) -> int:
     """Function implementation."""
-    print("\nWelcome to agentic-runtime.")
+    print("\nWelcome to ForrestRun.")
     print("This wizard sets up a project and your first LLM provider.\n")
 
     if not os.path.isdir(project_root):
@@ -2783,7 +2736,7 @@ def _run_quickstart_sample(
 
 def _run_home_screen(project_root: str) -> int:
     """Function implementation."""
-    print("\nagentic-runtime")
+    print("\nForrestRun")
     print("Choose an action:\n")
     print("  1) Guided setup (recommended)")
     print("  2) Run a sample workflow")
