@@ -186,6 +186,7 @@ class AgentDefinition:
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens,
                 "output_key": self.output_key,
+                "auto_tool_prompt": self.auto_tool_prompt,
             }
         }
         if self.strategy.custom_handler:

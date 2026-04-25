@@ -20,6 +20,7 @@ output and executes tools from the agent's allowed list.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Protocol
@@ -344,7 +345,10 @@ def _build_tool_schemas(
                 "parameters": tool.input_schema or {"type": "object", "properties": {}},
             })
         except Exception:  # noqa: BLE001
-            pass
+            logging.getLogger(__name__).warning(
+                "Could not resolve tool '%s' for native function calling — skipping",
+                tool_name,
+            )
     return schemas
 
 
@@ -839,13 +843,36 @@ def resolve_strategy(config: StrategyConfig) -> AgentStrategyProtocol:
     return cls()
 
 
+_CUSTOM_STRATEGY_ALLOWED_PREFIXES: list[str] = []
+"""Module prefixes allowed for custom strategy loading.
+
+When empty (default), any importable module is accepted — suitable for
+trusted, single-user CLI usage.  In shared/multi-tenant deployments, populate
+this list (e.g. ``["myproject.strategies", "agent_runtime."]``) to restrict
+which packages can be loaded via ``custom_handler`` in workflow YAML.
+"""
+
+
 def _load_custom_strategy(dotted_path: str) -> AgentStrategyProtocol:
-    """Import a custom strategy class from a dotted module path."""
+    """Import a custom strategy class from a dotted module path.
+
+    Security: when ``_CUSTOM_STRATEGY_ALLOWED_PREFIXES`` is non-empty, the
+    module path must start with one of the listed prefixes.  This prevents
+    untrusted YAML from loading arbitrary packages.
+    """
     if not dotted_path:
         raise ValueError("custom_handler path is required for custom strategy")
     module_path, _, class_name = dotted_path.rpartition(".")
     if not module_path or not class_name:
         raise ValueError(f"Invalid custom_handler path: {dotted_path}")
+
+    if _CUSTOM_STRATEGY_ALLOWED_PREFIXES:
+        if not any(module_path.startswith(prefix) for prefix in _CUSTOM_STRATEGY_ALLOWED_PREFIXES):
+            raise ValueError(
+                f"Custom strategy module '{module_path}' is not in the allowed "
+                f"prefixes: {_CUSTOM_STRATEGY_ALLOWED_PREFIXES}"
+            )
+
     import importlib
 
     module = importlib.import_module(module_path)
