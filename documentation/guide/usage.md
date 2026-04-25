@@ -566,6 +566,9 @@ ai visualize <run_id> --html
 ## 15. List agents
 
 ```bash
+ai list
+```
+
 Lists all agent definitions found in `agents/` with their id and version.
 
 ## 16. Aggregate Metrics

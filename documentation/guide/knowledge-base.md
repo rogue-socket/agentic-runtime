@@ -1,12 +1,12 @@
 # **Knowledge Base**
 
-This page is a **conceptual overview** of the Agentic Runtime — the architecture, the building blocks, and how they fit together. Nothing here tells you *how* to write code; for that, head to the [Manual](manual.md).
+This page is a **conceptual overview** of ForrestRun — the architecture, the building blocks, and how they fit together. Nothing here tells you *how* to write code; for that, head to the [Manual](manual.md).
 
 ---
 
 ## **The System Architecture**
 
-At its core, `agentic-runtime` is a high-performance orchestration layer. It bridges the gap between static definitions and dynamic AI execution.
+At its core, ForrestRun is an embeddable orchestration library. It bridges the gap between static definitions and dynamic AI execution.
 
 ```mermaid
 graph TD

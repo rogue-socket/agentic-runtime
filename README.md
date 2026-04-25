@@ -4,14 +4,14 @@
 
 <img src="documentation/banner.svg" alt="ForrestRun — deterministic agentic runtime" width="860" />
 
-### Build AI agent workflows that are **deterministic**, **resumable**, and **observable** — by design.
+### Embeddable workflow engine for AI agents. Deterministic, resumable, zero dependencies.
 
 <br/>
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-306998?style=for-the-badge&logo=python&logoColor=white)](#quick-start)
-[![Tests](https://img.shields.io/badge/tests-448_passing-22c55e?style=for-the-badge&logo=pytest&logoColor=white)](#tests)
+[![Tests](https://img.shields.io/badge/tests-635_passing-22c55e?style=for-the-badge&logo=pytest&logoColor=white)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-a855f7?style=for-the-badge)](#)
-[![Zero deps](https://img.shields.io/badge/http_deps-zero-f59e0b?style=for-the-badge)](#providers)
+[![Zero deps](https://img.shields.io/badge/http_deps-zero-f59e0b?style=for-the-badge)](#llm-providers)
 
 <br/>
 
@@ -19,48 +19,74 @@
 
 ---
 
-## The Problem
+## What is ForrestRun?
 
-Running AI agents in production is a mess. LLM calls fail mid-workflow. State gets lost. There's no way to tell *what happened* after a run. Retrying means re-running everything from scratch.
+ForrestRun is a Python library for running AI agent workflows. Define your pipeline in YAML — mixing LLM agents, Python functions, and external tools — and run it with a few lines of code. Every step is persisted to SQLite, so you get replay, resume, and full state history out of the box.
 
-**ForrestRun fixes all of that.**
+```python
+from forrestrun import RuntimeBuilder
 
-## Repository Layout Note
+with RuntimeBuilder().with_model("openai/gpt-4o").with_db_path(":memory:").build() as runtime:
+    run = runtime.run("workflows/research.yaml", inputs={"topic": "AI agents"})
+    print(run.outputs)          # all step outputs
+    print(run.total_tokens)     # token usage across all steps
+```
 
-This repository is framework-first:
+Or for the simplest case — one function call, no setup:
 
-- Runtime engine code lives under `src/agent_runtime/`.
-- Bundled runnable example project content lives under `examples/reference_project/`.
+```python
+from forrestrun import run_workflow
 
-When users run `ai init` or `ai quickstart` in their own project folder,
-the runtime scaffolds `agents/`, `functions/`, `tools/`, `workflows/`, and
-`prompts/` in that target folder.
+result = run_workflow("workflows/shopping.yaml", inputs={"shopping_list": "Buy a good book under 20 dollars"})
+print(result.get_output("browse_and_checkout"))
+```
+
+Both `import forrestrun` and `import agent_runtime` work. No framework lock-in, no infrastructure, no dependency tree. `pip install` and go.
 
 ---
 
-## What It Does
+## Why ForrestRun instead of LangGraph / CrewAI?
 
-Define your entire agent pipeline in YAML. Mix LLM agents, Python functions, and external tools. The runtime handles everything else: execution, memory, branching, retry, persistence, replay, and resume — with full state history at every step.
+**You want a library, not a platform.** ForrestRun is a single `pip install` with two dependencies (PyYAML, typing-extensions). No HTTP client libraries, no vector databases, no required services. It embeds into your existing Python application — FastAPI, Django, scripts, Lambda — without pulling in an ecosystem.
+
+**You want determinism, not magic.** Every step reads from and writes to an explicit state tree. No hidden state, no implicit globals, no action-at-a-distance. Workflows are YAML files you can diff, review, and version-control like any other config.
+
+---
+
+## Define Workflows in YAML
+
+Three step types — that's the whole model:
+
+| Step Type | What It Does | Backed By |
+|---|---|---|
+| `type: agent` | LLM reasoning — summarize, plan, decide, extract | Your `agents/*.yaml` |
+| `type: function` | Deterministic Python — parse, classify, transform | Your `functions/*.py` |
+| `type: tool` | External actions — HTTP calls, shell commands, file I/O | Your `tools/*.py` |
 
 ```yaml
 schema_version: v1
 workflow:
   id: research_and_act
   version: v1
+
+inputs:
+  topic:
+    description: What to research
+
 steps:
-  - id: research       # 🤖 LLM agent — finds key findings
+  - id: research
     type: agent
     agent: researcher
     inputs:
       topic: inputs.topic
 
-  - id: classify       # ⚙️  Python function — deterministic logic
+  - id: classify
     type: function
     function: triage.classify_issue
     inputs:
       findings: steps.research.findings
 
-  - id: notify         # 🔧 Tool — external action (HTTP, shell, file)
+  - id: notify
     type: tool
     tool: tools.http
     inputs:
@@ -70,262 +96,103 @@ steps:
 
 ---
 
-## Three Primitives, Infinite Possibilities
+## What You Get
 
-| Step Type | What It's For | Backed By |
-|---|---|---|
-| `type: agent` | LLM reasoning — summarize, plan, review, extract | Your `agents/*.yaml` |
-| `type: function` | Deterministic logic — parse, classify, transform | Your `functions/*.py` |
-| `type: tool` | External actions — HTTP, file I/O, shell commands | Your `tools/*.py` |
-
----
-
-## Why It's Different
-
-| Feature | What It Means For You |
+| Feature | How It Works |
 |---|---|
-| 🗄️ **SQLite-backed state** | Every step's input, output, and state snapshot is persisted atomically. Crash mid-run, lose nothing. |
-| 🔁 **Deterministic replay** | Re-run any past run from stored state — no LLM calls, exact same output. |
-| ♻️ **Resume from failure** | A step failed on iteration 5 of 7? Resume from step 5. Skip nothing. |
-| 🌿 **Conditional branching** | Route runs through different paths based on runtime state — `when: state.steps.classify.severity == "critical"`. |
-| 🔒 **Scoped execution** | Workflows and agents load only from their declared directories. No cross-project namespace bleed. |
-| 🧠 **Native LLM history** | ReAct agents pass structured message history to every provider — no string scratchpads, real multi-turn context. |
-| 🧩 **Multi-tier memory** | Working, episodic, semantic, and procedural memory layers — all pluggable. |
-| 📊 **Full observability** | HTML timeline visualization, ASCII run graphs, step diff inspection, structured JSON logs. |
-| 🚫 **Zero HTTP dependencies** | All LLM adapters use Python stdlib `urllib` only. No `httpx`, no `aiohttp`, no surprises. |
+| **SQLite-backed state** | Every step's input, output, and state snapshot persisted atomically. Crash mid-run, lose nothing. |
+| **Deterministic replay** | Re-run any past execution from stored state. No LLM calls, exact same output. |
+| **Resume from failure** | Step 5 of 7 failed? Resume from step 5 — skip nothing, re-run nothing. |
+| **Conditional branching** | Route execution based on runtime state: `when: state.steps.classify.severity == "critical"` |
+| **Multi-tier memory** | Working, episodic, semantic memory layers available to agents across runs. |
+| **Full observability** | Structured logs, HTML timeline visualization, step-by-step state inspection. |
+| **Zero HTTP dependencies** | All LLM adapters use Python stdlib `urllib`. No `httpx`, no `aiohttp`. |
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Install
-conda activate agent_runtime
-pip install -r requirements.txt
-pip install -e .
+pip install forrestrun
 
-# 2. Golden path (new project + first successful run)
+# scaffold a new project
 mkdir my-agent && cd my-agent
-ai quickstart
+ai init
 
-# 3. Follow-up commands
-ai runs
-ai inspect <run_id> --steps
-ai visualize <run_id> --html
+# run a workflow
+ai run workflows/example.yaml
 ```
 
-No API key yet? Use a deterministic first run with:
+### LLM Providers
 
-```bash
-ai quickstart --sample branching
-```
+Configure in `runtime.yaml` — API keys resolved from environment or `.env`:
 
-Setup commands at a glance:
-
-- `ai init`: base scaffold only (`agents/`, `functions/`, `tools/`, `workflows/`, per-folder `tests/`, `.env`, `runtime.db`, `runtime.yaml`)
-- `ai config`: provider/model/key setup only
-- `ai quickstart`: `init` + `config` + first run (recommended)
-- `ai onboard` / `ai start`: guided interactive wizard
-
-Already have a project? Just cd into it and run ai run workflows/example.yaml.
-
----
-
-## CLI Reference
-
-```bash
-# Golden path onboarding
-ai quickstart
-ai quickstart --sample branching          # first success without API key
-
-# Explicit setup flow
-ai init                                   # base scaffold only
-ai config                                 # provider/model/key config
-ai config --check                         # verify key availability
-ai onboard                                # guided setup wizard (alias: ai start)
-
-# Run
-ai run workflows/example.yaml             # run by file path
-ai run example_workflow                   # run by id (latest version)
-ai run example_workflow@v2                # pin to a specific version
-ai run workflows/example.yaml -i issue="AI"  # pass runtime inputs
-ai run workflows/example.yaml -v          # verbose structured logs
-ai run workflows/example.yaml --max-llm-requests 20 --max-llm-tokens 50000
-ai run workflows/example.yaml --llm-rate-limit-rpm 120 --max-llm-cost-usd 1.50
-
-# Debug
-ai inspect <run_id>                      # full run details
-ai inspect <run_id> --steps             # step-by-step breakdown
-ai inspect <run_id> --state-history     # state evolution across steps
-ai state-diff <run_id>                  # key-path diff of state changes
-
-# Visualize
-ai visualize <run_id>                   # HTML timeline (auto-opens browser)
-ai visualize <run_id> --ascii           # terminal-friendly graph
-
-# Recover
-ai resume <run_id>                      # resume a failed run from failure point
-ai replay <run_id> --verify-state       # deterministic replay with state verification
-
-# Test your project artifacts
-ai test all                              # run all project-authored tests
-ai test workflows                        # run all workflow tests (workflows/tests)
-ai test workflows checkout               # run tests matching "checkout"
-ai test agents                           # run all agent tests (agents/tests)
-ai test functions                        # run all function tests (functions/tests)
-ai test tools                            # run all tool tests (tools/tests)
-
-# Manage
-ai list                                 # list available agents
-ai runs                                 # list recent runs
-```
-
-### Tool Test Specs
-
-`ai test tools` supports deterministic YAML test specs in `tools/tests/`.
-
-- Supported file names: `tool_tests.yaml`, `tool_tests.yml`, `*.tooltest.yaml`, `*.tooltest.yml`
-- A spec can define either `tool_tests: [...]` or a single `tool_test: {...}`
-- Assertions support exactly one operator per entry: `equals`, `contains`, or `exists`
-- Assertion paths are dotted paths over `{ success, output, error, metadata }`
-
-Example:
-
-```yaml
-schema_version: v1
-tool_tests:
-  - id: priority_marks_critical
-    tool: tools.priority_heuristic
-    input:
-      issue: "API is down with 500 errors"
-    assert:
-      - path: success
-        equals: true
-      - path: output.priority
-        equals: "P0 (critical)"
-```
-
-Run targeted tool cases with filters:
-
-```bash
-ai test tools priority
-```
-
-Target filters match test file path, case id, and tool name
-
-### Function Test Specs
-
-`ai test functions` supports deterministic YAML test specs in `functions/tests/`.
-
-- Supported file names: `function_tests.yaml`, `function_tests.yml`, `*.functest.yaml`, `*.functest.yml`
-- A spec can define either `function_tests: [...]` or a single `function_test: {...}`
-- Assertions support exactly one operator per entry: `equals`, `contains`, or `exists`
-- Assertion paths are dotted paths over `{ success, output, error, metadata }`
-
-Example:
-
-```yaml
-schema_version: v1
-function_tests:
-  - id: classify_high
-    function: stubs.classify_severity
-    input:
-      issue: "Login fails with 500 errors"
-    assert:
-      - path: success
-        equals: true
-      - path: output.severity
-        equals: high
-```
-
-Run targeted function cases with filters:
-
-```bash
-ai test functions classify
-```
-
-Target filters match test file path, case id, and function reference
-
----
-
-## LLM Providers
-
-Configure in `runtime.yaml` — API keys resolved from environment variables or `.env`.
-
-| Provider | Model Examples | Key |
+| Provider | Models | Key |
 |---|---|---|
 | **OpenAI** | `gpt-4o`, `gpt-4-turbo` | `OPENAI_API_KEY` |
-| **Anthropic** | `claude-3-opus`, `claude-3-5-sonnet` | `ANTHROPIC_API_KEY` |
+| **Anthropic** | `claude-sonnet-4-20250514`, `claude-3-5-sonnet` | `ANTHROPIC_API_KEY` |
 | **Gemini** | `gemini-2.5-flash`, `gemini-1.5-pro` | `GEMINI_API_KEY` |
-| **Local** | Any OpenAI-compatible server | `LOCAL_LLM_KEY` |
 
-All adapters support structured multi-turn `history` for ReAct agents. All use stdlib `urllib` — no third-party HTTP libraries required.
+All adapters use stdlib `urllib` and support structured multi-turn history for ReAct agents.
 
-### Runtime LLM Limits
+---
 
-You can configure limits in `runtime.yaml` under `llm.limits` (or `llm_limits`) and override them per invocation with CLI flags.
+## CLI
 
-```yaml
-llm:
-  limits:
-    rate_limit_rpm: 120
-    max_requests_per_run: 20
-    max_total_tokens_per_run: 50000
-    max_cost_usd_per_run: 1.5
-    pricing_usd_per_1k_tokens:
-      openai/gpt-4o:
-        input: 0.005
-        output: 0.015
-      openai/*:
-        input: 0.003
-        output: 0.006
+ForrestRun also ships a CLI for running, inspecting, and debugging workflows:
+
+```bash
+ai run workflows/example.yaml               # run a workflow
+ai run workflows/example.yaml -i topic="AI"  # pass inputs
+ai inspect <run_id> --steps                  # step-by-step breakdown
+ai resume <run_id>                           # resume from failure point
+ai replay <run_id> --verify-state            # deterministic replay
+ai visualize <run_id>                        # HTML timeline
+ai runs                                      # list recent runs
 ```
 
-CLI overrides for `ai run` and `ai resume`:
+---
 
-- `--llm-rate-limit-rpm`
-- `--max-llm-requests`
-- `--max-llm-tokens`
-- `--max-llm-cost-usd`
+## Project Structure
 
-### Unified Schema Versioning
+When you run `ai init`, ForrestRun scaffolds:
 
-Schema-bearing components use one shared baseline and one versioning policy:
-
-- Baseline is `v1` for workflow YAML, agent YAML, runtime config YAML, and SQLite storage metadata.
-- Component-local schema updates should increment minor versions (`v1.1`, `v1.2`, ...).
-- Broad cross-system schema changes should increment major version (`v2`).
+```
+my-agent/
+  agents/          # LLM agent definitions (YAML)
+  functions/       # deterministic Python functions
+  tools/           # custom tool implementations
+  workflows/       # workflow definitions (YAML)
+  runtime.yaml     # config (provider, model, limits)
+  .env             # API keys
+```
 
 ---
 
 ## Docs
 
-| What you need | Where to look |
+| Topic | Link |
 |---|---|
-| First run, zero to running | [Getting Started](documentation/guide/getting-started.md) |
-| Full CLI + config reference | [Usage Guide](documentation/guide/usage.md) |
-| Writing workflows | [Workflows](documentation/guide/workflows.md) |
-| Writing LLM agents | [Writing Agents](documentation/guide/writing-agents.md) |
-| Writing Python functions | [Writing Functions](documentation/guide/writing-functions.md) |
-| Writing custom tools | [Writing Tools](documentation/guide/writing-tools.md) |
-| System design & internals | [Architecture](documentation/about/architecture.md) |
-| Local docs UI with search | [documentation/index.html](documentation/index.html) |
-| Change history | [Changelog](documentation/changelog/README.md) |
+| Getting started | [documentation/guide/getting-started.md](documentation/guide/getting-started.md) |
+| Writing workflows | [documentation/guide/workflows.md](documentation/guide/workflows.md) |
+| Writing agents | [documentation/guide/writing-agents.md](documentation/guide/writing-agents.md) |
+| Writing functions | [documentation/guide/writing-functions.md](documentation/guide/writing-functions.md) |
+| Writing tools | [documentation/guide/writing-tools.md](documentation/guide/writing-tools.md) |
+| Architecture | [documentation/about/architecture.md](documentation/about/architecture.md) |
+| Full CLI reference | [documentation/guide/cli-reference.md](documentation/guide/cli-reference.md) |
 
 ---
 
 ## Tests
 
 ```bash
-pytest -q    # 448 tests, all passing
+pytest -q    # 635 tests
 ```
 
 ---
 
 <div align="center">
 
-Built for developers who want AI agents that **run reliably in production** — not just in demos.
-
-*ForrestRun — deterministic agentic runtime*
+*ForrestRun — the workflow engine that stays out of your way.*
 
 </div>

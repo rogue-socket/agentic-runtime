@@ -1,5 +1,5 @@
 (() => {
-  const GITHUB_REPO = "rogue-socket/agentic-runtime";
+  const GITHUB_REPO = "forrestrun/forrestrun";
   const GITHUB_BRANCH = "main";
   const DEFAULT_DOC = "guide/getting-started.md";
 

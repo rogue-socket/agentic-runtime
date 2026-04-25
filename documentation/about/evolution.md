@@ -1,4 +1,4 @@
-# agentic-runtime — Conceptual Evolution
+# ForrestRun — Conceptual Evolution
 
 **Date:** 2026-03-20
 
@@ -173,7 +173,7 @@ Now LLM communication is a structured subsystem with clear boundaries:
 
 ### Provider registry (`llm/registry.py`)
 
-`LLMRegistry` manages providers (OpenAI, Anthropic, Gemini, local endpoints) and their model configurations. Providers are declared in `runtime.yaml` under the `llm:` section. API keys are resolved from environment variables at call time — never stored on disk.
+`LLMRegistry` manages providers (OpenAI, Anthropic, Gemini) and their model configurations. Providers are declared in `runtime.yaml` under the `llm:` section. API keys are resolved from environment variables at call time — never stored on disk.
 
 ### Adapter pattern (`llm/adapters.py`)
 
@@ -186,13 +186,9 @@ Each provider has an HTTP adapter (`OpenAIAdapter`, `AnthropicAdapter`, `GeminiA
 
 `LLMClient` routes requests to the correct adapter based on provider name, resolves API keys, and logs the call.
 
-### Built-in `llm` handler (`llm/handler.py`)
-
-The `handler: llm` step option lets workflows make direct LLM calls without defining a full agent. Supports prompt templating (`{{ state.path }}`), system prompts, configurable response keys, and optional metadata capture.
-
 ### Why this matters
 
-Agent steps use this subsystem internally — the `AgentExecutor` routes through `LLMClient` to make its calls. But the subsystem is also available directly, making LLM calls observable, configurable, and retryable through the same infrastructure. The runtime knows when an LLM call is happening, how long it took, and how many tokens it consumed.
+Agent steps use this subsystem internally — the `AgentExecutor` routes through `LLMClient` to make its calls. The subsystem makes LLM calls observable, configurable, and retryable through unified infrastructure. The runtime knows when an LLM call is happening, how long it took, and how many tokens it consumed.
 
 ---
 
@@ -217,7 +213,7 @@ All tiers implement the `MemoryTier` protocol (`read(context)`, `write(payload)`
 
 Several safety boundaries were added or strengthened as the runtime matured:
 
-**Branch expression safety.** `safe_eval` validates branch condition expressions via AST analysis before executing them. Only `state` and `len` are allowed in the evaluation context. Dunder attribute access (`state.__init__.__globals__`) is blocked. Unary operators and arithmetic are permitted for common predicates.
+**Branch expression safety.** `safe_eval` validates branch condition expressions via AST analysis before executing them. The evaluation context allows `state`, `len`, `min`, `max`, `abs`, and string methods (`startswith`, `endswith`, `lower`, `upper`, `strip`). Dunder attribute access (`state.__init__.__globals__`) is blocked. Unary operators and arithmetic are permitted for common predicates.
 
 **Circular branch detection.** The executor tracks visited step IDs during `__execute_steps_loop`. If a step is visited twice, it raises `BranchResolutionError` immediately, preventing infinite loops in misconfigured workflows.
 
@@ -251,8 +247,9 @@ The codebase distinguishes current authoring primitives from older manifest conc
 **Agent definitions** (current, primary) live in `agents/*.yaml` and describe a single LLM-backed reasoning unit: system prompt, strategy, pipeline, tools. They are referenced from workflow steps via `type: agent`. They are the building blocks of workflows.
 
 **Agent manifests** are a legacy packaging concept. Current runtime flows focus on
-workflows + `agents/*.yaml`, and there are no manifest packaging CLI commands
-(`ai validate`, `ai export`, `ai import`) in the current command set.
+workflows + `agents/*.yaml`. The CLI provides `ai export` and `ai import` for
+portable project bundles (not agent-level manifests). There is no `ai validate`
+command.
 
 The difference: an agent definition says "I am a code reviewer that uses Gemini
 with a react strategy." Runtime execution composes these definitions into

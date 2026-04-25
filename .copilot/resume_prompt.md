@@ -1,6 +1,6 @@
 # Resume Prompt
 
-Project: `agentic-runtime`
+Project: ForrestRun
 
 Before writing code, read in this order:
 1. `.copilot/project_context.md`

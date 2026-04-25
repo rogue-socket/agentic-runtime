@@ -63,7 +63,7 @@ Alias: `ai start`
 Configure LLM providers, API keys, and model settings.
 
 - **`--path <path>`**: Project root containing `runtime.yaml` (default: `.`).
-- **`--provider <name>`**: Choose from `openai`, `anthropic`, `gemini`, `local`.
+- **`--provider <name>`**: Choose from `openai`, `anthropic`, `gemini`.
 - **`--api-key-env <name>`**: Environment variable name for the API key (e.g., `OPENAI_API_KEY`).
 - **`--api-key <value>`**: Directly provide the API key value (written to `.env`).
 - **`--model <id>`**: Default model ID for this provider.

@@ -1,4 +1,4 @@
-# Codebase Audit Report — agentic-runtime
+# Codebase Audit Report — ForrestRun
 
 **Date:** 2026-04-11  
 **Scope:** Full codebase — source, tests, configuration, workflows, agents

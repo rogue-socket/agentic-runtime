@@ -2,7 +2,7 @@
 
 ## Goal
 
-Position `agentic-runtime` as the execution runtime for agents, not just a history system. The runtime should feel like an active control plane that runs, governs, and observes agent workloads.
+Position ForrestRun as the execution runtime for agents, not just a history system. The runtime should feel like an active control plane that runs, governs, and observes agent workloads.
 
 ## Why It Currently Reads As “Git For Agents”
 
@@ -31,7 +31,7 @@ Position `agentic-runtime` as the execution runtime for agents, not just a histo
 
 Positioning statement draft:
 
-“`agentic-runtime` is the execution runtime for AI agents. It runs workflows deterministically, enforces state contracts, and provides operational control and observability so agent systems can be debugged, resumed, and trusted in production.”
+“ForrestRun is the execution runtime for AI agents. It runs workflows deterministically, enforces state contracts, and provides operational control and observability so agent systems can be debugged, resumed, and trusted in production.”
 
 ## Near-Term Deliverables
 

@@ -1,4 +1,4 @@
-**Agentic Runtime Manual**
+**ForrestRun Manual**
 
 This is the **practical reference** — CLI commands, YAML syntax, code examples, and troubleshooting. For a conceptual overview of the architecture and how the pieces fit together, see the [Knowledge Base](knowledge-base.md).
 

@@ -13,7 +13,7 @@ This document describes the runtime as an execution system: data model, control 
 
 ## 1. Runtime model
 
-`agentic-runtime` executes workflow definitions into durable run records.
+ForrestRun executes workflow definitions into durable run records.
 
 Execution contract:
 
@@ -239,7 +239,7 @@ This keeps step interfaces stable as workflows grow.
 - else `default` if present
 - else branch resolution failure
 
-Expression context is constrained (`state`, `len`) to keep evaluation deterministic and safer.
+Expression context is constrained (`state`, `len`, `min`, `max`, `abs`, string methods) to keep evaluation deterministic and safer.
 
 ## 6. Tool subsystem
 
@@ -431,7 +431,7 @@ Key functions in `utils.py`:
 - `sha256_text(text)` / `sha256_json(data)` — deterministic hashing for workflow and input fingerprinting
 - `resolve_path(path, state)` — resolves dot-notation paths like `steps.generate_summary.summary`
 - `build_step_input(input_spec, state)` — materializes step input from state path mapping
-- `safe_eval(expr, state)` — constrained expression evaluation for branch conditions (AST-validated, allows only `state` and `len`)
+- `safe_eval(expr, state)` — constrained expression evaluation for branch conditions (AST-validated, allows `state`, `len`, `min`, `max`, `abs`, and string methods)
 - `format_template(value, state)` — recursive template resolution in input specs
 
 ## 12. Resume semantics
@@ -560,13 +560,11 @@ Visualization renderers (HTML, ASCII) and CLI progress output surface these metr
 ## 19. Extension points
 
 Designed for future expansion:
-- Stronger expression engine for branching (`.startswith()`, `in`, min/max)
 - DAG scheduler and parallel step execution
 - Typed state schemas
 - Tool permissions and sandbox policies
 - State redaction and compression for large payloads
 - LLM streaming / token-level events
-- Native LLM function calling (vs text-based tool_call parsing)
 - Multi-agent composition (sub-workflow invocation)
 - PostgreSQL storage backend
 - Remote storage (S3 + DynamoDB)
@@ -603,13 +601,6 @@ llm:
       models:
         claude-3-opus:
           temperature: 0.3
-    local:
-      api_key_env: LOCAL_LLM_KEY
-      base_url: http://localhost:8080/v1
-      models:
-        llama-3:
-          temperature: 0.5
-          max_tokens: 2048
 ```
 
 The registry is loaded from the `llm` section of `RuntimeConfig` during startup
@@ -662,11 +653,9 @@ for the resolved agent definition and then applies CLI `-i` inputs.
 If no agent matches, the runtime falls back to workflow resolution (file path or
 workflow registry).
 
-### Manifest packaging status
+### Project export / import
 
-Legacy manifest packaging commands (`ai validate`, `ai export`, `ai import`)
-are not part of the current CLI surface. The current runtime path is
-workflow + agent-definition authoring and execution.
+`ai export` packages the project (runtime.yaml, workflows/, agents/, functions/, prompts/) into a portable `.tar.gz` bundle. `ai import` extracts it with path traversal protection. `.env` is excluded. There is no `ai validate` command.
 
 ## 21. Status summary
 
@@ -687,14 +676,13 @@ workflow + agent-definition authoring and execution.
 | LLM provider registry | Implemented |
 | Credential resolution (env vars only) | Implemented |
 | Agent definition system (pipeline + strategy) | Implemented |
-| Agent manifest system (legacy) | Implemented |
-| Agent validate / export / import | Implemented |
+| Project export / import (portable bundles) | Implemented |
 | Agent-aware run resolution | Implemented |
 | Prompt versioning (`id@vN`) | Implemented |
 | Function step type | Implemented |
 | Agent step type | Implemented |
 | Tool step type | Implemented |
-| LLM adapters (OpenAI, Anthropic, Gemini) | Implemented |
+| LLM adapters (OpenAI, Anthropic, Gemini) with native function calling | Implemented |
 | Adapter retry with backoff (429/5xx) | Implemented |
 | Async executor with sync wrappers | Implemented |
 | Built-in tools (Echo, HTTP, File, Shell) | Implemented |

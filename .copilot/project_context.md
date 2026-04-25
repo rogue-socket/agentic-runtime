@@ -3,12 +3,12 @@
 Last refreshed: 2026-04-14
 
 ## Project Overview
-`agentic-runtime` is a workflow-first execution runtime for deterministic AI pipelines with:
+ForrestRun is an embeddable Python library for deterministic AI agent workflows with:
 - durable SQLite-backed run/state persistence
 - resume after failure
 - deterministic replay
 - branch-aware state transitions
-- CLI-first observability (`inspect`, `state-diff`, `visualize`)
+- SDK-first API (`run_workflow`, `run_workflow_async`) with optional CLI
 
 Primary workflow step model:
 - `type: agent` for LLM-backed reasoning from `agents/*.yaml`

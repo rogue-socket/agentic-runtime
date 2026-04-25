@@ -72,7 +72,7 @@ pip install -r requirements.txt
 
 - A step's `next:` rules were evaluated and no `when` condition matched, and no `default` was provided.
 - Fix: add a `default:` fallback rule to your branching step.
-- Branch conditions use `safe_eval()` — only `state` and `len()` are available. Check your expression syntax.
+- Branch conditions use `safe_eval()` — `state`, `len()`, `min()`, `max()`, `abs()`, and string methods are available. Check your expression syntax.
 
 **WorkflowValidationError**
 
@@ -101,7 +101,7 @@ Common causes:
 Branch conditions are evaluated in a sandboxed environment. Rejected patterns include:
 - `import` statements
 - Dunder attributes (`__class__`, `__bases__`, etc.)
-- Function calls other than `len()`
+- Function calls other than `len()`, `min()`, `max()`, `abs()`
 - Lambda expressions, list comprehensions, walrus operators
 - Multiline expressions or expressions with semicolons
 

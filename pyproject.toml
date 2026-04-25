@@ -3,14 +3,14 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentic-runtime"
-version = "0.1.2"
-description = "A deterministic execution runtime for AI agent workflows"
+name = "forrestrun"
+version = "0.2.0"
+description = "Embeddable workflow engine for AI agents. Deterministic, resumable, zero dependencies."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "agentic-runtime contributors"},
+    {name = "Yash Agrawal", email = "yash.agr1510@gmail.com"},
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -25,6 +25,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+keywords = ["ai", "agents", "workflow", "llm", "orchestration", "deterministic", "replay", "resume"]
 dependencies = [
     "PyYAML>=6.0",
     "typing-extensions>=4.0",
@@ -34,18 +35,20 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "ruff>=0.4",
 ]
 
 [project.scripts]
 ai = "agent_runtime.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/agentic-runtime/agentic-runtime"
-Repository = "https://github.com/agentic-runtime/agentic-runtime"
-Issues = "https://github.com/agentic-runtime/agentic-runtime/issues"
+Homepage = "https://github.com/forrestrun/forrestrun"
+Repository = "https://github.com/forrestrun/forrestrun"
+Issues = "https://github.com/forrestrun/forrestrun/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["agent_runtime*", "forrestrun*"]
 
 [tool.setuptools.package-data]
 "agent_runtime.visualization" = ["templates/*.html"]
