@@ -1,25 +1,17 @@
-"""File: src/agent_runtime/__init__.py
+"""ForrestRun — embeddable workflow engine for AI agents.
 
-Purpose:
-Expose the package's primary public API in one import location.
+Quick start::
 
-Description:
-Re-exports execution, workflow loading, replay, and state primitives so
-consumers can import core runtime symbols without deep module paths.
+    from agent_runtime import RuntimeBuilder
 
-Key Components:
-- `Executor`, `Run`, `StepDefinition`, `StepExecution`
-- Workflow/replay helpers and runtime state wrapper
+    with RuntimeBuilder().with_db_path(":memory:").build() as runtime:
+        run = runtime.run("workflows/example.yaml", inputs={...})
+        print(run.outputs)
 
-Dependencies:
-- Internal modules under `agent_runtime.*`
+Or for the simplest case::
 
-Inputs/Outputs:
-- Input: import operations from application/test code
-- Output: stable top-level symbols via `__all__`
-
-Side Effects:
-- Imports module dependencies at package import time.
+    from agent_runtime import run_workflow
+    result = run_workflow("workflows/example.yaml", inputs={...})
 """
 
 from __future__ import annotations
@@ -46,6 +38,14 @@ from .tools.shell import ShellTool
 from .tools.discovery import register_discovered_tools
 from .logging import StructuredLogger
 from .utils import sha256_json
+
+# SDK surface — builder, runtime, factory functions, typed events
+from .builder import RuntimeBuilder, Runtime
+from .defaults import default_tool_registry, default_memory_manager, default_llm_client, default_agent_registry
+from .events import (
+    Event, RunStartEvent, StepStartEvent, StepCompleteEvent,
+    StepErrorEvent, RunCompleteEvent, TypedEventCallback, adapt_typed_callback,
+)
 
 
 def run_workflow(
@@ -76,33 +76,6 @@ def run_workflow(
         RuntimeError: If called from within an already-running event loop.
             Use :func:`run_workflow_async` instead.
     """
-    # TODO(pain-point): Export/Wire-Into-Product -
-    #   This function (and run_workflow_async) is already the embryo of an
-    #   embeddable API, but it's not enough for production integration.
-    #
-    #   Maybe this runtime can have 2 modes — a debugging mode and a runtime
-    #   mode. In the runtime mode it just runs, along with some feature to
-    #   join it to an existing application.
-    #
-    #   Concrete needs:
-    #   1. **Runtime mode vs. debug mode**: Debug mode keeps full state
-    #      snapshots, agent traces, and verbose logging. Runtime mode skips
-    #      the expensive observability overhead and just executes fast.
-    #   2. **Embeddable entrypoint**: A lightweight factory/builder that lets
-    #      you wire the runtime into a FastAPI route, Flask endpoint, Django
-    #      view, or Lambda handler without pulling in CLI or scaffolding code.
-    #      Something like:
-    #        runtime = AgenticRuntime.from_config("runtime.yaml")
-    #        result = await runtime.run("my_workflow", inputs={...})
-    #   3. **Event bridge**: First-class adapters for triggering workflows
-    #      from external events — GitHub webhooks, Slack commands, SQS
-    #      messages, cron schedules — not just `ai run` from the terminal.
-    #   4. **Lifecycle hooks**: on_start, on_complete, on_error callbacks
-    #      that integrate with the host application's logging, metrics, and
-    #      alerting (e.g. emit to Datadog, Sentry, or a custom dashboard).
-    #   5. **Response formatting**: The Run object is internal. Production
-    #      consumers need a clean serializable response — JSON, protobuf,
-    #      or a typed DTO — not a dataclass full of execution metadata.
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -208,6 +181,26 @@ async def run_workflow_async(
         storage.close()
 
 __all__ = [
+    # SDK surface — primary
+    "RuntimeBuilder",
+    "Runtime",
+    "run_workflow",
+    "run_workflow_async",
+    # Factory functions
+    "default_tool_registry",
+    "default_memory_manager",
+    "default_llm_client",
+    "default_agent_registry",
+    # Typed events
+    "Event",
+    "RunStartEvent",
+    "StepStartEvent",
+    "StepCompleteEvent",
+    "StepErrorEvent",
+    "RunCompleteEvent",
+    "TypedEventCallback",
+    "adapt_typed_callback",
+    # Core types
     "Executor",
     "EventCallback",
     "Run",
@@ -223,15 +216,15 @@ __all__ = [
     "ReplayResult",
     "RuntimeState",
     "WorkflowIntegrityError",
+    # LLM
     "LLMRegistry",
     "LLMProvider",
     "ModelConfig",
     "LLMClient",
     "LLMResponse",
+    # Agent
     "AgentDefinition",
     "AgentRegistry",
     "AgentExecutor",
     "load_agent_definition",
-    "run_workflow",
-    "run_workflow_async",
 ]

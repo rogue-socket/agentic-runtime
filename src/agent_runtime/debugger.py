@@ -36,7 +36,7 @@ class Breakpoint:
         if self.kind == "agent_step":
             candidate = payload.get("agent_pipeline_step")
             if candidate is None:
-                candidate = payload.get("pipeline_step_id")
+                candidate = payload.get("pipeline_step_id")  # Legacy key name — kept for backward compat with older persisted traces.
             return str(candidate or "") == self.value
         return False
 
