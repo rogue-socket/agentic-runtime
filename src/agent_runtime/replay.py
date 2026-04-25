@@ -199,6 +199,8 @@ class RunReplayer:
             "initial_state": fixture.initial_state,
             "steps": fixture.steps,
         }
+        import pathlib
+        pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, default=str)
 
@@ -337,7 +339,7 @@ class RunReplayer:
         for rid in run_ids:
             try:
                 steps = self.storage.load_steps(rid)
-            except (ValueError, Exception):
+            except (ValueError, KeyError):
                 continue
             for step in steps:
                 if step.next_step_resolved and step.step_id in declared:

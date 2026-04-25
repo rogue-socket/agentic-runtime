@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 from .core import NextRule, StepDefinition, StepExecution, StepStatus
-from .errors import StepExecutionError
+from .errors import BranchResolutionError, StepExecutionError
 from .utils import safe_eval
 
 
@@ -144,7 +144,7 @@ def _resolve_next_step(step_def: StepDefinition, workflow_steps: List[StepDefini
     if default_rule is not None:
         return default_rule.goto
 
-    raise StepExecutionError(f"No branch matched for step: {step_def.step_id}")
+    raise BranchResolutionError(f"No branch matched for step: {step_def.step_id}")
 
 
 def validate_resume(run_status: str) -> None:

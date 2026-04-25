@@ -189,7 +189,7 @@ def _mermaid_id(step_id: str) -> str:
     elif ch == "_":
       out.append("__")  # escape literal underscores
     else:
-      out.append(f"_x{ord(ch):02X}_")
+      out.append(f"_x{ord(ch):04X}_")
   value = "".join(out)
   return value or "step"
 

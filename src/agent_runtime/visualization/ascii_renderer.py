@@ -36,7 +36,7 @@ def render_ascii(run_id: str, graph: GraphView, timeline: TimelineView) -> str:
     """Render graph/timeline models as plain-text report.
 
     Example:
-        >>> isinstance(render_ascii("r1", graph=GraphView([], [], []), timeline=TimelineView({}, [], {})), str)
+        >>> isinstance(render_ascii("r1", graph=GraphView(nodes=[], edges=[], branch_decisions=[]), timeline=TimelineView(initial_state={}, steps=[], latest_state={}, run_started_at=None, run_completed_at=None, run_duration_ms=None)), str)
         True
     """
     lines: List[str] = []
