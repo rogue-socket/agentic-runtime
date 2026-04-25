@@ -199,7 +199,7 @@ def load_config(config_path: str = "runtime.yaml") -> RuntimeConfig:
     _apply_limits_block(raw.get("llm_limits"))
 
     # Apply top-level default_llm_provider if the llm section didn't set one
-    if cfg.default_llm_provider and not cfg.llm_registry.default_provider:
+    if (cfg.default_llm_provider or "").strip() and not cfg.llm_registry.default_provider:
         cfg.llm_registry.default_provider = cfg.default_llm_provider
 
     logging_block = raw.get("logging")

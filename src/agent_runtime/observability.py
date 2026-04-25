@@ -47,7 +47,7 @@ def _sanitize_trace_value(value: Any) -> Any:
 def percentile(values: Sequence[float], pct: float) -> Optional[float]:
     """Compute a percentile from numeric values.
 
-    Uses nearest-rank interpolation for small datasets.
+    Uses linear interpolation between adjacent sorted values.
     Returns ``None`` when input is empty.
     """
     if not values:
@@ -115,6 +115,14 @@ def serialize_agent_trace(turns: Iterable[Any]) -> List[Dict[str, Any]]:
     return events
 
 
+def _extract_legacy_model_name(entry: Dict[str, Any]) -> str:
+    """Extract model name from a legacy trace entry's llm_request."""
+    llm_request = entry.get("llm_request")
+    if isinstance(llm_request, dict):
+        return str(llm_request.get("model", "") or "")
+    return ""
+
+
 def normalize_agent_trace(trace: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Normalize mixed trace formats (legacy/current) into flat model/tool events."""
     normalized: List[Dict[str, Any]] = []
@@ -134,7 +142,7 @@ def normalize_agent_trace(trace: Iterable[Dict[str, Any]]) -> List[Dict[str, Any
                 {
                     "type": "model",
                     "iteration": entry.get("iteration"),
-                    "model": str(((entry.get("llm_request") or {}) if isinstance(entry.get("llm_request"), dict) else {}).get("model", "") or ""),
+                    "model": _extract_legacy_model_name(entry),
                     "response_text": entry.get("llm_response_text"),
                     "llm_request": entry.get("llm_request"),
                 }

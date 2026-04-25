@@ -168,7 +168,13 @@ class SQLiteStorage(Storage):
 
         Safe to call multiple times.  Any uncommitted transaction is
         rolled back automatically by SQLite on connection close.
+
         """
+        with self._lock:
+            self._close_unlocked()
+
+    def _close_unlocked(self) -> None:
+        """Inner close without locking — called by close() under the lock."""
         if self._conn is not None:
             try:
                 self._conn.close()
