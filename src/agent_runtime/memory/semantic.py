@@ -279,7 +279,8 @@ class SemanticMemory:
         tokens = query.strip().split()
         if not tokens:
             return []
-        match_expr = " ".join(f'"{t}"*' for t in tokens)
+        # Escape double quotes in tokens to prevent FTS5 query injection.
+        match_expr = " ".join(f'"{t.replace(chr(34), chr(34)+chr(34))}"*' for t in tokens)
 
         assert self._conn is not None
         rows = self._conn.execute(
@@ -312,22 +313,14 @@ class SemanticMemory:
         limit = limit or self._max_results
 
         assert self._conn is not None
-        if match_all:
-            where_parts = []
-            params: list = []
-            for tag in tags:
-                escaped_tag = tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                where_parts.append("(',' || tags || ',' LIKE ? ESCAPE '\\')")
-                params.append(f"%,{escaped_tag},%")
-            where_clause = " AND ".join(where_parts)
-        else:
-            where_parts = []
-            params = []
-            for tag in tags:
-                escaped_tag = tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                where_parts.append("(',' || tags || ',' LIKE ? ESCAPE '\\')")
-                params.append(f"%,{escaped_tag},%")
-            where_clause = " OR ".join(where_parts)
+        where_parts: list[str] = []
+        params: list = []
+        for tag in tags:
+            escaped_tag = tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            where_parts.append("(',' || tags || ',' LIKE ? ESCAPE '\\')")
+            params.append(f"%,{escaped_tag},%")
+        joiner = " AND " if match_all else " OR "
+        where_clause = joiner.join(where_parts)
 
         params.append(limit)
         rows = self._conn.execute(

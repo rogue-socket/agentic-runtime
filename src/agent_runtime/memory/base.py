@@ -115,8 +115,19 @@ class MemoryManager:
         yield "procedural", self.procedural
 
     def close(self) -> None:
-        """Close all memory tiers that support it."""
-        for _name, tier in self._tiers():
+        """Close all memory tiers that support it.
+
+        Each tier is closed independently so a failure in one does not
+        prevent the others from releasing resources.
+        """
+        errors: list[tuple[str, Exception]] = []
+        for name, tier in self._tiers():
             close_fn = getattr(tier, "close", None)
             if callable(close_fn):
-                close_fn()
+                try:
+                    close_fn()
+                except Exception as exc:  # noqa: BLE001
+                    errors.append((name, exc))
+        if errors:
+            names = ", ".join(n for n, _ in errors)
+            raise RuntimeError(f"Failed to close memory tier(s): {names}")

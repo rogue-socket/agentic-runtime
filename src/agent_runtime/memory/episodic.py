@@ -190,7 +190,11 @@ class EpisodicMemory:
             return []
         assert self._conn is not None
         rows = self._conn.execute(
-            "SELECT * FROM episodes ORDER BY id DESC LIMIT ?",
+            """
+            SELECT workflow_id, run_id, status, inputs_summary,
+                   outputs_summary, error, created_at
+            FROM episodes ORDER BY id DESC LIMIT ?
+            """,
             (limit,),
         ).fetchall()
         return [dict(r) for r in rows]
