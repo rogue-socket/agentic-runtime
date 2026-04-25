@@ -41,3 +41,5 @@ def validate_input(payload: Dict[str, Any], schema: Dict[str, Any]) -> None:
             raise ValueError(f"Field '{key}' must be object")
         if expected == "array" and not isinstance(value, list):
             raise ValueError(f"Field '{key}' must be array")
+        if expected == "integer" and (isinstance(value, bool) or not isinstance(value, int)):
+            raise ValueError(f"Field '{key}' must be integer")

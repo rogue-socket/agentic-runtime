@@ -90,8 +90,12 @@ class ShellTool:
         semicolons (``;``), newlines, and command substitution (``$(...)``
         and backticks) to prevent denylist bypass via chaining.
         """
-        # Split on shell operators and newlines to get individual commands.
-        segments = re.split(r'\|{1,2}|&&|;|\n', command)
+        # Split on shell operators, background operator, and newlines to get
+        # individual commands.
+        # NOTE: Does not detect wrapper commands (env, xargs, bash -c, sudo)
+        # that execute arguments as subcommands. If using a denylist, include
+        # wrapper commands in it.
+        segments = re.split(r'\|{1,2}|&&|&|;|\n', command)
         programs: list[str] = []
         for segment in segments:
             segment = segment.strip()
