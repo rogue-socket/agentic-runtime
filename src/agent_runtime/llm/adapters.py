@@ -2,13 +2,15 @@ from __future__ import annotations
 
 """LLM adapter implementations (HTTP clients per provider)."""
 
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Iterator
 import json
 import time
 import urllib.error
 import urllib.request
 
 from .types import LLMResponse, ToolCallRequest
+from .streaming import StreamChunk, StreamChunkType, StreamingLLMResponse
+from .sse import SSEStreamParser
 
 # Default HTTP timeout in seconds.
 DEFAULT_TIMEOUT: int = 60
@@ -413,6 +415,154 @@ class OpenAIAdapter:
             tool_calls=native_tool_calls,
         )
 
+    def stream(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        prompt: str,
+        system: Optional[str],
+        params: Dict[str, Any],
+        base_url: Optional[str],
+        history: Optional[List[Dict[str, Any]]] = None,
+        context: Optional[Dict[str, Any]] = None,
+        timeout: int = DEFAULT_TIMEOUT,
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> Iterator[StreamChunk]:
+        """Stream an LLM response, yielding chunks.
+
+        Yields:
+            StreamChunk objects as they arrive from the API.
+        """
+        if not api_key:
+            raise ValueError("Missing OpenAI API key.")
+
+        base = base_url or "https://api.openai.com/v1"
+        url = base.rstrip("/") + "/chat/completions"
+
+        messages = _build_openai_messages(system, history, prompt)
+        payload: Dict[str, Any] = {"model": model, "messages": messages, "stream": True}
+        payload.update({k: v for k, v in params.items() if v is not None and k != "stream"})
+
+        if tools:
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool["description"],
+                        "parameters": tool["parameters"],
+                    },
+                }
+                for tool in tools
+            ]
+            payload["tool_choice"] = "auto"
+
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with _urlopen_with_retry(req, timeout=timeout) as response:
+                parser = SSEStreamParser()
+                for line in response:
+                    # Parse SSE events
+                    for event in parser.feed(line.decode("utf-8")):
+                        yield self._openai_parse_event(event, model)
+                # Flush remaining events
+                for event in parser.flush():
+                    yield self._openai_parse_event(event, model)
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8") if exc.fp else ""
+            try:
+                error_data = json.loads(body)
+                error_msg = error_data.get("error", {}).get("message", body)
+            except json.JSONDecodeError:
+                error_msg = body
+            yield StreamChunk(
+                chunk_type=StreamChunkType.ERROR,
+                content=f"OpenAI API error: {error_msg}",
+                provider=self.provider_name,
+                model=model,
+            )
+
+    def _openai_parse_event(self, event: Dict[str, Any], model: str) -> StreamChunk:
+        """Parse an OpenAI SSE event into a StreamChunk."""
+        event_type = event.get("event", "")
+        data = event.get("data", {})
+
+        if event_type == "error":
+            return StreamChunk(
+                chunk_type=StreamChunkType.ERROR,
+                content=str(data),
+                provider=self.provider_name,
+                model=model,
+            )
+
+        # Handle the 'data: [DONE]' message
+        if isinstance(data, str) and data == "[DONE]":
+            return StreamChunk(
+                chunk_type=StreamChunkType.STOP,
+                provider=self.provider_name,
+                model=model,
+            )
+
+        if not isinstance(data, dict):
+            return StreamChunk(
+                chunk_type=StreamChunkType.ERROR,
+                content=f"Unexpected event data: {data}",
+                provider=self.provider_name,
+                model=model,
+            )
+
+        # Process choices
+        choices = data.get("choices", [])
+        if not choices:
+            return StreamChunk(chunk_type=StreamChunkType.START, provider=self.provider_name, model=model)
+
+        choice = choices[0]
+        delta = choice.get("delta", {})
+
+        # Check for content
+        if "content" in delta and delta["content"]:
+            return StreamChunk(
+                chunk_type=StreamChunkType.CONTENT,
+                content=delta["content"],
+                provider=self.provider_name,
+                model=model,
+            )
+
+        # Check for tool calls
+        if "tool_calls" in delta:
+            tool_calls = delta["tool_calls"]
+            if tool_calls:
+                tc = tool_calls[0]
+                if "function" in tc and "name" in tc["function"]:
+                    return StreamChunk(
+                        chunk_type=StreamChunkType.TOOL_CALL_START,
+                        tool_name=tc["function"]["name"],
+                        provider=self.provider_name,
+                        model=model,
+                    )
+                if "function" in tc and "arguments" in tc["function"]:
+                    return StreamChunk(
+                        chunk_type=StreamChunkType.TOOL_CALL_CHUNK,
+                        tool_name=tc.get("function", {}).get("name", "unknown"),
+                        tool_input_chunk=tc["function"]["arguments"],
+                        provider=self.provider_name,
+                        model=model,
+                    )
+
+        # Default to start marker for empty deltas
+        return StreamChunk(chunk_type=StreamChunkType.START, provider=self.provider_name, model=model)
+
 
 class AnthropicAdapter:
     """Adapter for the Anthropic Messages API.
@@ -517,6 +667,179 @@ class AnthropicAdapter:
             raw=raw,
             tool_calls=native_tool_calls,
         )
+
+    def stream(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        prompt: str,
+        system: Optional[str],
+        params: Dict[str, Any],
+        base_url: Optional[str],
+        history: Optional[List[Dict[str, Any]]] = None,
+        context: Optional[Dict[str, Any]] = None,
+        timeout: int = DEFAULT_TIMEOUT,
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> Iterator[StreamChunk]:
+        """Stream an LLM response from Anthropic, yielding chunks.
+
+        Yields:
+            StreamChunk objects as they arrive from the API.
+        """
+        if not api_key:
+            raise ValueError("Missing Anthropic API key.")
+
+        base = base_url or "https://api.anthropic.com/v1"
+        url = base.rstrip("/") + "/messages"
+
+        messages = _build_anthropic_messages(history, prompt)
+        payload: Dict[str, Any] = {"model": model, "messages": messages, "stream": True}
+
+        # Set max_tokens if not provided
+        if "max_tokens" not in payload:
+            payload["max_tokens"] = params.get("max_tokens", 1024)
+
+        if system:
+            payload["system"] = system
+
+        payload.update({k: v for k, v in params.items() if v is not None and k != "stream"})
+
+        if tools:
+            payload["tools"] = [
+                {
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "input_schema": tool["parameters"],
+                }
+                for tool in tools
+            ]
+
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with _urlopen_with_retry(req, timeout=timeout) as response:
+                parser = SSEStreamParser()
+                for line in response:
+                    for event in parser.feed(line.decode("utf-8")):
+                        yield self._anthropic_parse_event(event, model)
+                for event in parser.flush():
+                    yield self._anthropic_parse_event(event, model)
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8") if exc.fp else ""
+            try:
+                error_data = json.loads(body)
+                error_msg = error_data.get("error", {}).get("message", body)
+            except json.JSONDecodeError:
+                error_msg = body
+            yield StreamChunk(
+                chunk_type=StreamChunkType.ERROR,
+                content=f"Anthropic API error: {error_msg}",
+                provider=self.provider_name,
+                model=model,
+            )
+
+    def _anthropic_parse_event(self, event: Dict[str, Any], model: str) -> StreamChunk:
+        """Parse an Anthropic SSE event into a StreamChunk."""
+        event_type = event.get("event", "")
+        data = event.get("data", {})
+
+        if not isinstance(data, dict):
+            data = {}
+
+        # Map Anthropic event types to our StreamChunkType
+        if event_type == "message_start":
+            return StreamChunk(
+                chunk_type=StreamChunkType.START,
+                provider=self.provider_name,
+                model=model,
+            )
+
+        elif event_type == "content_block_start":
+            content_block = data.get("content_block", {})
+            block_type = content_block.get("type", "text")
+
+            if block_type == "tool_use":
+                return StreamChunk(
+                    chunk_type=StreamChunkType.TOOL_CALL_START,
+                    tool_name=content_block.get("name", "unknown"),
+                    provider=self.provider_name,
+                    model=model,
+                )
+            else:
+                return StreamChunk(
+                    chunk_type=StreamChunkType.START,
+                    provider=self.provider_name,
+                    model=model,
+                )
+
+        elif event_type == "content_block_delta":
+            delta = data.get("delta", {})
+            delta_type = delta.get("type", "")
+
+            if delta_type == "text_delta":
+                return StreamChunk(
+                    chunk_type=StreamChunkType.CONTENT,
+                    content=delta.get("text", ""),
+                    provider=self.provider_name,
+                    model=model,
+                )
+
+            elif delta_type == "input_json_delta":
+                return StreamChunk(
+                    chunk_type=StreamChunkType.TOOL_CALL_CHUNK,
+                    tool_name=data.get("tool_name", "unknown"),
+                    tool_input_chunk=delta.get("partial_json", ""),
+                    provider=self.provider_name,
+                    model=model,
+                )
+
+            else:
+                return StreamChunk(
+                    chunk_type=StreamChunkType.START,
+                    provider=self.provider_name,
+                    model=model,
+                )
+
+        elif event_type == "content_block_stop":
+            return StreamChunk(
+                chunk_type=StreamChunkType.TOOL_CALL_END,
+                tool_name=data.get("tool_name", "unknown"),
+                provider=self.provider_name,
+                model=model,
+            )
+
+        elif event_type == "message_stop":
+            return StreamChunk(
+                chunk_type=StreamChunkType.STOP,
+                provider=self.provider_name,
+                model=model,
+            )
+
+        elif event_type == "error":
+            return StreamChunk(
+                chunk_type=StreamChunkType.ERROR,
+                content=str(data),
+                provider=self.provider_name,
+                model=model,
+            )
+
+        else:
+            return StreamChunk(
+                chunk_type=StreamChunkType.START,
+                provider=self.provider_name,
+                model=model,
+            )
 
 
 class GeminiAdapter:
@@ -692,3 +1015,151 @@ class GeminiAdapter:
             raw=raw,
             tool_calls=native_tool_calls,
         )
+
+    def stream(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        prompt: str,
+        system: Optional[str],
+        params: Dict[str, Any],
+        base_url: Optional[str],
+        history: Optional[List[Dict[str, Any]]] = None,
+        context: Optional[Dict[str, Any]] = None,
+        timeout: int = DEFAULT_TIMEOUT,
+        tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> Iterator[StreamChunk]:
+        """Stream an LLM response from Gemini, yielding chunks.
+
+        Note: Gemini's streaming API is less straightforward than OpenAI/Anthropic.
+        This implementation yields START on stream begin and STOP on completion.
+
+        Yields:
+            StreamChunk objects as they arrive from the API.
+        """
+        if not api_key:
+            raise ValueError("Missing Gemini API key.")
+
+        base = base_url or "https://generativelanguage.googleapis.com/v1beta/openai"
+        url = base.rstrip("/") + "/chat/completions"
+
+        contents = _build_gemini_contents(history, prompt)
+        payload: Dict[str, Any] = {
+            "model": model,
+            "contents": contents,
+            "stream": True,
+        }
+
+        if system:
+            payload["system_instruction"] = {"parts": [{"text": system}]}
+
+        # Add tools if provided
+        if tools:
+            payload["tools"] = [
+                {
+                    "function_declarations": [
+                        {
+                            "name": tool["name"],
+                            "description": tool.get("description", ""),
+                            "parameters": tool["parameters"],
+                        }
+                        for tool in tools
+                    ]
+                }
+            ]
+
+        payload.update({k: v for k, v in params.items() if v is not None and k != "stream"})
+
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+
+        try:
+            with _urlopen_with_retry(req, timeout=timeout) as response:
+                yield StreamChunk(
+                    chunk_type=StreamChunkType.START,
+                    provider=self.provider_name,
+                    model=model,
+                )
+
+                # Gemini streams JSON chunks, not SSE format
+                for line in response:
+                    try:
+                        chunk_data = json.loads(line.decode("utf-8"))
+                        # Parse Gemini response structure
+                        for chunk in self._gemini_parse_chunks(chunk_data, model):
+                            yield chunk
+                    except json.JSONDecodeError:
+                        continue
+
+                yield StreamChunk(
+                    chunk_type=StreamChunkType.STOP,
+                    provider=self.provider_name,
+                    model=model,
+                )
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8") if exc.fp else ""
+            try:
+                error_data = json.loads(body)
+                error_msg = error_data.get("error", {}).get("message", body)
+            except json.JSONDecodeError:
+                error_msg = body
+            yield StreamChunk(
+                chunk_type=StreamChunkType.ERROR,
+                content=f"Gemini API error: {error_msg}",
+                provider=self.provider_name,
+                model=model,
+            )
+
+    def _gemini_parse_chunks(self, chunk_data: Dict[str, Any], model: str) -> Iterator[StreamChunk]:
+        """Parse Gemini streaming chunks into StreamChunk objects."""
+        candidates = chunk_data.get("candidates", [])
+        if not candidates:
+            return
+
+        content = candidates[0].get("content", {})
+        parts = content.get("parts", [])
+
+        for part in parts:
+            if "text" in part and part["text"]:
+                yield StreamChunk(
+                    chunk_type=StreamChunkType.CONTENT,
+                    content=part["text"],
+                    provider=self.provider_name,
+                    model=model,
+                )
+
+            elif "functionCall" in part:
+                fc = part["functionCall"]
+                tool_name = fc.get("name", "unknown")
+                args = fc.get("args", {})
+
+                yield StreamChunk(
+                    chunk_type=StreamChunkType.TOOL_CALL_START,
+                    tool_name=tool_name,
+                    provider=self.provider_name,
+                    model=model,
+                )
+
+                yield StreamChunk(
+                    chunk_type=StreamChunkType.TOOL_CALL_CHUNK,
+                    tool_name=tool_name,
+                    tool_input_chunk=json.dumps(args),
+                    provider=self.provider_name,
+                    model=model,
+                )
+
+                yield StreamChunk(
+                    chunk_type=StreamChunkType.TOOL_CALL_END,
+                    tool_name=tool_name,
+                    provider=self.provider_name,
+                    model=model,
+                )

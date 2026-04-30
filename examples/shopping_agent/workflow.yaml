@@ -1,0 +1,35 @@
+schema_version: v1
+# Shopping Agent Example
+# ─────────────────────────────────────────────────────────────────────
+# An autonomous shopping agent that browses a mock shop, picks products,
+# and checks out. Demonstrates a ReAct agent with tool use.
+#
+# No external services required — tools return mock responses.
+#
+# Run:
+#   cd examples/shopping_agent
+#   python run.py
+
+workflow:
+  id: shopping
+  version: v1
+
+inputs:
+  shopping_list:
+    description: What the agent should buy from the shop
+    default: "Buy a good book and a pen, staying under 30 dollars"
+
+on_error: fail_fast
+
+steps:
+  - id: browse_and_checkout
+    type: agent
+    agent: shopper
+    inputs:
+      shopping_list: inputs.shopping_list
+
+  - id: result
+    type: tool
+    tool: tools.echo
+    inputs:
+      message: "Order complete: {{ steps.browse_and_checkout }}"

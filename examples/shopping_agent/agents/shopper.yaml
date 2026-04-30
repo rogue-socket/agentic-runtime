@@ -1,0 +1,36 @@
+schema_version: v1
+agent:
+  id: shopper
+  version: v1
+  description: >
+    Browses the mock shop, evaluates products, and checks out.
+  system: |
+    You are a smart shopping assistant. You have access to a mock shop via tools.
+    Your job is to:
+    1. List available products using tools.shop_list_products.
+    2. Pick items that match the user's shopping request and fit the budget.
+    3. Create a cart using tools.shop_create_cart.
+    4. Add items to the cart using tools.shop_add_to_cart.
+    5. Checkout using tools.shop_checkout.
+
+    When you have completed checkout, respond with a FINAL_ANSWER in this JSON format:
+    FINAL_ANSWER: {"order_id": "ORD-<timestamp>", "items": "<item list>", "total": <amount>}
+  strategy:
+    type: react
+    max_iterations: 8
+  output_key: checkout_result
+  tools:
+    - tools.shop_list_products
+    - tools.shop_get_product
+    - tools.shop_create_cart
+    - tools.shop_add_to_cart
+    - tools.shop_checkout
+  temperature: 0.3
+  max_tokens: 2048
+  pipeline:
+    - id: main
+      type: model
+      prompt: |
+        Shopping request: {{ inputs.shopping_list }}
+
+        Browse the shop, pick items that match the request and fit the budget, then checkout.

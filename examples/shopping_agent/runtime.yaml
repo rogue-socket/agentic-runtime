@@ -1,0 +1,14 @@
+schema_version: v1
+db_path: runtime.db
+agents_dir: agents
+tools_dir: tools
+default_model: openai/gpt-4o
+llm:
+  providers:
+    openai:
+      api_key_env: OPENAI_API_KEY
+      models:
+        gpt-4o:
+          temperature: 0.7
+          max_tokens: 4096
+  default_provider: openai
