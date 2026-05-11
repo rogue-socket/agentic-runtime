@@ -138,6 +138,10 @@ class RunAlreadyCompletedError(RuntimeErrorBase):
     """Raised when ``ai resume`` targets a run that already finished."""
 
 
+class FunctionResolutionError(RuntimeErrorBase):
+    """Raised when a workflow's function reference cannot be resolved."""
+
+
 _ERROR_TAXONOMY: Dict[Type[BaseException], Tuple[str, str]] = {
     WorkflowValidationError: (
         "AR-WORKFLOW-VALIDATION",
@@ -186,6 +190,10 @@ _ERROR_TAXONOMY: Dict[Type[BaseException], Tuple[str, str]] = {
     RunAlreadyCompletedError: (
         "AR-RUN-COMPLETED",
         "Run has already finished and cannot be resumed. Use 'ai inspect' to review it or 'ai run' to start a new run.",
+    ),
+    FunctionResolutionError: (
+        "AR-FUNCTION-RESOLUTION",
+        "Function reference could not be resolved. Verify the reference and that the corresponding file exists under functions/.",
     ),
     FileNotFoundError: (
         "AR-FILE-NOT-FOUND",

@@ -3445,6 +3445,9 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         except WorkflowValidationError as exc:
             _print_cli_exception(exc)
             return 1
+        except RuntimeErrorBase as exc:
+            _print_cli_exception(exc)
+            return 1
 
         steps = workflow["steps"]
 

@@ -34,6 +34,7 @@ from agent_runtime.agent.executor import AgentExecutor
 from agent_runtime.agent.prompts import PromptEntry, PromptRegistry
 from agent_runtime.errors import AgentValidationError
 from agent_runtime.function_resolver import resolve_function
+from agent_runtime.errors import FunctionResolutionError
 from agent_runtime.tools.base import ToolResult
 from agent_runtime.workflow import load_workflow_from_text, _validate_step
 from agent_runtime.errors import WorkflowValidationError
@@ -455,13 +456,13 @@ class TestFunctionResolver:
             for name in ["a.py", "b.py"]:
                 with open(os.path.join(d, name), "w") as f:
                     f.write("def shared(inputs):\n    return {}\n")
-            with pytest.raises(ValueError, match="multiple files"):
+            with pytest.raises(FunctionResolutionError, match="multiple files"):
                 resolve_function("shared", d)
 
     def test_qualified_missing_file_raises(self):
         """Function implementation."""
         with tempfile.TemporaryDirectory() as d:
-            with pytest.raises(ValueError, match="not found"):
+            with pytest.raises(FunctionResolutionError, match="not found"):
                 resolve_function("nonexistent.func", d)
 
     def test_qualified_missing_function_raises(self):
@@ -469,7 +470,7 @@ class TestFunctionResolver:
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "mod.py"), "w") as f:
                 f.write("def other(inputs): return {}\n")
-            with pytest.raises(ValueError, match="not found"):
+            with pytest.raises(FunctionResolutionError, match="not found"):
                 resolve_function("mod.missing_func", d)
 
     def test_unqualified_not_found_raises(self):
@@ -477,7 +478,7 @@ class TestFunctionResolver:
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "mod.py"), "w") as f:
                 f.write("def other(inputs): return {}\n")
-            with pytest.raises(ValueError, match="not found"):
+            with pytest.raises(FunctionResolutionError, match="not found"):
                 resolve_function("nonexistent", d)
 
     def test_subdirectory_qualified(self):
@@ -493,7 +494,7 @@ class TestFunctionResolver:
 
     def test_missing_directory_raises(self):
         """Function implementation."""
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(FunctionResolutionError, match="not found"):
             resolve_function("func", "/nonexistent/dir")
 
     def test_skips_private_files(self):
@@ -501,7 +502,7 @@ class TestFunctionResolver:
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "_private.py"), "w") as f:
                 f.write("def secret(inputs): return {}\n")
-            with pytest.raises(ValueError, match="not found"):
+            with pytest.raises(FunctionResolutionError, match="not found"):
                 resolve_function("secret", d)
 
 
