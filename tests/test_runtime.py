@@ -71,6 +71,38 @@ def test_function_step_success() -> None:
     assert "summary" in run.state.data["steps"]["generate_summary"]
 
 
+def test_function_step_sees_snapshot_when_input_spec_set() -> None:
+    """Regression for #14: function with declared inputs also sees the full snapshot
+    (state["inputs"], state["steps"], state["runtime"]) — not just the resolved spec.
+    """
+    captured: Dict[str, Any] = {}
+
+    def inspect_state(state: Dict[str, Any]) -> Dict[str, Any]:
+        captured["state_keys"] = sorted(state.keys())
+        captured["declared_issue"] = state.get("issue")
+        captured["snapshot_issue"] = state.get("inputs", {}).get("issue")
+        return {"ok": True}
+
+    storage = make_storage()
+    steps = [
+        StepDefinition(
+            step_id="inspect",
+            step_type="function",
+            function_callable=inspect_state,
+            input_spec={"issue": "inputs.issue"},
+        )
+    ]
+    executor = Executor(steps, storage, None, make_memory_manager(), ToolRegistry())
+    run = executor.run("wf", {"issue": "hello"})
+    assert run.status == StepStatus.COMPLETED
+    # Declared input lives at top level
+    assert captured["declared_issue"] == "hello"
+    # Snapshot is also present — `state["inputs"]` and `state["steps"]` always exist
+    assert captured["snapshot_issue"] == "hello"
+    assert "inputs" in captured["state_keys"]
+    assert "steps" in captured["state_keys"]
+
+
 def test_function_step_missing_issue() -> None:
     """Function implementation."""
     storage = make_storage()

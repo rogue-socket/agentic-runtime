@@ -278,9 +278,16 @@ class Executor:
         """
         if step_def.function_callable is None:
             raise StepExecutionError("Function step missing resolved callable.")
-        func_input = step_input if step_def.input_spec is not None else snapshot
-        if isinstance(func_input, RuntimeState):
-            func_input = func_input.to_dict()
+        # Merge snapshot + declared inputs so functions see a consistent shape
+        # whether or not the step declares an `inputs:` block. Snapshot keys
+        # (`inputs`, `steps`, `runtime`) are always present; declared inputs
+        # land at the top level and win on collision. See issue #14.
+        if step_def.input_spec is not None:
+            snapshot_dict = snapshot.to_dict() if isinstance(snapshot, RuntimeState) else snapshot
+            step_input_dict = step_input.to_dict() if isinstance(step_input, RuntimeState) else step_input
+            func_input = {**snapshot_dict, **step_input_dict}
+        else:
+            func_input = snapshot.to_dict() if isinstance(snapshot, RuntimeState) else snapshot
         call_start = time.monotonic()
         output = step_def.function_callable(func_input)
         handler_duration_ms = int((time.monotonic() - call_start) * 1000)
