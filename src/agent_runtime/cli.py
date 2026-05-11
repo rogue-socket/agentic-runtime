@@ -322,7 +322,12 @@ def _print_run_summary(run, pricing: Dict[str, Dict[str, float]]) -> None:
         total_output += out_t
         total_total += tot_t
     if total_input or total_output or total_total:
-        print(f"  tokens: {total_total or (total_input + total_output)} (input: {total_input}, output: {total_output})")
+        total = total_total or (total_input + total_output)
+        thinking = total - total_input - total_output
+        if thinking > 0:
+            print(f"  tokens: {total} (input: {total_input}, output: {total_output}, thinking: {thinking})")
+        else:
+            print(f"  tokens: {total} (input: {total_input}, output: {total_output})")
 
     total_cost = run.total_cost_usd
     if total_cost is None and pricing:
@@ -3604,7 +3609,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             print(f"Error: {run.error}")
         if args.steps:
             run_total_cost = 0.0
-            run_total_tokens: Dict[str, int] = {"input": 0, "output": 0}
+            run_total_tokens: Dict[str, int] = {"input": 0, "output": 0, "thinking": 0}
             for idx, step in enumerate(steps, start=1):
                 print(f"{idx} {step.step_id}")
                 print(f"status: {step.status}")
@@ -3630,9 +3635,12 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                         if step_cost is not None:
                             print(f"estimated_cost_usd: ${step_cost:.6f}")
                             run_total_cost += step_cost
-                    in_t, out_t, _ = normalize_token_usage(step.token_usage)
+                    in_t, out_t, tot_t = normalize_token_usage(step.token_usage)
                     run_total_tokens["input"] += in_t
                     run_total_tokens["output"] += out_t
+                    thinking = tot_t - in_t - out_t
+                    if thinking > 0:
+                        run_total_tokens["thinking"] += thinking
                 if getattr(step, "agent_trace", None):
                     print("agent_trace:")
                     normalized_trace = normalize_agent_trace(step.agent_trace)
@@ -3653,6 +3661,8 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                 print("--- Run Token Summary ---")
                 print(f"total_input_tokens: {run_total_tokens['input']}")
                 print(f"total_output_tokens: {run_total_tokens['output']}")
+                if run_total_tokens["thinking"] > 0:
+                    print(f"total_thinking_tokens: {run_total_tokens['thinking']}")
                 if run_total_cost > 0:
                     print(f"total_estimated_cost_usd: ${run_total_cost:.6f}")
                 print("")
