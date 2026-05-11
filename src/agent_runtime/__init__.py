@@ -16,10 +16,10 @@ Or for the simplest case::
 
 from __future__ import annotations
 
-import asyncio
 import os
 from typing import Any, Dict, Optional
 
+from ._async_compat import run_coro_blocking
 from .core import Executor, EventCallback, Run, RunState, StepDefinition, StepExecution, StepStatus
 from .config import RuntimeConfig, load_config, apply_cli_overrides
 from .errors import WorkflowIntegrityError
@@ -72,20 +72,12 @@ def run_workflow(
     Returns:
         The completed :class:`Run` object.
 
-    Raises:
-        RuntimeError: If called from within an already-running event loop.
-            Use :func:`run_workflow_async` instead.
+    Note:
+        Safe to call from inside a running event loop (FastAPI, Jupyter) —
+        the workflow is dispatched to a worker thread with its own loop.
+        For native async usage prefer :func:`run_workflow_async`.
     """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass  # No running loop — safe to proceed.
-    else:
-        raise RuntimeError(
-            "Detected a running event loop. "
-            "Use `run_workflow_async()` instead of `run_workflow()`."
-        )
-    return asyncio.run(run_workflow_async(
+    return run_coro_blocking(run_workflow_async(
         workflow_path,
         inputs=inputs,
         config_path=config_path,
@@ -116,7 +108,10 @@ async def run_workflow_async(
             max_entries=cfg.working_memory_max_entries,
             max_scratch_bytes=cfg.working_memory_max_scratch_bytes,
         ),
-        episodic=EpisodicMemory(db_path=cfg.db_path),
+        episodic=EpisodicMemory(
+            db_path=cfg.db_path,
+            max_summary_bytes=cfg.episodic_max_summary_bytes,
+        ),
         semantic=SemanticMemory(db_path=cfg.db_path),
         procedural=ProceduralMemory(db_path=cfg.db_path),
     )

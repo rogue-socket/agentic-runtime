@@ -52,6 +52,7 @@ def default_memory_manager(
     db_path: str = "runtime.db",
     max_entries: int = 50,
     max_scratch_bytes: int = 256_000,
+    episodic_max_summary_bytes: int = 512,
 ) -> MemoryManager:
     """Build a memory manager with all four tiers.
 
@@ -60,7 +61,7 @@ def default_memory_manager(
     """
     return MemoryManager(
         working=WorkingMemory(max_entries=max_entries, max_scratch_bytes=max_scratch_bytes),
-        episodic=EpisodicMemory(db_path=db_path),
+        episodic=EpisodicMemory(db_path=db_path, max_summary_bytes=episodic_max_summary_bytes),
         semantic=SemanticMemory(db_path=db_path),
         procedural=ProceduralMemory(db_path=db_path),
     )

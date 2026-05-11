@@ -87,9 +87,11 @@ class SQLiteStorage(Storage):
 
         ``isolation_level=None`` puts the connection in *autocommit* mode so
         that we can manage BEGIN / COMMIT / ROLLBACK explicitly rather than
-        relying on Python's implicit transaction handling.
+        relying on Python's implicit transaction handling. ``check_same_thread=False``
+        lets the worker-thread sync→async bridge reuse a connection opened on
+        another thread; ``self._lock`` serialises all access.
         """
-        conn = sqlite3.connect(self.db_path, isolation_level=None)
+        conn = sqlite3.connect(self.db_path, isolation_level=None, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         # WAL journal mode permits concurrent readers while a write
         # transaction is open and is more resilient to crashes.
@@ -235,6 +237,7 @@ class SQLiteStorage(Storage):
                 model_name TEXT,
                 next_step_resolved TEXT,
                 side_effects_json TEXT,
+                cost_usd REAL,
                 FOREIGN KEY(run_id) REFERENCES runs(id)
             );
             CREATE TABLE IF NOT EXISTS state_versions (
@@ -310,6 +313,8 @@ class SQLiteStorage(Storage):
             conn.execute("ALTER TABLE steps ADD COLUMN next_step_resolved TEXT")
         if "side_effects_json" not in columns:
             conn.execute("ALTER TABLE steps ADD COLUMN side_effects_json TEXT")
+        if "cost_usd" not in columns:
+            conn.execute("ALTER TABLE steps ADD COLUMN cost_usd REAL")
 
     def _ensure_runs_columns(self, conn: sqlite3.Connection) -> None:
         """Add missing `runs` table columns for backward compatibility."""
@@ -377,9 +382,9 @@ class SQLiteStorage(Storage):
                 run_id, step_id, type, status, input_json, output_json, error, last_error,
                 state_before_json, state_after_json, execution_index, started_at, finished_at,
                 duration_ms, handler_duration_ms, tool_duration_ms, attempts, agent_trace_json,
-                token_usage_json, model_name, next_step_resolved, side_effects_json
+                token_usage_json, model_name, next_step_resolved, side_effects_json, cost_usd
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
@@ -404,6 +409,7 @@ class SQLiteStorage(Storage):
                 step.model_name,
                 step.next_step_resolved,
                 json_dumps(step.side_effects) if step.side_effects is not None else None,
+                step.cost_usd,
             ),
         )
 
@@ -486,6 +492,7 @@ class SQLiteStorage(Storage):
                     model_name=row["model_name"] if "model_name" in rkeys else None,
                     next_step_resolved=row["next_step_resolved"] if "next_step_resolved" in rkeys else None,
                     side_effects=json_loads(side_effects_raw) if side_effects_raw else None,
+                    cost_usd=row["cost_usd"] if "cost_usd" in rkeys else None,
                 )
             )
         return steps

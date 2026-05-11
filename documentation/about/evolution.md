@@ -201,11 +201,13 @@ The memory subsystem introduces four tiers, each with a distinct lifecycle and s
 | Tier | Storage | Lifecycle | Purpose |
 |---|---|---|---|
 | **Working** | In-memory | Single run | Active scratch space with byte budget, sliding window of context entries, and active task tracking. Cleared at run end. |
-| **Episodic** | SQLite | Cross-run | Per-run summaries: workflow id, status, input/output summaries, errors. Gives agents context about what happened in prior runs. |
+| **Episodic** | SQLite | Cross-run | Per-run summaries: workflow id, status, input/output summaries, errors. Gives agents context about what happened in prior runs. Truncation budget is configurable. |
 | **Semantic** | SQLite + FTS5 | Persistent | Long-term knowledge facts with full-text search (BM25 ranking), tags, and metadata. Agents can store and query knowledge that outlives individual runs. |
-| **Procedural** | Stub | Future | Learned workflows and playbooks extracted from episodic patterns. Currently a stub with a documented roadmap. |
+| **Procedural** | SQLite | Persistent | Key/value rule store (explicit writes via `runtime.memory.procedural.store`). Auto-learning from episodic history is a roadmap item. |
 
 All tiers implement the `MemoryTier` protocol (`read(context)`, `write(payload)`) and are managed by `MemoryManager`, which hydrates state at run start and persists at run end through namespaced deep-merge into `runtime.memory.<tier>`. This eliminates the shallow-merge state corruption risk that existed in earlier iterations.
+
+Agents can opt into automatic memory injection via `memory_injection: [tier...]` in `agents/*.yaml`. When set, the requested tiers are formatted into a system-prompt preamble at every model step, so memory reaches the LLM without manual templating.
 
 ---
 
@@ -276,13 +278,12 @@ The CLI has primary commands covering the full operate→debug→recover loop:
 
 The following are documented roadmap items, not current capabilities:
 
-- **LLM token streaming**: adapters are synchronous; chunked response parsing is the next UX improvement.
-- **Richer branch expression language**: currently limited to `state` and `len`; string methods, membership tests, and math helpers are planned.
-- **LLM quickstart scaffold**: `ai init` still generates stub functions rather than a working LLM workflow out of the box.
+- **LLM token streaming end-to-end**: adapters have `stream()` scaffolding (types, SSE parser, per-provider parse helpers) but are not wired through `LLMClient`/strategy/executor. Deferred until a real consumer needs it.
 - **DAG / parallel execution**: steps execute sequentially; a DAG scheduler for independent parallel steps is planned.
 - **Multi-agent composition**: one workflow cannot currently invoke another workflow or delegate to a sub-workflow.
-- **Procedural memory**: the stub exists with a documented extraction design; awaiting episodic+semantic maturity.
-- **Async embedding**: `asyncio.run()` in sync wrappers fails inside existing event loops (FastAPI, Jupyter).
+- **Procedural memory auto-learning**: the SQLite-backed key/value store is implemented; mining episodic patterns into rules is the next step.
+- **Vector/embedding search**: semantic memory uses BM25 today; embedding similarity is planned.
+- **PostgreSQL storage backend** and **OpenTelemetry/metrics** integration are planned.
 
 Each of these has a code-level follow-up marker or a gap document entry pointing to the specific files involved.
 

@@ -36,10 +36,26 @@ class EpisodicMemory:
     with the original stub interface used by tests and CLI defaults).
     """
 
-    def __init__(self, db_path: Optional[str] = None, max_recall: int = 5) -> None:
-        """Function implementation."""
+    def __init__(
+        self,
+        db_path: Optional[str] = None,
+        max_recall: int = 5,
+        max_summary_bytes: int = _MAX_SUMMARY_BYTES,
+    ) -> None:
+        """Initialize the episodic memory tier.
+
+        Args:
+            db_path: SQLite path; ``None`` enables in-memory stub mode.
+            max_recall: Default episode count returned by ``recall()`` and
+                hydrated into state.
+            max_summary_bytes: Truncation budget for ``inputs_summary`` and
+                ``outputs_summary`` when persisting an episode. Larger values
+                preserve more detail at the cost of disk and prompt budget
+                downstream.
+        """
         self._db_path = db_path
         self._max_recall = max_recall
+        self._max_summary_bytes = max_summary_bytes
         self._fallback: Dict[str, Any] = {}
         self._conn: Optional[sqlite3.Connection] = None
         if db_path is not None:
@@ -121,12 +137,13 @@ class EpisodicMemory:
 
         # Build compact summaries from the payload — include actual values
         # (truncated) so episodes are useful for cross-run learning.
-        inputs_summary = _truncated_json(payload.get("inputs", {}))
+        inputs_summary = _truncated_json(payload.get("inputs", {}), max_bytes=self._max_summary_bytes)
         steps_data = payload.get("steps", {})
         # For outputs, capture the last step's output (most relevant) or
         # a compact mapping of step_id -> truncated output.
         outputs_summary = _truncated_json(
-            {k: v for k, v in steps_data.items()} if steps_data else {}
+            {k: v for k, v in steps_data.items()} if steps_data else {},
+            max_bytes=self._max_summary_bytes,
         )
 
         self.record(

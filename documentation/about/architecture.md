@@ -311,9 +311,11 @@ The runtime manages four memory tiers through `MemoryManager`:
 | Tier | Class | Status | Purpose |
 |------|-------|--------|--------|
 | Working | `WorkingMemory` | **Implemented** | Active context for current execution (scratch store, sliding window, active task) |
-| Episodic | `EpisodicMemory` | **Implemented** | Historical run/interaction log (SQLite-backed) |
+| Episodic | `EpisodicMemory` | **Implemented** | Historical run/interaction log (SQLite-backed, configurable summary truncation) |
 | Semantic | `SemanticMemory` | **Implemented** | Long-term knowledge store (SQLite + FTS5 full-text search) |
-| Procedural | `ProceduralMemory` | Stub | Learned workflows and playbooks (roadmap documented) |
+| Procedural | `ProceduralMemory` | **Implemented** | Key/value rule store with SQLite persistence (no auto-learning from episodic history yet) |
+
+Agents may opt into automatic memory injection via the `memory_injection: [tier...]` field in `agents/*.yaml`. When set, the requested tiers are formatted into a `## Memory` preamble prepended to the system prompt at every model step. Default empty → prompts unchanged.
 
 All tiers implement the `MemoryTier` protocol:
 - `read(context) -> Dict[str, Any]`
@@ -371,9 +373,9 @@ Falls back to in-memory dict when no `db_path` is provided.
 
 **Not yet implemented:** vector-similarity retrieval (embeddings + cosine distance) — roadmap item.
 
-### Procedural memory (stub)
+### Procedural memory
 
-`ProceduralMemory` is currently a stub. Roadmap: mine episodic history for patterns, store rules in SQLite, confidence scoring, LLM-assisted extraction.
+`ProceduralMemory` is a SQLite-backed key/value rule store. Rules are written and read explicitly via `runtime.memory.procedural.store`. Auto-learning (mining episodic history for reusable patterns) is not yet implemented — that remains on the roadmap.
 
 Modules:
 - `memory/base.py` — `MemoryTier` protocol and `MemoryManager`
@@ -410,6 +412,9 @@ All runtime exceptions inherit from `RuntimeErrorBase(Exception)`:
 - `ReplayDataMissingError` — incomplete step/state data for replay
 - `ReplayMismatchError` — reconstructed state diverges from recorded state during `--verify-state`
 - `WorkflowIntegrityError` — workflow YAML has been modified since the original run (blocks resume)
+- `AgentValidationError` — agent definition invalid or missing dependencies
+- `ConfigValidationError` — runtime configuration is invalid
+- `StorageValidationError` — storage schema/version is incompatible
 
 Module: `errors.py`
 
@@ -521,6 +526,7 @@ Config fields:
 - `overwrite_policy` — state overwrite behavior: `warn` (default), `strict`, `allow`
 - `working_memory_max_entries` — max sliding window entries (default: 50)
 - `working_memory_max_scratch_bytes` — max scratch store size (default: 256KB)
+- `episodic_max_summary_bytes` — per-row truncation budget for episodic inputs/outputs summaries (default: 512)
 - `shell_allowlist` / `shell_denylist` — regex patterns for ShellTool command filtering
 - `default_llm_provider` — fallback provider for ambiguous model references
 - `llm:` — provider configuration block (providers, models, API key env vars)
@@ -627,9 +633,11 @@ Adapters:
 All adapters use stdlib `urllib` (zero additional dependencies) with exponential-backoff retry on 429/5xx errors.
 
 > **Status: Implemented** — registry, config loading, credential resolution,
-> OpenAI adapter, Anthropic adapter, Gemini adapter, and LLM client are
-> functional.  All adapters are synchronous (stdlib `urllib`) with exponential-backoff
-> retry on 429/5xx errors.  Streaming is a future enhancement.
+> OpenAI adapter, Anthropic adapter, Gemini adapter, Mock adapter, and LLM client are
+> functional.  All adapters use stdlib `urllib` with exponential-backoff
+> retry on 429/5xx errors.  Streaming scaffolding (types, SSE parser, adapter
+> `stream()` methods) is present in `llm/streaming.py` and `llm/sse.py` but is
+> not wired end-to-end through the strategy or executor — deferred.
 
 ## 20.5. Agent system
 
@@ -689,13 +697,17 @@ workflow registry).
 | Working memory (scratch + sliding window) | Implemented |
 | Episodic memory (SQLite) | Implemented |
 | Semantic memory (SQLite + FTS5) | Implemented |
-| Procedural memory | Stub |
+| Procedural memory (key/value store) | Implemented |
+| Procedural memory auto-learning | Planned |
+| Memory injection into agent prompts | Implemented |
+| Cost accounting (per-step + per-run, persisted) | Implemented |
+| Async-safe sync wrappers (worker-thread bridge) | Implemented |
 | Lifecycle hooks (event callbacks) | Implemented |
 | Timing telemetry (per-step + run-level) | Implemented |
 | `safe_eval` sandboxed expressions | Implemented |
 | Multi-workflow agents | Planned |
 | DAG / parallel execution | Planned |
-| LLM streaming | Planned |
+| LLM streaming end-to-end | Deferred (scaffolding present) |
 | Vector/embedding search | Planned |
 | PostgreSQL storage backend | Planned |
 | OpenTelemetry / metrics | Planned |

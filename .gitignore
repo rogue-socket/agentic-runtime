@@ -43,3 +43,7 @@ runtime.db
 # Testing Agent
 agent-test-one/
 essay_writer/
+
+# Session handoffs and backlog (not shared via git)
+handoffs/
+backlog.md

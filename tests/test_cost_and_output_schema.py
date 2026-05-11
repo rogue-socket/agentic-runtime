@@ -98,6 +98,30 @@ class TestEpisodicMemoryDepth:
         result = mem.read({})
         assert "runtime" in result
 
+    def test_max_summary_bytes_is_configurable(self) -> None:
+        """A larger max_summary_bytes should preserve more detail per row."""
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        tmp.close()
+        big_payload = {
+            "runtime": {"workflow_id": "wf", "run_id": "r", "status": "COMPLETED"},
+            "inputs": {"blob": "x" * 4000},
+            "steps": {},
+        }
+        small = EpisodicMemory(db_path=tmp.name, max_summary_bytes=128)
+        small.write(big_payload)
+        small_episodes = small.recall("wf")
+        small.close()
+
+        tmp2 = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        tmp2.close()
+        large = EpisodicMemory(db_path=tmp2.name, max_summary_bytes=2048)
+        large.write(big_payload)
+        large_episodes = large.recall("wf")
+        large.close()
+
+        assert len(small_episodes[0]["inputs_summary"]) == 128
+        assert len(large_episodes[0]["inputs_summary"]) == 2048
+
 
 # ── Fix 3: Output Schema Validation ──────────────────────────────────
 

@@ -127,6 +127,12 @@ class AgentDefinition:
     # Auto-inject tool-calling instructions into system prompts for react agents
     auto_tool_prompt: bool = True
 
+    # Memory tiers to auto-inject into the system prompt at every model step.
+    # Valid tier names: "working", "episodic", "semantic", "procedural".
+    # Empty list (default) leaves prompts untouched — tier contents must be
+    # accessed manually via input_spec dot-paths if needed.
+    memory_injection: List[str] = field(default_factory=list)
+
     # Output key name for plain-text LLM responses (default "text")
     output_key: str = "text"
 
@@ -193,6 +199,8 @@ class AgentDefinition:
             result["agent"]["strategy"]["custom_handler"] = self.strategy.custom_handler
         if self.params:
             result["agent"]["params"] = self.params
+        if self.memory_injection:
+            result["agent"]["memory_injection"] = list(self.memory_injection)
         return result
 
 
@@ -236,6 +244,7 @@ def _parse_agent(
     prompt_registry = _parse_prompts(data, path, raw)
     tools = _parse_list(data.get("tools", []), "tools", path)
     pipeline = _parse_pipeline(data.get("pipeline", []), path)
+    memory_injection = _parse_memory_injection(data.get("memory_injection", []), path)
 
     if not pipeline:
         raise AgentValidationError(
@@ -264,6 +273,7 @@ def _parse_agent(
         params=data.get("params", {}),
         prompt_registry=prompt_registry,
         definition_path=os.path.abspath(path),
+        memory_injection=memory_injection,
     )
 
 
@@ -414,3 +424,26 @@ def _parse_list(value, field_name: str, path: str) -> list:
     raise AgentValidationError(
         f"{path}: '{field_name}' must be a list or string"
     )
+
+
+VALID_MEMORY_TIERS = ("working", "episodic", "semantic", "procedural")
+
+
+def _parse_memory_injection(value: Any, path: str) -> List[str]:
+    """Parse and validate the optional ``memory_injection`` list."""
+    if not value:
+        return []
+    if not isinstance(value, list):
+        raise AgentValidationError(
+            f"{path}: 'memory_injection' must be a list of tier names"
+        )
+    tiers: List[str] = []
+    for entry in value:
+        if not isinstance(entry, str) or entry not in VALID_MEMORY_TIERS:
+            raise AgentValidationError(
+                f"{path}: invalid memory_injection tier '{entry}'. "
+                f"Must be one of {VALID_MEMORY_TIERS}"
+            )
+        if entry not in tiers:
+            tiers.append(entry)
+    return tiers

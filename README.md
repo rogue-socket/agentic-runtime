@@ -9,7 +9,7 @@
 <br/>
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-306998?style=for-the-badge&logo=python&logoColor=white)](#quick-start)
-[![Tests](https://img.shields.io/badge/tests-635_passing-22c55e?style=for-the-badge&logo=pytest&logoColor=white)](#tests)
+[![Tests](https://img.shields.io/badge/tests-797_passing-22c55e?style=for-the-badge&logo=pytest&logoColor=white)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-a855f7?style=for-the-badge)](#)
 [![Zero deps](https://img.shields.io/badge/http_deps-zero-f59e0b?style=for-the-badge)](#llm-providers)
 
@@ -186,7 +186,7 @@ my-agent/
 ## Tests
 
 ```bash
-pytest -q    # 635 tests
+pytest -q    # 797 tests
 ```
 
 ---

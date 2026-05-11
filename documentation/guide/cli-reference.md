@@ -170,6 +170,14 @@ Manage automated documentation.
 - **`--no-workflow-reference`**: Skip generating the auto-reference doc.
 - **`--no-site-index`**: Skip rebuilding the web UI search index.
 
+### `ai test`
+Run project-authored tests across workflows, agents, functions, and tools.
+
+- **`scope`**: One of `all` (default), `workflows`, `agents`, `functions`, `tools`.
+- **`targets`**: Optional target filters (e.g. specific workflow or agent names).
+- **`--path <path>`**: Project root containing the testable directories (default: `.`).
+- **`--pytest-args ...`**: Extra arguments forwarded to `pytest`.
+
 ### `ai export`
 Export a portable project bundle that can run on another install of this runtime.
 

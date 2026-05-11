@@ -16,7 +16,7 @@ from typing import Any, Dict
 
 import pytest
 
-from agent_runtime.core import Executor, RetryPolicy, StepDefinition, StepStatus
+from agent_runtime.core import Executor, RetryPolicy, Run, StepDefinition, StepStatus
 from agent_runtime.errors import WorkflowValidationError
 from agent_runtime.memory.base import MemoryManager
 from agent_runtime.tools.registry import ToolRegistry
@@ -233,8 +233,8 @@ def test_run_async_executes_tool_step() -> None:
     asyncio.run(_run())
 
 
-def test_run_raises_inside_event_loop() -> None:
-    """Sync run should refuse to execute inside a running event loop."""
+def test_run_inside_event_loop_dispatches_to_worker_thread() -> None:
+    """Sync run from inside a running loop should dispatch to a worker thread and succeed."""
     storage = make_storage()
     tool_registry = ToolRegistry()
     steps = [
@@ -247,12 +247,11 @@ def test_run_raises_inside_event_loop() -> None:
     ]
     executor = Executor(steps, storage, None, make_memory_manager(), tool_registry)
 
-    async def _run() -> None:
-        """Function implementation."""
-        with pytest.raises(RuntimeError):
-            executor.run("wf", {"issue": "Login API fails for invalid token"})
+    async def _run() -> Run:
+        return executor.run("wf", {"issue": "Login API fails for invalid token"})
 
-    asyncio.run(_run())
+    run = asyncio.run(_run())
+    assert run.status == StepStatus.COMPLETED
 
 
 def test_workflow_yaml_validation(tmp_path) -> None:

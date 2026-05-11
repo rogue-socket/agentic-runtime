@@ -22,10 +22,10 @@ Usage::
 
 from __future__ import annotations
 
-import asyncio
 import os
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from ._async_compat import run_coro_blocking
 from .config import RuntimeConfig, load_config
 from .core import Executor, EventCallback, Run
 from .defaults import (
@@ -89,18 +89,12 @@ class Runtime:
             on_error: ``"fail_fast"`` or ``"continue"``.
             on_event: Per-run event callback (overrides the builder default).
 
-        Raises:
-            RuntimeError: If called from within an already-running event loop.
+        Note:
+            Safe to call from inside a running event loop — the workflow is
+            dispatched to a worker thread with its own loop. For native async
+            usage prefer :meth:`run_async`.
         """
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            pass
-        else:
-            raise RuntimeError(
-                "Detected a running event loop. Use `runtime.run_async()` instead."
-            )
-        return asyncio.run(self.run_async(workflow, inputs, on_error=on_error, on_event=on_event))
+        return run_coro_blocking(self.run_async(workflow, inputs, on_error=on_error, on_event=on_event))
 
     async def run_async(
         self,

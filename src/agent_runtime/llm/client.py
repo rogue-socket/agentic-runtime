@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .adapters import LLMAdapter, OpenAIAdapter, AnthropicAdapter, GeminiAdapter, MockAdapter
 from .registry import LLMRegistry
 from .types import LLMResponse
+from ..errors import ConfigValidationError
 from ..logging import StructuredLogger
 
 
@@ -91,18 +92,29 @@ class LLMClient:
 
         provider_obj = self.registry.get_provider(provider_name)
         if provider_obj is None:
-            raise ValueError(f"LLM provider not configured: {provider_name}")
+            raise ConfigValidationError(
+                f"LLM provider '{provider_name}' is not registered. "
+                f"Add it to runtime.yaml under llm.providers, or run "
+                f"`ai config --provider {provider_name}` to configure it."
+            )
 
         api_key = provider_obj.resolve_api_key()
         if not api_key and provider_name != "mock":
-            raise ValueError(f"API key env var '{provider_obj.api_key_env}' is not set")
-        
+            raise ConfigValidationError(
+                f"API key env var '{provider_obj.api_key_env}' is not set. "
+                f"Add `{provider_obj.api_key_env}=...` to .env, export it in your shell, "
+                f"or run `ai config --provider {provider_name}` to configure it."
+            )
+
         # Handle mock provider with a synthetic key if not provided
         api_key = api_key or "mock-key"
 
         adapter = self.adapters.get(provider_name)
         if adapter is None:
-            raise ValueError(f"No adapter registered for provider: {provider_name}")
+            raise ConfigValidationError(
+                f"No adapter registered for provider '{provider_name}'. "
+                f"Supported: openai, anthropic, gemini, mock."
+            )
 
         model_cfg = provider_obj.get_model(model_id)
         merged_params: Dict[str, Any] = {}
@@ -166,12 +178,13 @@ class LLMClient:
                 },
             )
 
-        self._record_usage_and_enforce_post_call_limits(
+        cost_usd = self._record_usage_and_enforce_post_call_limits(
             run_id=run_id,
             provider=provider_name,
             model=model_id,
             usage=response.usage,
         )
+        response.cost_usd = cost_usd
 
         return response
 
@@ -250,8 +263,11 @@ class LLMClient:
         provider: str,
         model: str,
         usage: Optional[Dict[str, Any]],
-    ) -> None:
-        """Accumulate usage after a call and enforce token/cost limits."""
+    ) -> Optional[float]:
+        """Accumulate usage after a call and enforce token/cost limits.
+
+        Returns the per-call estimated cost in USD (None if pricing unconfigured).
+        """
         input_tokens, output_tokens, total_tokens = self._normalize_token_usage(usage)
         estimated_cost = self._estimate_cost_usd(provider, model, input_tokens, output_tokens)
 
@@ -279,6 +295,8 @@ class LLMClient:
                 f"LLM cost budget exceeded for run '{run_id}' after request {requests}: "
                 f"${cumulative_cost:.6f}/${self.max_cost_usd_per_run:.6f} used."
             )
+
+        return estimated_cost
 
     @staticmethod
     def _to_int(value: Any) -> int:

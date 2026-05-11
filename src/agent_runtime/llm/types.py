@@ -46,3 +46,5 @@ class LLMResponse:
     # Populated by adapters that support native function calling.
     # Empty list = the model responded with text only (current default).
     tool_calls: List[ToolCallRequest] = field(default_factory=list)
+    # Set by LLMClient.call() after pricing lookup; None when pricing unconfigured.
+    cost_usd: Optional[float] = None

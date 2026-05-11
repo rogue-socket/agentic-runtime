@@ -16,7 +16,7 @@ Python 3.10+. Minimal dependencies (PyYAML, typing-extensions). All LLM adapters
 # Install (development)
 pip install -e ".[dev]"
 
-# Run all tests (635 passing as of 2026-04-25)
+# Run all tests (797 passing as of 2026-05-09)
 pytest -q
 
 # Run a single test file
@@ -96,7 +96,7 @@ These names are stable contracts. Used by CLI for progress display and by the de
 
 - `src/agent_runtime/` — core runtime engine (cli, core, workflow, state, config, agent/, llm/, memory/, storage/, tools/, visualization/)
 - `examples/reference_project/` — bundled sample project (agents/, workflows/, functions/, tools/, prompts/)
-- `tests/` — test suite (40+ files, 635 tests)
+- `tests/` — test suite (55 files, 797 tests)
 - `documentation/` — product docs, architecture, changelogs
 - `planning/` — roadmap, feature designs
 
@@ -118,3 +118,9 @@ Read before major edits:
 3. `documentation/about/gaps_2026-03-17.md` — known limitations
 4. `documentation/changelog/CHANGELOG_2026-03-31.md` — recent changes
 5. `planning/vision/todos.md` — prioritized backlog
+
+## Session docs
+
+- `handoffs/*` - folder with dated handoff files
+- `backlog.md` — living TODO. Tags: `[active]`, `[next]`, `[blocked: <reason>]`, no tag = someday.
+- Both gitignored.

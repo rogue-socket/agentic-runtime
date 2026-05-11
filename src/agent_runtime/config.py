@@ -84,6 +84,9 @@ class RuntimeConfig:
     working_memory_max_entries: int = 50
     working_memory_max_scratch_bytes: int = 256_000
 
+    # Episodic memory: byte budget for inputs/outputs summary truncation per row.
+    episodic_max_summary_bytes: int = 512
+
     # Shell tool command restrictions (regex patterns)
     shell_allowlist: list = field(default_factory=list)
     shell_denylist: list = field(default_factory=list)
@@ -217,6 +220,10 @@ def load_config(config_path: str = "runtime.yaml") -> RuntimeConfig:
                 cfg.working_memory_max_entries = int(working["max_entries"])
             if "max_scratch_bytes" in working:
                 cfg.working_memory_max_scratch_bytes = int(working["max_scratch_bytes"])
+        episodic = memory_block.get("episodic")
+        if isinstance(episodic, dict):
+            if "max_summary_bytes" in episodic:
+                cfg.episodic_max_summary_bytes = int(episodic["max_summary_bytes"])
 
     shell_block = raw.get("shell")
     if isinstance(shell_block, dict):

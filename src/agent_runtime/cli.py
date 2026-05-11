@@ -297,6 +297,87 @@ def _estimate_step_cost_usd(
     return ((input_tokens / 1000.0) * input_rate) + ((output_tokens / 1000.0) * output_rate)
 
 
+def _print_run_summary(run, pricing: Dict[str, Dict[str, float]]) -> None:
+    """Print a compact end-of-run summary block: duration, steps, tokens, cost, outputs.
+
+    Cost is preferred from persisted ``step.cost_usd`` and falls back to recalculation
+    from ``token_usage`` + pricing when older runs lack the column. Sections are
+    omitted when there's nothing to report (e.g., a function-only run has no tokens).
+    """
+    duration_ms = run.total_duration_ms
+    if duration_ms is not None:
+        print(f"  duration: {duration_ms}ms")
+
+    steps = run.steps
+    completed = sum(1 for s in steps if s.status == "COMPLETED")
+    failed = sum(1 for s in steps if s.status == "FAILED")
+    parts = [f"{completed} completed"]
+    if failed:
+        parts.append(f"{failed} failed")
+    print(f"  steps: {len(steps)} ({', '.join(parts)})")
+
+    total_input = 0
+    total_output = 0
+    total_total = 0
+    for step in steps:
+        usage = step.token_usage or {}
+        total_input += _to_int(usage.get("input_tokens", usage.get("prompt_tokens", 0)))
+        total_output += _to_int(usage.get("output_tokens", usage.get("completion_tokens", 0)))
+        total_total += _to_int(usage.get("total_tokens", 0))
+    if total_input or total_output or total_total:
+        print(f"  tokens: {total_total or (total_input + total_output)} (input: {total_input}, output: {total_output})")
+
+    total_cost = run.total_cost_usd
+    if total_cost is None and pricing:
+        recalc: Optional[float] = None
+        for step in steps:
+            if not step.token_usage:
+                continue
+            step_cost = _estimate_step_cost_usd(step.token_usage, pricing)
+            if step_cost is not None:
+                recalc = (recalc or 0.0) + step_cost
+        total_cost = recalc
+    if total_cost is not None and total_cost > 0:
+        print(f"  cost: ${total_cost:.6f}")
+
+    output_keys = list(run.outputs.keys())
+    if output_keys:
+        preview = ", ".join(output_keys[:6])
+        more = f" (+{len(output_keys) - 6} more)" if len(output_keys) > 6 else ""
+        print(f"  outputs: {preview}{more}")
+
+
+def _print_failure_details(run) -> None:
+    """Print structured failure context for a FAILED run.
+
+    Locates the actual failed step (preferring the one whose status is FAILED) and
+    surfaces its id, type, attempt count, and the underlying error inline so the
+    user doesn't need a second ``ai inspect`` round-trip just to see what broke.
+    Falls back to ``run.error`` when no individual step is marked FAILED.
+    """
+    failed_step = None
+    for step in run.steps:
+        if step.status == "FAILED":
+            failed_step = step
+            break
+
+    if failed_step is None:
+        if run.error:
+            print(f"Error: {run.error}")
+        return
+
+    attempts = failed_step.attempt_count
+    attempt_str = f" — attempt {attempts}" if attempts and attempts > 1 else ""
+    print(f"\nFailed step: {failed_step.step_id} ({failed_step.step_type}){attempt_str}")
+
+    err = failed_step.error or failed_step.last_error or run.error or "(no error message recorded)"
+    # Indent multi-line errors so they read as a single block under the step.
+    err_lines = str(err).splitlines() or [""]
+    print(f"  Error: {err_lines[0]}")
+    for line in err_lines[1:]:
+        print(f"         {line}")
+
+
 def _parse_env_line(line: str) -> Optional[tuple[str, str]]:
     """Function implementation."""
     stripped = line.strip()
@@ -3456,9 +3537,10 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             memory_manager.close()
             storage.close()
         print(f"Run {run.run_id} status: {run.status}")
-        if run.status == "FAILED" and run.error:
-            print(f"Error: {run.error}")
-            print(f"\nRun `ai inspect {run.run_id}` to see full execution details.")
+        _print_run_summary(run, cfg.llm_pricing_usd_per_1k_tokens)
+        if run.status == "FAILED":
+            _print_failure_details(run)
+            print(f"\nRun `ai inspect {run.run_id}` to see state and full trace.")
         return 0 if run.status == "COMPLETED" else 1
 
     if args.command == "inspect":
@@ -3474,6 +3556,14 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
         version = f"@{run.workflow_version}" if run.workflow_version else ""
         print(f"Run {run.run_id} | workflow={run.workflow_id}{version} | status={run.status}")
+        # Attach loaded steps + latest state so the run's aggregate properties
+        # (total_tokens, total_cost_usd, outputs) work for the summary block.
+        # load_run() returns a Run with empty steps and empty state.
+        for s in steps:
+            run.add_step(s)
+        from agent_runtime.models import RunState
+        run.state = RunState(latest_state)
+        _print_run_summary(run, cfg.llm_pricing_usd_per_1k_tokens)
         if run.error:
             print(f"Error: {run.error}")
         if args.steps:
@@ -3495,10 +3585,15 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                     print(step.last_error)
                 if getattr(step, "token_usage", None):
                     print(f"token_usage: {step.token_usage}")
-                    step_cost = _estimate_step_cost_usd(step.token_usage, cfg.llm_pricing_usd_per_1k_tokens)
-                    if step_cost is not None:
-                        print(f"estimated_cost_usd: ${step_cost:.6f}")
-                        run_total_cost += step_cost
+                    persisted_cost = getattr(step, "cost_usd", None)
+                    if persisted_cost is not None:
+                        print(f"cost_usd: ${persisted_cost:.6f}")
+                        run_total_cost += persisted_cost
+                    else:
+                        step_cost = _estimate_step_cost_usd(step.token_usage, cfg.llm_pricing_usd_per_1k_tokens)
+                        if step_cost is not None:
+                            print(f"estimated_cost_usd: ${step_cost:.6f}")
+                            run_total_cost += step_cost
                     run_total_tokens["input"] += _to_int(step.token_usage.get("input_tokens", step.token_usage.get("prompt_tokens", 0)))
                     run_total_tokens["output"] += _to_int(step.token_usage.get("output_tokens", step.token_usage.get("completion_tokens", 0)))
                 if getattr(step, "agent_trace", None):

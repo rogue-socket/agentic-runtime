@@ -65,6 +65,9 @@ class AgentResult:
     iterations: int = 0
     token_usage: Dict[str, Any] = field(default_factory=dict)
     final_text: str = ""
+    # Sum of LLMResponse.cost_usd across all turns. None when pricing unconfigured
+    # (i.e. no turn produced a cost estimate).
+    cost_usd: Optional[float] = None
 
 
 # -- context ---------------------------------------------------------------
@@ -256,6 +259,15 @@ def _aggregate_usage(turns: List[AgentTurn]) -> Dict[str, Any]:
     return total
 
 
+def _aggregate_cost(turns: List[AgentTurn]) -> Optional[float]:
+    """Sum cost_usd across all LLM calls. Returns None if no turn had a cost."""
+    total: Optional[float] = None
+    for turn in turns:
+        if turn.llm_response and turn.llm_response.cost_usd is not None:
+            total = (total or 0.0) + float(turn.llm_response.cost_usd)
+    return total
+
+
 # -- pipeline execution helpers --------------------------------------------
 
 
@@ -357,6 +369,7 @@ def _resolve_pipeline_system(
     step: PipelineStep,
     tool_registry: Optional[ToolRegistry] = None,
     native_tools_active: bool = False,
+    state: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     """Return the system prompt for a pipeline model step.
 
@@ -365,6 +378,9 @@ def _resolve_pipeline_system(
     native function calling is active (``native_tools_active=True``), in which
     case the preamble is skipped to avoid confusing the model with conflicting
     calling conventions.
+
+    When ``agent.memory_injection`` is non-empty and ``state`` is provided, a
+    memory preamble formatted from ``runtime.memory.<tier>`` is prepended too.
     """
     if step.system is not None:
         base = step.system or None
@@ -378,12 +394,41 @@ def _resolve_pipeline_system(
         and agent.strategy.type == "react"
         and not native_tools_active
     ):
-        preamble = _build_tool_preamble(agent, tool_registry)
-        if base:
-            return preamble + "\n\n" + base
-        return preamble
+        tool_preamble = _build_tool_preamble(agent, tool_registry)
+        base = tool_preamble + "\n\n" + base if base else tool_preamble
+
+    if agent.memory_injection and state is not None:
+        mem_preamble = _build_memory_preamble(state, agent.memory_injection)
+        if mem_preamble:
+            base = mem_preamble + "\n\n" + base if base else mem_preamble
 
     return base
+
+
+def _build_memory_preamble(state: Dict[str, Any], tiers: List[str]) -> str:
+    """Format requested memory tiers from hydrated state into a preamble.
+
+    Reads ``runtime.memory.<tier>`` from the state snapshot. Tiers that are
+    absent or empty are skipped so the prompt doesn't include hollow headers.
+    Returns an empty string when no requested tier has content.
+    """
+    memory = state.get("runtime", {}).get("memory", {}) if isinstance(state, dict) else {}
+    sections: List[str] = []
+    for tier in tiers:
+        contents = memory.get(tier)
+        if not contents:
+            continue
+        formatted = json.dumps(contents, default=str, ensure_ascii=False, indent=2)
+        sections.append(f"### {tier}\n{formatted}")
+    if not sections:
+        return ""
+    body = "\n\n".join(sections)
+    return (
+        "## Memory\n"
+        "The following context is drawn from prior runs and stored knowledge. "
+        "Use it where relevant; ignore it when not.\n\n"
+        f"{body}"
+    )
 
 
 def _render_pipeline_prompt(template: str, state: Dict[str, Any]) -> str:
@@ -472,6 +517,7 @@ async def _run_pipeline(
             system = _resolve_pipeline_system(
                 agent, step, tool_registry,
                 native_tools_active=native_tools_active,
+                state=context.state,
             )
             prompt = _render_pipeline_prompt(step.prompt, pipeline_state)
             history = pipeline_state.get("_history")
@@ -634,6 +680,7 @@ class SingleCallStrategy:
             iterations=1,
             token_usage=_aggregate_usage(turns),
             final_text=last_text,
+            cost_usd=_aggregate_cost(turns),
         )
 
 
@@ -764,6 +811,7 @@ class ReActStrategy:
                     iterations=i,
                     token_usage=_aggregate_usage(all_turns),
                     final_text=last_text,
+                    cost_usd=_aggregate_cost(all_turns),
                 )
 
             # -- Stop condition 2: explicit final_answer block (text-based path) ---------
@@ -775,6 +823,7 @@ class ReActStrategy:
                     iterations=i,
                     token_usage=_aggregate_usage(all_turns),
                     final_text=last_text,
+                    cost_usd=_aggregate_cost(all_turns),
                 )
 
             # -- Stop condition 3: declarative stop_conditions ---------------------------
@@ -795,6 +844,7 @@ class ReActStrategy:
                                 iterations=i,
                                 token_usage=_aggregate_usage(all_turns),
                                 final_text=last_text if last_text else "",
+                                cost_usd=_aggregate_cost(all_turns),
                             )
                     except Exception as stop_exc:  # noqa: BLE001
                         _emit_agent_event(
@@ -822,6 +872,7 @@ class ReActStrategy:
             iterations=max_iter,
             token_usage=_aggregate_usage(all_turns),
             final_text=last_text if last_text else "",
+            cost_usd=_aggregate_cost(all_turns),
         )
 
 
