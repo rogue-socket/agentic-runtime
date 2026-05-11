@@ -35,6 +35,7 @@ from datetime import datetime, timedelta, timezone
 import yaml
 
 from ..errors import StorageValidationError
+from ..models import normalize_token_usage
 from ..observability import percentile
 from ..schema_versioning import STORAGE_SCHEMA_VERSION_CURRENT
 from ..storage.base import Storage
@@ -868,13 +869,7 @@ class SQLiteStorage(Storage):
             if token_usage_raw:
                 try:
                     usage = json_loads(token_usage_raw)
-                    if isinstance(usage, dict):
-                        tokens = usage.get("total_tokens")
-                        if tokens is None:
-                            prompt = usage.get("prompt_tokens", usage.get("input_tokens", 0))
-                            completion = usage.get("completion_tokens", usage.get("output_tokens", 0))
-                            tokens = int(prompt or 0) + int(completion or 0)
-                        total_tokens += int(tokens or 0)
+                    total_tokens += normalize_token_usage(usage)[2]
                 except Exception:  # noqa: BLE001
                     pass
 

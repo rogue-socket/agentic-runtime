@@ -9,12 +9,43 @@ so existing ``from agent_runtime.core import Run`` imports keep working.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .errors import StepExecutionError
 from .logging import StructuredLogger
 from .state import RuntimeState
 from .utils import StateDict
+
+
+def _to_int(value: Any) -> int:
+    """Coerce a usage value to int, defaulting to 0 for None/non-numeric."""
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    return 0
+
+
+def normalize_token_usage(usage: Optional[Dict[str, Any]]) -> Tuple[int, int, int]:
+    """Return (input, output, total) tokens from a provider-shaped usage dict.
+
+    Handles OpenAI (``prompt_tokens``/``completion_tokens``/``total_tokens``),
+    Anthropic (``input_tokens``/``output_tokens``), and Gemini
+    (``promptTokenCount``/``candidatesTokenCount``/``totalTokenCount``) shapes.
+    Falls back to input+output for ``total`` when the provider omits it.
+    """
+    if not isinstance(usage, dict):
+        return (0, 0, 0)
+    input_tokens = _to_int(
+        usage.get("input_tokens", usage.get("prompt_tokens", usage.get("promptTokenCount", 0)))
+    )
+    output_tokens = _to_int(
+        usage.get("output_tokens", usage.get("completion_tokens", usage.get("candidatesTokenCount", 0)))
+    )
+    total_tokens = _to_int(usage.get("total_tokens", usage.get("totalTokenCount", 0)))
+    if total_tokens <= 0:
+        total_tokens = input_tokens + output_tokens
+    return (input_tokens, output_tokens, total_tokens)
 
 
 class StepStatus(str):
@@ -263,7 +294,7 @@ class Run:
         total = 0
         for step in self._steps:
             if step.token_usage:
-                total += step.token_usage.get("total_tokens", 0)
+                total += normalize_token_usage(step.token_usage)[2]
         return total
 
     @property

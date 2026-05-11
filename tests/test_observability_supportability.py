@@ -305,3 +305,53 @@ steps:
     health = report["health"]
     assert health["current"]["score"] is not None
     assert health["status"] in {"improving", "mixed", "regressing", "insufficient_baseline"}
+
+
+def test_normalize_token_usage_handles_provider_shapes() -> None:
+    """OpenAI/Anthropic/Gemini usage dicts all resolve to (input, output, total)."""
+    from agent_runtime.models import normalize_token_usage
+
+    openai = {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+    assert normalize_token_usage(openai) == (10, 20, 30)
+
+    anthropic = {"input_tokens": 12, "output_tokens": 8}
+    assert normalize_token_usage(anthropic) == (12, 8, 20)
+
+    gemini = {"promptTokenCount": 5, "candidatesTokenCount": 7, "totalTokenCount": 12}
+    assert normalize_token_usage(gemini) == (5, 7, 12)
+
+    assert normalize_token_usage(None) == (0, 0, 0)
+    assert normalize_token_usage({}) == (0, 0, 0)
+
+
+def test_observability_report_counts_gemini_shape_tokens() -> None:
+    """Regression for #8: build_observability_report must count camelCase Gemini keys."""
+    storage = make_storage()
+    tools = ToolRegistry()
+
+    def stub(inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Function implementation."""
+        return {"ok": True}
+
+    executor = Executor(
+        [StepDefinition(step_id="s", step_type="function", function_callable=stub)],
+        storage,
+        None,
+        make_memory_manager(),
+        tools,
+    )
+    run = executor.run("wf_gemini", {"x": 1})
+    assert run.status == StepStatus.COMPLETED
+
+    # Backfill a step row with a Gemini-shape usage payload so the aggregator must
+    # normalize camelCase keys to count it.
+    with storage._lock:  # type: ignore[attr-defined]
+        cur = storage._conn.cursor()  # type: ignore[attr-defined]
+        cur.execute(
+            "UPDATE steps SET token_usage_json = ? WHERE run_id = ?",
+            (json.dumps({"promptTokenCount": 11, "candidatesTokenCount": 22, "totalTokenCount": 33}), run.run_id),
+        )
+        storage._conn.commit()  # type: ignore[attr-defined]
+
+    report = storage.build_observability_report(top_steps=5)
+    assert report["llm"]["total_tokens"] >= 33

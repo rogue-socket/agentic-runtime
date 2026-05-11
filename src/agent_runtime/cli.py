@@ -52,6 +52,7 @@ import webbrowser
 import yaml
 
 from .core import Executor
+from .models import normalize_token_usage
 from .config import RuntimeConfig, load_config, apply_cli_overrides
 from .logging import StructuredLogger
 from .memory import EpisodicMemory, MemoryManager, ProceduralMemory, SemanticMemory, WorkingMemory
@@ -281,12 +282,7 @@ def _estimate_step_cost_usd(
     if not pricing or not token_usage:
         return None
 
-    input_tokens = _to_int(
-        token_usage.get("input_tokens", token_usage.get("prompt_tokens", 0))
-    )
-    output_tokens = _to_int(
-        token_usage.get("output_tokens", token_usage.get("completion_tokens", 0))
-    )
+    input_tokens, output_tokens, _ = normalize_token_usage(token_usage)
 
     # Try to find matching pricing entry; fall back to wildcard
     price_cfg = pricing.get("*")
@@ -321,10 +317,10 @@ def _print_run_summary(run, pricing: Dict[str, Dict[str, float]]) -> None:
     total_output = 0
     total_total = 0
     for step in steps:
-        usage = step.token_usage or {}
-        total_input += _to_int(usage.get("input_tokens", usage.get("prompt_tokens", 0)))
-        total_output += _to_int(usage.get("output_tokens", usage.get("completion_tokens", 0)))
-        total_total += _to_int(usage.get("total_tokens", 0))
+        in_t, out_t, tot_t = normalize_token_usage(step.token_usage)
+        total_input += in_t
+        total_output += out_t
+        total_total += tot_t
     if total_input or total_output or total_total:
         print(f"  tokens: {total_total or (total_input + total_output)} (input: {total_input}, output: {total_output})")
 
@@ -3634,8 +3630,9 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                         if step_cost is not None:
                             print(f"estimated_cost_usd: ${step_cost:.6f}")
                             run_total_cost += step_cost
-                    run_total_tokens["input"] += _to_int(step.token_usage.get("input_tokens", step.token_usage.get("prompt_tokens", 0)))
-                    run_total_tokens["output"] += _to_int(step.token_usage.get("output_tokens", step.token_usage.get("completion_tokens", 0)))
+                    in_t, out_t, _ = normalize_token_usage(step.token_usage)
+                    run_total_tokens["input"] += in_t
+                    run_total_tokens["output"] += out_t
                 if getattr(step, "agent_trace", None):
                     print("agent_trace:")
                     normalized_trace = normalize_agent_trace(step.agent_trace)
