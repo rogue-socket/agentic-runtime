@@ -3291,25 +3291,30 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
         current_outcomes = outcomes_section.get("current", {})
         previous_outcomes = outcomes_section.get("previous", {})
+
+        def _pct(d: dict, k: str) -> str:
+            v = d.get(k)
+            return f"{(v or 0.0):.2%}"
+
         print("\nOutcome Layer (Current vs Previous)")
         print(
             "  "
-            f"ADS={current_outcomes.get('ads_rate', 0.0):.2%} "
-            f"(prev {previous_outcomes.get('ads_rate', 0.0):.2%})  "
-            f"PORR={current_outcomes.get('post_outcome_reversal_rate', 0.0):.2%} "
-            f"(prev {previous_outcomes.get('post_outcome_reversal_rate', 0.0):.2%})"
+            f"ADS={_pct(current_outcomes, 'ads_rate')} "
+            f"(prev {_pct(previous_outcomes, 'ads_rate')})  "
+            f"PORR={_pct(current_outcomes, 'post_outcome_reversal_rate')} "
+            f"(prev {_pct(previous_outcomes, 'post_outcome_reversal_rate')})"
         )
         print(
             "  "
-            f"HTR={current_outcomes.get('human_touch_rate', 0.0):.2%} "
-            f"(prev {previous_outcomes.get('human_touch_rate', 0.0):.2%})  "
-            f"RE={current_outcomes.get('recovery_efficiency', 0.0):.2%} "
+            f"HTR={_pct(current_outcomes, 'human_touch_rate')} "
+            f"(prev {_pct(previous_outcomes, 'human_touch_rate')})  "
+            f"RE={_pct(current_outcomes, 'recovery_efficiency')} "
             f"[{current_outcomes.get('recovery_efficiency_source', 'unknown')}]"
         )
         print(
             "  "
-            f"OPR={current_outcomes.get('oracle_pass_rate', 0.0):.2%} "
-            f"OMR={current_outcomes.get('oracle_match_rate', 0.0):.2%}"
+            f"OPR={_pct(current_outcomes, 'oracle_pass_rate')} "
+            f"OMR={_pct(current_outcomes, 'oracle_match_rate')}"
         )
 
         top_failing = steps_section.get("top_failing", [])
