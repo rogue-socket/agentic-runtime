@@ -42,9 +42,9 @@ dev = [
 ai = "agent_runtime.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/forrestrun/forrestrun"
-Repository = "https://github.com/forrestrun/forrestrun"
-Issues = "https://github.com/forrestrun/forrestrun/issues"
+Homepage = "https://github.com/rogue-socket/agentic-runtime"
+Repository = "https://github.com/rogue-socket/agentic-runtime"
+Issues = "https://github.com/rogue-socket/agentic-runtime/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
