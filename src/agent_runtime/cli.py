@@ -69,6 +69,7 @@ from .tools.base import RuntimeContext
 from .function_resolver import resolve_function
 from .errors import (
     RunNotFoundError,
+    RuntimeErrorBase,
     WorkflowValidationError,
     get_error_code,
     get_user_message,
@@ -3648,7 +3649,12 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
             storage.close()
             _print_cli_exception(RunNotFoundError(f"run not found: {args.run_id}"))
             return 1
-        validate_resume(run.status)
+        try:
+            validate_resume(run.status)
+        except RuntimeErrorBase as exc:
+            storage.close()
+            _print_cli_exception(exc)
+            return 1
 
         llm_client_resume = _default_llm_client(cfg)
         functions_dir_resume = cfg.functions_dir if os.path.isdir(cfg.functions_dir) else None

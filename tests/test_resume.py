@@ -11,7 +11,7 @@ from typing import Any, Dict
 import pytest
 
 from agent_runtime.core import Executor, StepDefinition, StepStatus
-from agent_runtime.errors import StepExecutionError
+from agent_runtime.errors import RunAlreadyCompletedError, StepExecutionError
 from agent_runtime.resume import ResumePolicy, determine_resume_step, validate_resume
 from agent_runtime.tools.base import RuntimeContext, ToolResult
 from agent_runtime.tools.registry import ToolRegistry
@@ -70,7 +70,7 @@ def test_resume_from_failed_step() -> None:
 
 def test_validate_resume_blocks_completed() -> None:
     """Function implementation."""
-    with pytest.raises(StepExecutionError):
+    with pytest.raises(RunAlreadyCompletedError):
         validate_resume(StepStatus.COMPLETED)
 
 
@@ -82,7 +82,7 @@ def test_validate_resume_blocks_running() -> None:
 
 def test_validate_resume_blocks_completed_with_errors() -> None:
     """COMPLETED_WITH_ERRORS runs should not be resumable (L4 fix)."""
-    with pytest.raises(StepExecutionError):
+    with pytest.raises(RunAlreadyCompletedError):
         validate_resume(StepStatus.COMPLETED_WITH_ERRORS)
 
 

@@ -134,6 +134,10 @@ class StorageValidationError(RuntimeErrorBase):
     """Raised when storage schema/version checks fail."""
 
 
+class RunAlreadyCompletedError(RuntimeErrorBase):
+    """Raised when ``ai resume`` targets a run that already finished."""
+
+
 _ERROR_TAXONOMY: Dict[Type[BaseException], Tuple[str, str]] = {
     WorkflowValidationError: (
         "AR-WORKFLOW-VALIDATION",
@@ -178,6 +182,10 @@ _ERROR_TAXONOMY: Dict[Type[BaseException], Tuple[str, str]] = {
     StorageValidationError: (
         "AR-STORAGE-VALIDATION",
         "Storage schema/version is incompatible with this runtime.",
+    ),
+    RunAlreadyCompletedError: (
+        "AR-RUN-COMPLETED",
+        "Run has already finished and cannot be resumed. Use 'ai inspect' to review it or 'ai run' to start a new run.",
     ),
     FileNotFoundError: (
         "AR-FILE-NOT-FOUND",

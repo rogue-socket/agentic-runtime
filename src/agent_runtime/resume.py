@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 from .core import NextRule, StepDefinition, StepExecution, StepStatus
-from .errors import BranchResolutionError, StepExecutionError
+from .errors import BranchResolutionError, RunAlreadyCompletedError, StepExecutionError
 from .utils import safe_eval
 
 
@@ -151,10 +151,11 @@ def validate_resume(run_status: str) -> None:
     """Validate that a run status is resumable.
 
     Raises:
-        StepExecutionError: For non-failed statuses.
+        RunAlreadyCompletedError: If the run already finished.
+        StepExecutionError: For other non-resumable statuses.
     """
     if run_status == StepStatus.COMPLETED or run_status == StepStatus.COMPLETED_WITH_ERRORS:
-        raise StepExecutionError("Cannot resume a completed run.")
+        raise RunAlreadyCompletedError(f"Run already finished with status: {run_status}")
     if run_status == StepStatus.RUNNING:
         raise StepExecutionError("Cannot resume a running run.")
     if run_status != StepStatus.FAILED:
