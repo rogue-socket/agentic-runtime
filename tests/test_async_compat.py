@@ -59,3 +59,21 @@ def test_worker_thread_uses_isolated_loop() -> None:
 
     asyncio.run(outer())
     assert captured["worker_loop"] is not captured["outer_loop"]
+
+
+def test_exception_context_is_not_no_running_loop_runtimeerror() -> None:
+    """Regression for #12: a coroutine that raises must not chain to
+    'RuntimeError: no running event loop' from the loop-detection probe.
+    """
+    async def coro() -> None:
+        raise ZeroDivisionError("user error")
+
+    try:
+        run_coro_blocking(coro())
+    except ZeroDivisionError as exc:
+        ctx = exc.__context__
+        assert not (isinstance(ctx, RuntimeError) and "no running event loop" in str(ctx)), (
+            f"ZeroDivisionError.__context__ chained to stray RuntimeError: {ctx!r}"
+        )
+    else:
+        raise AssertionError("expected ZeroDivisionError to propagate")

@@ -22,9 +22,18 @@ def run_coro_blocking(coro: Coroutine[Any, Any, Any]) -> Any:
     with a fresh event loop so sync entry points work from inside
     FastAPI / Jupyter / other async contexts.
     """
+    # Detect a running loop without leaving the RuntimeError live in the
+    # exception context — if asyncio.run(coro) ran inside this except block
+    # and the coroutine raised, the user's exception would chain to
+    # "no running event loop" and render the misleading
+    # "During handling of the above exception, another exception occurred."
     try:
         asyncio.get_running_loop()
+        in_loop = True
     except RuntimeError:
+        in_loop = False
+
+    if not in_loop:
         return asyncio.run(coro)
 
     result: list[Any] = [None]
