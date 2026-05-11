@@ -135,6 +135,21 @@ Configure in `runtime.yaml` — API keys resolved from environment or `.env`:
 
 All adapters use stdlib `urllib` and support structured multi-turn history for ReAct agents.
 
+#### macOS SSL note
+
+Because adapters use stdlib `urllib` (no transitive `certifi` dep), fresh macOS
+Python installs can hit `SSL: CERTIFICATE_VERIFY_FAILED` on the first LLM call.
+Fix with either:
+
+```bash
+# Option A — python.org installs
+/Applications/Python\ 3.x/Install\ Certificates.command
+
+# Option B — point urllib at certifi's bundle
+pip install certifi
+export SSL_CERT_FILE=$(python -c "import certifi; print(certifi.where())")
+```
+
 ---
 
 ## CLI
