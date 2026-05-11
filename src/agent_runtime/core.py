@@ -1037,7 +1037,14 @@ class Executor:
                 continue
             if rule.when is None:
                 continue
-            if safe_eval(rule.when, state):
+            try:
+                matched = safe_eval(rule.when, state)
+            except (SyntaxError, ValueError) as exc:
+                raise BranchResolutionError(
+                    f"Invalid branch expression in step '{step_def.step_id}' "
+                    f"(rule when={rule.when!r}): {exc}"
+                ) from exc
+            if matched:
                 return rule.goto
 
         if default_rule is not None:
