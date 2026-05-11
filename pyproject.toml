@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "forrestrun"
-version = "0.2.1"
+version = "0.2.2"
 description = "Embeddable workflow engine for AI agents. Deterministic, resumable, zero dependencies."
 readme = "README.md"
 license = {text = "MIT"}
