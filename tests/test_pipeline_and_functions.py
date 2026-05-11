@@ -547,6 +547,40 @@ class TestWorkflowStepValidation:
         with pytest.raises(WorkflowValidationError):
             _validate_step({"id": "s1", "type": "invalid"})
 
+    def test_inputs_with_jinja_template_rejected(self):
+        """Regression for #13: step inputs using {{ ... }} syntax must error at load."""
+        yaml_text = (
+            "schema_version: v1\n"
+            "workflow:\n"
+            "  id: t\n"
+            "  version: v1\n"
+            "steps:\n"
+            "  - id: greet\n"
+            "    type: function\n"
+            "    function: hello.greet\n"
+            "    inputs:\n"
+            "      topic: \"{{ inputs.topic }}\"\n"
+        )
+        with pytest.raises(WorkflowValidationError, match=r"\{\{ \.\.\. \}\} template syntax"):
+            load_workflow_from_text(yaml_text)
+
+    def test_inputs_with_bare_dot_path_accepted(self):
+        """The recommended form (bare dot-path) must still parse cleanly."""
+        yaml_text = (
+            "schema_version: v1\n"
+            "workflow:\n"
+            "  id: t\n"
+            "  version: v1\n"
+            "steps:\n"
+            "  - id: greet\n"
+            "    type: function\n"
+            "    function: hello.greet\n"
+            "    inputs:\n"
+            "      topic: inputs.topic\n"
+        )
+        wf = load_workflow_from_text(yaml_text)
+        assert wf["steps"][0].step_id == "greet"
+
 
 # ── Workflow Parsing: type:agent and type:function ───────────────────────
 

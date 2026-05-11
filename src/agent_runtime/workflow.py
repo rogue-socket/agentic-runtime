@@ -25,6 +25,7 @@ Side Effects:
 - Reads workflow files from disk in `load_workflow`.
 """
 
+import re
 from typing import Any, Dict, List, Optional, Tuple
 import yaml
 
@@ -46,6 +47,11 @@ from .utils import sha256_text
 # [Pain Point Solved] #9 Collaboration Impossible: The workflow is a readable YAML file,
 #   not imperative Python. A teammate can understand the pipeline in 10 seconds.
 VALID_STEP_TYPES = {"agent", "function", "tool"}
+
+# Catches step `inputs:` values that mistakenly use agent-prompt template
+# syntax (e.g. "{{ inputs.x }}"). Workflow inputs are bare dot-paths, so
+# such a value would silently pass through as a literal string.
+_JINJA_LIKE_RE = re.compile(r"\{\{\s*[A-Za-z_][\w.]*\s*\}\}")
 
 def _parse_schema_version(raw: Dict[str, Any]) -> str:
     """Parse schema_version and enforce the runtime's single supported schema."""
@@ -320,16 +326,24 @@ def _parse_workflow(
                     )
             input_spec = mapped
         elif isinstance(input_spec, dict):
-            for value in input_spec.values():
-                if isinstance(value, str) and value.startswith("steps."):
-                    parts = value.split(".")
-                    if len(parts) < 2:
-                        raise WorkflowValidationError(f"Invalid step input path: {value}")
-                    referenced_step = parts[1]
-                    if referenced_step not in seen_steps[:-1]:
+            for key, value in input_spec.items():
+                if isinstance(value, str):
+                    if _JINJA_LIKE_RE.search(value):
                         raise WorkflowValidationError(
-                            f"Step {step['id']} references future/unknown step output: {value}"
+                            f"Step '{step['id']}' input '{key}' uses {{{{ ... }}}} template syntax, "
+                            f"which only works in agent prompts. Workflow inputs use bare dot-paths; "
+                            f"write `{key}: inputs.x` or `{key}: steps.<step_id>.<field>` instead. "
+                            f"(Got: {value!r}.)"
                         )
+                    if value.startswith("steps."):
+                        parts = value.split(".")
+                        if len(parts) < 2:
+                            raise WorkflowValidationError(f"Invalid step input path: {value}")
+                        referenced_step = parts[1]
+                        if referenced_step not in seen_steps[:-1]:
+                            raise WorkflowValidationError(
+                                f"Step {step['id']} references future/unknown step output: {value}"
+                            )
 
         output_contract = step.get("outputs")
         output_schema = step.get("output_schema")
