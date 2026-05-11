@@ -721,6 +721,27 @@ class PriorityHeuristicTool:
         )
 '''
 
+HELLO_WORKFLOW = """schema_version: v1
+workflow:
+  id: hello
+  version: v1
+  description: Smoke check — runs without API keys.
+steps:
+  - id: greet
+    type: function
+    function: hello.greet
+"""
+
+HELLO_FUNCTION = '''"""Hello-world function for the init scaffold.
+
+Run with: ``ai run workflows/hello.yaml``.
+"""
+
+
+def greet(inputs):
+    return {"message": "hello from forrestrun"}
+'''
+
 RUNTIME_YAML_TEMPLATE = """# Runtime configuration for ForrestRun.
 # CLI flags override values set here.
 # Uncomment and edit sections as needed.
@@ -898,6 +919,16 @@ def _init_project(target_dir: str) -> None:
     os.makedirs(agents_dir, exist_ok=True)
     os.makedirs(functions_dir, exist_ok=True)
     _scaffold_test_layout(target_dir)
+
+    hello_workflow_path = os.path.join(workflows_dir, "hello.yaml")
+    if not os.path.exists(hello_workflow_path):
+        with open(hello_workflow_path, "w", encoding="utf-8") as f:
+            f.write(HELLO_WORKFLOW)
+
+    hello_function_path = os.path.join(functions_dir, "hello.py")
+    if not os.path.exists(hello_function_path):
+        with open(hello_function_path, "w", encoding="utf-8") as f:
+            f.write(HELLO_FUNCTION)
 
     runtime_yaml_path = os.path.join(target_dir, "runtime.yaml")
     if not os.path.exists(runtime_yaml_path):
